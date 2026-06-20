@@ -1,0 +1,189 @@
+import SwiftUI
+
+enum FluxCurveHandle: Hashable {
+    case day
+    case night
+}
+
+struct FluxCurveEditor: View {
+    @Binding var dayTemperature: Int
+    @Binding var nightTemperature: Int
+    @Binding var warmStartMinutes: Int
+    @Binding var coolStartMinutes: Int
+    let transitionMinutes: Int
+
+    private let minKelvin = 1000
+    private let maxKelvin = 6500
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            ZStack {
+                Canvas { context, canvasSize in
+                    drawGrid(in: &context, size: canvasSize)
+                    drawTemperatureFill(in: &context, size: canvasSize)
+                    drawTemperatureCurve(in: &context, size: canvasSize)
+                }
+
+                handle(.day, in: size)
+                handle(.night, in: size)
+            }
+            .contentShape(Rectangle())
+        }
+        .frame(height: 150)
+        .accessibilityLabel("Color schedule curve")
+    }
+
+    private func drawGrid(in context: inout GraphicsContext, size: CGSize) {
+        var grid = Path()
+        for hour in stride(from: 0, through: 24, by: 2) {
+            let x = CGFloat(hour) / 24.0 * size.width
+            grid.move(to: CGPoint(x: x, y: 0))
+            grid.addLine(to: CGPoint(x: x, y: size.height))
+        }
+        for fraction in stride(from: 0.25, through: 0.75, by: 0.25) {
+            let y = size.height * CGFloat(fraction)
+            grid.move(to: CGPoint(x: 0, y: y))
+            grid.addLine(to: CGPoint(x: size.width, y: y))
+        }
+        context.stroke(grid, with: .color(.white.opacity(0.42)), lineWidth: 1)
+    }
+
+    private func drawTemperatureFill(in context: inout GraphicsContext, size: CGSize) {
+        var area = temperaturePath(size: size)
+        area.addLine(to: CGPoint(x: size.width, y: size.height))
+        area.addLine(to: CGPoint(x: 0, y: size.height))
+        area.closeSubpath()
+
+        let gradient = Gradient(colors: [
+            .blue.opacity(0.18),
+            .orange.opacity(0.26),
+            .orange.opacity(0.12)
+        ])
+        context.fill(area, with: .linearGradient(
+            gradient,
+            startPoint: CGPoint(x: 0, y: size.height),
+            endPoint: CGPoint(x: size.width, y: 0)
+        ))
+    }
+
+    private func drawTemperatureCurve(in context: inout GraphicsContext, size: CGSize) {
+        let curve = temperaturePath(size: size)
+        context.stroke(curve, with: .color(.orange.opacity(0.72)), lineWidth: 2.5)
+
+        var baseline = Path()
+        baseline.move(to: CGPoint(x: 0, y: size.height - 3))
+        baseline.addLine(to: CGPoint(x: size.width, y: size.height - 3))
+        context.stroke(baseline, with: .color(.blue.opacity(0.55)), lineWidth: 3)
+    }
+
+    private func temperaturePath(size: CGSize) -> Path {
+        var path = Path()
+        let preferences = previewPreferences()
+
+        for step in 0...144 {
+            let minute = step * 10
+            let temperature = ColorSchedule.scheduledTemperature(
+                preferences: preferences,
+                minuteOfDay: minute
+            )
+            let point = CGPoint(
+                x: CGFloat(minute) / 1440.0 * size.width,
+                y: yPosition(for: temperature, height: size.height)
+            )
+
+            if step == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        return path
+    }
+
+    private func handle(_ handle: FluxCurveHandle, in size: CGSize) -> some View {
+        let point = point(for: handle, in: size)
+        let color = handle == .day ? Color.orange : Color.blue
+
+        return Circle()
+            .fill(color.opacity(0.9))
+            .frame(width: 20, height: 20)
+            .overlay(Circle().stroke(.white, lineWidth: 2))
+            .shadow(color: color.opacity(0.28), radius: 8, y: 3)
+            .position(point)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        update(handle, location: value.location, size: size)
+                    }
+            )
+            .accessibilityLabel(handle == .day ? "Daytime color handle" : "Night color handle")
+    }
+
+    private func point(for handle: FluxCurveHandle, in size: CGSize) -> CGPoint {
+        switch handle {
+        case .day:
+            CGPoint(
+                x: CGFloat(coolStartMinutes) / 1440.0 * size.width,
+                y: yPosition(for: dayTemperature, height: size.height)
+            )
+        case .night:
+            CGPoint(
+                x: CGFloat(warmStartMinutes) / 1440.0 * size.width,
+                y: yPosition(for: nightTemperature, height: size.height)
+            )
+        }
+    }
+
+    private func update(_ handle: FluxCurveHandle, location: CGPoint, size: CGSize) {
+        let minute = roundedMinutes(from: location.x, width: size.width)
+        let kelvin = roundedKelvin(from: location.y, height: size.height)
+
+        switch handle {
+        case .day:
+            coolStartMinutes = minute
+            dayTemperature = kelvin
+        case .night:
+            warmStartMinutes = minute
+            nightTemperature = kelvin
+        }
+    }
+
+    private func previewPreferences() -> AppPreferences {
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .clock
+        preferences.dayTemperature = dayTemperature
+        preferences.nightTemperature = nightTemperature
+        preferences.warmStartMinutes = warmStartMinutes
+        preferences.coolStartMinutes = coolStartMinutes
+        preferences.transitionMinutes = transitionMinutes
+        return preferences
+    }
+
+    private func yPosition(for kelvin: Int, height: CGFloat) -> CGFloat {
+        let clamped = kelvin.clamped(to: minKelvin...maxKelvin)
+        let progress = Double(clamped - minKelvin) / Double(maxKelvin - minKelvin)
+        return height - (height * CGFloat(progress))
+    }
+
+    private func roundedMinutes(from x: CGFloat, width: CGFloat) -> Int {
+        guard width > 0 else {
+            return 0
+        }
+
+        let raw = Int((x / width * 1440).rounded())
+        let rounded = Int((Double(raw) / 15.0).rounded()) * 15
+        return rounded.clamped(to: 0...1435)
+    }
+
+    private func roundedKelvin(from y: CGFloat, height: CGFloat) -> Int {
+        guard height > 0 else {
+            return dayTemperature
+        }
+
+        let progress = Double((height - y) / height).clamped(to: 0...1)
+        let raw = minKelvin + Int((Double(maxKelvin - minKelvin) * progress).rounded())
+        return (Int((Double(raw) / 100.0).rounded()) * 100).clamped(to: minKelvin...maxKelvin)
+    }
+}
