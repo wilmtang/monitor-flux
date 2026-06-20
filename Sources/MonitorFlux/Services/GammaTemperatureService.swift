@@ -33,12 +33,12 @@ final class GammaTemperatureService {
     }
 
     private var baselines: [CGDirectDisplayID: GammaTables] = [:]
-    private var appliedDisplayIDs: Set<CGDirectDisplayID> = []
+    private var appliedAdjustments: [CGDirectDisplayID: GammaAdjustment] = [:]
     private let tableSize = 256
 
     func apply(displays: [DisplayInfo], preferences: AppPreferences) -> GammaApplySummary {
         guard preferences.gammaEnabled else {
-            restore()
+            restoreIfNeeded()
             return GammaApplySummary(
                 appliedCount: 0,
                 failedCount: 0,
@@ -47,31 +47,23 @@ final class GammaTemperatureService {
         }
 
         var applied = 0
+        var skipped = 0
         var failed = 0
-        let targetTemperature = ColorSchedule.targetTemperature(preferences: preferences)
-        let adjustmentsByDisplay = Dictionary(uniqueKeysWithValues: displays.compactMap { display in
-            let displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
-            let adjustment = GammaAdjustment(
-                temperature: displayPreferences.colorEnabled ? targetTemperature : nil,
-                brightnessPercent: displayPreferences.gammaControlsEnabled
-                    ? displayPreferences.gammaBrightness
-                    : 100,
-                contrastPercent: displayPreferences.gammaControlsEnabled
-                    ? displayPreferences.gammaContrast
-                    : 100
-            )
-            return adjustment.isNeutral ? nil : (display.id, adjustment)
-        })
+        let adjustmentsByDisplay = GammaPlan.adjustments(displays: displays, preferences: preferences)
         let enabledDisplayIDs = Set(adjustmentsByDisplay.keys)
 
-        if !appliedDisplayIDs.isSubset(of: enabledDisplayIDs) {
+        if !Set(appliedAdjustments.keys).isSubset(of: enabledDisplayIDs) {
             CGDisplayRestoreColorSyncSettings()
             baselines.removeAll()
-            appliedDisplayIDs.removeAll()
+            appliedAdjustments.removeAll()
         }
 
         for display in displays {
             guard let adjustment = adjustmentsByDisplay[display.id] else {
+                continue
+            }
+            if appliedAdjustments[display.id] == adjustment {
+                skipped += 1
                 continue
             }
 
@@ -79,6 +71,7 @@ final class GammaTemperatureService {
                 let baseline = try baselineTables(for: display.id)
                 let adjusted = scaledTables(from: baseline, adjustment: adjustment)
                 try setTables(adjusted, for: display.id)
+                appliedAdjustments[display.id] = adjustment
                 applied += 1
             } catch {
                 failed += 1
@@ -86,7 +79,7 @@ final class GammaTemperatureService {
         }
 
         if adjustmentsByDisplay.isEmpty {
-            restore()
+            restoreIfNeeded()
             return GammaApplySummary(
                 appliedCount: 0,
                 failedCount: 0,
@@ -94,9 +87,14 @@ final class GammaTemperatureService {
             )
         }
 
-        appliedDisplayIDs = enabledDisplayIDs
-
         if failed == 0 {
+            if applied == 0, skipped > 0 {
+                return GammaApplySummary(
+                    appliedCount: 0,
+                    failedCount: 0,
+                    message: "Gamma unchanged"
+                )
+            }
             return GammaApplySummary(
                 appliedCount: applied,
                 failedCount: failed,
@@ -114,7 +112,15 @@ final class GammaTemperatureService {
     func restore() {
         CGDisplayRestoreColorSyncSettings()
         baselines.removeAll()
-        appliedDisplayIDs.removeAll()
+        appliedAdjustments.removeAll()
+    }
+
+    private func restoreIfNeeded() {
+        guard !baselines.isEmpty || !appliedAdjustments.isEmpty else {
+            return
+        }
+
+        restore()
     }
 
     private func baselineTables(for displayID: CGDirectDisplayID) throws -> GammaTables {

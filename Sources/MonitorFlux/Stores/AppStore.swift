@@ -73,6 +73,14 @@ final class AppStore: ObservableObject {
         )
     }
 
+    func nudgeHardwareBrightness(for display: DisplayInfo, by delta: Int) {
+        updateDisplayPreferences(for: display) { displayPreferences in
+            displayPreferences.hardwareBrightness = (displayPreferences.hardwareBrightness + delta)
+                .clamped(to: 0...100)
+        }
+        applyBrightness(for: display)
+    }
+
     func applyContrast(for display: DisplayInfo) {
         let displayPreferences = displayPreferences(for: display)
         runDDCCommand(
@@ -112,12 +120,12 @@ final class AppStore: ObservableObject {
 
     private func startTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.reconcileColor()
             }
         }
-        timer?.tolerance = 5
+        timer?.tolerance = 10
     }
 
     private func seedMissingDisplayPreferences() {
