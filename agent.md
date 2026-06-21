@@ -15,7 +15,8 @@ commands to hardware.
 **Safe mode** (`MONITORFLUX_SAFE_MODE=1`, set by `--safe`, `--verify`, and `smoke_test.sh`)
 drives the full UI but performs **no gamma/DDC/backlight writes** — so testing doesn't
 flicker the screen or fight f.lux/MonitorControl. Use it for any iteration where you only
-need to see the UI. All hardware-writing paths in `AppStore` are gated on `safeMode`.
+need to see the UI. All hardware-writing paths in `AppStore` are gated on `safeMode`. Full
+breakdown: [docs/SAFE_MODE.md](docs/SAFE_MODE.md).
 
 Stop the running dev app before doing risky gamma work (or just use `--safe`):
 

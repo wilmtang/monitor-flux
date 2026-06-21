@@ -108,7 +108,8 @@ Useful variants:
 **Safe mode** (`--safe`, also used by `--verify` and `smoke_test.sh`, via
 `MONITORFLUX_SAFE_MODE=1`) runs the full app without any gamma/DDC/backlight writes, so
 testing doesn't flicker your screen or conflict with f.lux/MonitorControl. Use the plain
-`run` (no flag) when you actually want MonitorFlux to control your displays.
+`run` (no flag) when you actually want MonitorFlux to control your displays. See
+[docs/SAFE_MODE.md](docs/SAFE_MODE.md) for the full breakdown of what it disables.
 
 ## Test
 
