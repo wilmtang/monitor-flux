@@ -5,7 +5,6 @@ import SwiftUI
 /// and volume, plus a global f.lux-style ambience (color temperature) control. Detailed
 /// configuration lives in the on-demand window opened from the footer.
 struct QuickControlsView: View {
-    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
@@ -26,8 +25,7 @@ struct QuickControlsView: View {
             Divider()
 
             PopupMenuRow(title: "Settings…", shortcut: "⌘,") {
-                openWindow(id: "main")
-                store.activateMainWindow()
+                store.showMainWindow()
             }
             PopupMenuRow(title: "Quit MonitorFlux", shortcut: "⌘Q") {
                 NSApp.terminate(nil)

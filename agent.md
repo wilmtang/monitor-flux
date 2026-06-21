@@ -9,6 +9,7 @@ commands to hardware.
 - Build and run the app bundle: `./script/build_and_run.sh`
 - Verify launch: `./script/build_and_run.sh --verify`
 - Run tests: `swift test`
+- Smoke-test the detailed window opens (not blank / not duplicated): `./script/smoke_test.sh`
 
 Stop the running dev app before doing risky gamma work:
 
@@ -19,7 +20,12 @@ pkill -x MonitorFlux || true
 ## Architecture
 
 - `App/`: SwiftUI app entrypoint and AppKit delegate. Launches menu-bar-first
-  (`LSUIElement`); the delegate drives the activation policy (Dock visibility).
+  (`LSUIElement`); the delegate drives the activation policy (Dock visibility). The only
+  SwiftUI scene is the `MenuBarExtra`. The detailed window is an AppKit `NSWindow` +
+  `NSHostingController` managed by `AppStore.showMainWindow()` — NOT a `WindowGroup`/
+  `Settings` scene, because `openWindow` from a `.window` `MenuBarExtra` in an accessory
+  app opens blank, duplicate windows. All app-level settings (Dock/keyboard/login) live
+  in the window's "General" pane so they're reachable without an app menu.
 - `Models/`: persisted app/display preferences and navigation selection. Three
   color phases (Daytime/Sunset/Bedtime) via `ColorPhase`; `ScheduleSource`.
 - `Stores/AppStore.swift`: main actor state owner and mutation gateway. Owns the

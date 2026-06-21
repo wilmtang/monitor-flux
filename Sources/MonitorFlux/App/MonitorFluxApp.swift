@@ -20,21 +20,6 @@ struct MonitorFluxApp: App {
                 }
         }
         .menuBarExtraStyle(.window)
-
-        WindowGroup("MonitorFlux", id: "main") {
-            ContentView()
-                .environmentObject(store)
-                .frame(minWidth: 760, minHeight: 520)
-                .onAppear {
-                    appDelegate.store = store
-                }
-        }
-
-        Settings {
-            SettingsView()
-                .environmentObject(store)
-                .frame(width: 480, height: 360)
-        }
     }
 }
 
@@ -54,6 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.willCloseNotification,
             object: nil
         )
+
+        // Test hook: open the detailed window at launch so a smoke test can verify it
+        // renders (the menu-bar popup that normally opens it can't be scripted).
+        if ProcessInfo.processInfo.environment["MONITORFLUX_OPEN_MAIN"] == "1" {
+            store?.showMainWindow()
+        }
     }
 
     @objc private func windowVisibilityChanged() {

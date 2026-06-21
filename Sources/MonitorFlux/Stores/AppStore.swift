@@ -3,6 +3,7 @@ import Combine
 import CoreGraphics
 import CoreLocation
 import Foundation
+import SwiftUI
 
 @MainActor
 final class AppStore: ObservableObject {
@@ -33,6 +34,7 @@ final class AppStore: ObservableObject {
     private let ddcBackend = HardwareDDCBackend()
     private let nativeBrightnessBackend = NativeBrightnessBackend()
     private let gammaService = GammaTemperatureService()
+    private var mainWindow: NSWindow?
     private var timer: Timer?
     private var ddcWriteWorkItems: [String: DispatchWorkItem] = [:]
     private var displayRefreshGeneration = 0
@@ -205,11 +207,27 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Promote to a regular app and activate so an on-demand window appears in front,
-    /// even when the app is otherwise a menu-bar accessory.
-    func activateMainWindow() {
+    /// Show the detailed window. It's managed with AppKit rather than a SwiftUI
+    /// `WindowGroup` so there is exactly one instance and its content/environment always
+    /// binds — `openWindow` from a `.window` `MenuBarExtra` in an accessory app opens
+    /// blank, duplicate windows.
+    func showMainWindow() {
+        if mainWindow == nil {
+            let controller = NSHostingController(rootView: ContentView().environmentObject(self))
+            let window = NSWindow(contentViewController: controller)
+            window.title = "MonitorFlux"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 880, height: 600))
+            window.minSize = NSSize(width: 720, height: 500)
+            window.isReleasedWhenClosed = false
+            window.isRestorable = false
+            window.center()
+            window.setFrameAutosaveName("MonitorFluxMainWindow")
+            mainWindow = window
+        }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        mainWindow?.makeKeyAndOrderFront(nil)
     }
 
     func setKeyboardControl(_ isEnabled: Bool) {

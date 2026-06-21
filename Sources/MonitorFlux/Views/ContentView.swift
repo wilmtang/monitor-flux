@@ -7,6 +7,11 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                Section {
+                    Label("General", systemImage: "gearshape")
+                        .tag(AppSelection.general)
+                }
+
                 Section("Color") {
                     Label("Schedule", systemImage: "sun.max")
                         .tag(AppSelection.color)
@@ -48,6 +53,8 @@ struct ContentView: View {
     @ViewBuilder
     private var detailView: some View {
         switch selection {
+        case .general:
+            SettingsView()
         case .color, .none:
             ColorScheduleView()
         case .diagnostics:

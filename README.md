@@ -113,6 +113,20 @@ swift test
 The tests cover schedule math, gamma composition, gamma planning, DDC packet
 construction, and preference migration/normalization.
 
+For UI/integration regressions that unit tests can't catch (the window not opening,
+opening blank, or opening duplicates), there's a launch smoke test:
+
+```sh
+./script/smoke_test.sh
+```
+
+It builds the app, launches it with the detailed window opened
+(`MONITORFLUX_OPEN_MAIN=1`), and asserts via `CGWindowList` that exactly one sizable
+window is on screen. For deeper assertions ("a Brightness slider exists and dragging it
+changes state"), the right tool is **XCUITest** (Apple's accessibility-driven UI test
+framework) — it needs an Xcode app target + UI-test target, which a pure SwiftPM package
+doesn't provide.
+
 ## Acknowledgements
 
 MonitorFlux's Apple Silicon DDC, built-in backlight, and media-key handling were
