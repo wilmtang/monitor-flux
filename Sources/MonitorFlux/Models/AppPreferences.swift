@@ -63,6 +63,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     var ddcDisplayIndex = 1
     var hardwareBrightness = 50
     var hardwareContrast = 70
+    var hardwareVolume = 50
     var gammaBrightness = 100
     var gammaContrast = 100
 
@@ -72,6 +73,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         case ddcDisplayIndex
         case hardwareBrightness
         case hardwareContrast
+        case hardwareVolume
         case gammaBrightness
         case gammaContrast
         case brightness
@@ -85,6 +87,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         copy.ddcDisplayIndex = copy.ddcDisplayIndex.clamped(to: ControlRanges.ddcDisplayIndex)
         copy.hardwareBrightness = copy.hardwareBrightness.clamped(to: ControlRanges.hardwarePercent)
         copy.hardwareContrast = copy.hardwareContrast.clamped(to: ControlRanges.hardwarePercent)
+        copy.hardwareVolume = copy.hardwareVolume.clamped(to: ControlRanges.hardwarePercent)
         copy.gammaBrightness = copy.gammaBrightness.clamped(to: ControlRanges.gammaBrightnessPercent)
         copy.gammaContrast = copy.gammaContrast.clamped(to: ControlRanges.gammaContrastPercent)
         return copy
@@ -104,6 +107,8 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
             ?? container.decodeIfPresent(Int.self, forKey: .contrast)
             ?? 70
         hardwareContrast = hardwareContrast.clamped(to: ControlRanges.hardwarePercent)
+        hardwareVolume = (try container.decodeIfPresent(Int.self, forKey: .hardwareVolume) ?? 50)
+            .clamped(to: ControlRanges.hardwarePercent)
         gammaBrightness = (try container.decodeIfPresent(Int.self, forKey: .gammaBrightness) ?? 100)
             .clamped(to: ControlRanges.gammaBrightnessPercent)
         gammaContrast = (try container.decodeIfPresent(Int.self, forKey: .gammaContrast) ?? 100)
@@ -117,6 +122,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         try container.encode(ddcDisplayIndex, forKey: .ddcDisplayIndex)
         try container.encode(hardwareBrightness, forKey: .hardwareBrightness)
         try container.encode(hardwareContrast, forKey: .hardwareContrast)
+        try container.encode(hardwareVolume, forKey: .hardwareVolume)
         try container.encode(gammaBrightness, forKey: .gammaBrightness)
         try container.encode(gammaContrast, forKey: .gammaContrast)
     }
@@ -136,6 +142,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var scheduleSource: ScheduleSource = .manualTimes
     var startAtLogin = false
     var showInDock = false
+    var keyboardControlEnabled = false
     var latitude = "47.6"
     var longitude = "-122.3"
     var displayPreferences: [String: DisplayPreferences] = [:]
@@ -156,6 +163,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case scheduleSource
         case startAtLogin
         case showInDock
+        case keyboardControlEnabled
         case latitude
         case longitude
         case displayPreferences
@@ -200,6 +208,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         scheduleSource = try container.decodeIfPresent(ScheduleSource.self, forKey: .scheduleSource) ?? .manualTimes
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
         showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
+        keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
         latitude = try container.decodeIfPresent(String.self, forKey: .latitude) ?? "47.6"
         longitude = try container.decodeIfPresent(String.self, forKey: .longitude) ?? "-122.3"
         displayPreferences = try container.decodeIfPresent(
@@ -223,6 +232,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(scheduleSource, forKey: .scheduleSource)
         try container.encode(startAtLogin, forKey: .startAtLogin)
         try container.encode(showInDock, forKey: .showInDock)
+        try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)

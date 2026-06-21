@@ -23,8 +23,10 @@ final class AppStore: ObservableObject {
     @Published private(set) var ddcMessage = "DDC idle"
     @Published private(set) var loginItemMessage = LoginItemService.statusLabel()
     @Published private(set) var locationStatus = "Not requested"
+    @Published private(set) var keyboardStatus = "Off"
 
     let locationService = LocationService()
+    let keyboardService = KeyboardControlService()
     private let displayService = DisplayService()
     private let ddcBackend = HardwareDDCBackend()
     private let gammaService = GammaTemperatureService()
@@ -47,6 +49,11 @@ final class AppStore: ObservableObject {
             .store(in: &cancellables)
         locationService.onLocation = { [weak self] coordinate in
             self?.applyLocation(coordinate)
+        }
+
+        keyboardService.store = self
+        if preferences.keyboardControlEnabled {
+            keyboardStatus = keyboardService.start() ? "Active" : "Needs Accessibility permission"
         }
 
         CGDisplayRegisterReconfigurationCallback(
@@ -177,6 +184,71 @@ final class AppStore: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func setKeyboardControl(_ isEnabled: Bool) {
+        updateGlobalPreferences { preferences in
+            preferences.keyboardControlEnabled = isEnabled
+        }
+        if isEnabled {
+            if keyboardService.start() {
+                keyboardStatus = "Active"
+            } else {
+                keyboardService.requestAccessibilityPermission()
+                keyboardStatus = "Grant Accessibility, then toggle again"
+            }
+        } else {
+            keyboardService.stop()
+            keyboardStatus = "Off"
+        }
+    }
+
+    /// Media-key entry points. Without a modifier the target is the display under the
+    /// cursor (external -> DDC; built-in is left to macOS). Control targets the built-in
+    /// panel via software/gamma dimming. Returns true when handled (so the key is swallowed).
+    func adjustBrightnessUnderCursor(by delta: Int, controlBuiltIn: Bool) -> Bool {
+        if controlBuiltIn {
+            guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
+                return false
+            }
+            let current = displayPreferences(for: builtIn).gammaBrightness
+            updateDisplayPreferences(for: builtIn) { preferences in
+                preferences.gammaBrightness = (current + delta).clamped(to: ControlRanges.gammaBrightnessPercent)
+            }
+            return true
+        }
+        guard let target = displayUnderCursor() else {
+            return false
+        }
+        if target.isBuiltIn {
+            return false
+        }
+        let current = displayPreferences(for: target).hardwareBrightness
+        setHardwareBrightness(current + delta, for: target)
+        return true
+    }
+
+    func adjustVolumeUnderCursor(by delta: Int) -> Bool {
+        guard let target = displayUnderCursor(), !target.isBuiltIn else {
+            return false
+        }
+        let current = displayPreferences(for: target).hardwareVolume
+        setHardwareVolume(current + delta, for: target)
+        return true
+    }
+
+    private func displayUnderCursor() -> DisplayInfo? {
+        let mouse = NSEvent.mouseLocation
+        for screen in NSScreen.screens where screen.frame.contains(mouse) {
+            let key = NSDeviceDescriptionKey("NSScreenNumber")
+            if let number = screen.deviceDescription[key] as? NSNumber {
+                let id = CGDirectDisplayID(number.uint32Value)
+                if let match = displays.first(where: { $0.id == id }) {
+                    return match
+                }
+            }
+        }
+        return displays.first(where: { !$0.isBuiltIn }) ?? displays.first
+    }
+
     func canUseDDC(for display: DisplayInfo) -> Bool {
         !display.isBuiltIn
     }
@@ -211,49 +283,65 @@ final class AppStore: ObservableObject {
         )
     }
 
+    func applyVolume(for display: DisplayInfo) {
+        guard canUseDDC(for: display) else {
+            ddcMessage = display.isBuiltIn ? "Built-in displays do not use DDC" : ddcStatus.message
+            return
+        }
+        let value = displayPreferences(for: display).hardwareVolume
+        ddcMessage = "Applying volume \(value)% to \(display.name)"
+        let backend = ddcBackend
+        let displayName = display.name
+        Task { @MainActor in
+            let failureMessage = await Task.detached {
+                do {
+                    try backend.setVolume(value, display: display)
+                    return nil as String?
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            ddcMessage = failureMessage ?? "Applied volume \(value)% to \(displayName)"
+        }
+    }
+
     /// Live slider entry points for the quick-controls popup: update state now and
     /// coalesce the (slow) DDC write so a continuous drag doesn't flood the I2C bus.
     func setHardwareBrightness(_ value: Int, for display: DisplayInfo) {
-        let clamped = value.clamped(to: ControlRanges.hardwarePercent)
         updateDisplayPreferences(for: display) { displayPreferences in
-            displayPreferences.hardwareBrightness = clamped
+            displayPreferences.hardwareBrightness = value.clamped(to: ControlRanges.hardwarePercent)
         }
-        scheduleDDCApply(.brightness, for: display)
+        scheduleDDC(key: "\(display.id).b", for: display) { [weak self] in
+            self?.applyBrightness(for: display)
+        }
     }
 
     func setHardwareContrast(_ value: Int, for display: DisplayInfo) {
-        let clamped = value.clamped(to: ControlRanges.hardwarePercent)
         updateDisplayPreferences(for: display) { displayPreferences in
-            displayPreferences.hardwareContrast = clamped
+            displayPreferences.hardwareContrast = value.clamped(to: ControlRanges.hardwarePercent)
         }
-        scheduleDDCApply(.contrast, for: display)
+        scheduleDDC(key: "\(display.id).c", for: display) { [weak self] in
+            self?.applyContrast(for: display)
+        }
     }
 
-    private func scheduleDDCApply(_ kind: DDCControlKind, for display: DisplayInfo) {
+    func setHardwareVolume(_ value: Int, for display: DisplayInfo) {
+        updateDisplayPreferences(for: display) { displayPreferences in
+            displayPreferences.hardwareVolume = value.clamped(to: ControlRanges.hardwarePercent)
+        }
+        scheduleDDC(key: "\(display.id).v", for: display) { [weak self] in
+            self?.applyVolume(for: display)
+        }
+    }
+
+    private func scheduleDDC(key: String, for display: DisplayInfo, _ apply: @escaping () -> Void) {
         guard canUseDDC(for: display) else {
             return
         }
-        let suffix: String
-        switch kind {
-        case .brightness:
-            suffix = "b"
-        case .contrast:
-            suffix = "c"
-        }
-        let key = "\(display.id).\(suffix)"
         ddcWriteWorkItems[key]?.cancel()
-
         let item = DispatchWorkItem { [weak self] in
-            guard let self else {
-                return
-            }
-            self.ddcWriteWorkItems[key] = nil
-            switch kind {
-            case .brightness:
-                self.applyBrightness(for: display)
-            case .contrast:
-                self.applyContrast(for: display)
-            }
+            self?.ddcWriteWorkItems[key] = nil
+            apply()
         }
         ddcWriteWorkItems[key] = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: item)

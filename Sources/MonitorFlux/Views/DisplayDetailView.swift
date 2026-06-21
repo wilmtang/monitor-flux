@@ -8,6 +8,10 @@ struct DisplayDetailView: View {
         store.displayPreferences(for: display)
     }
 
+    private var gammaSlidersEnabled: Bool {
+        store.preferences.gammaEnabled && displayPreferences.gammaControlsEnabled
+    }
+
     var body: some View {
         Form {
             Section("Display") {
@@ -23,90 +27,110 @@ struct DisplayDetailView: View {
                 LabeledContent("Current", value: store.currentTemperature.map { "\($0) K" } ?? "Off")
             }
 
-            Section("Gamma Brightness & Contrast") {
+            Section {
                 Toggle("Use gamma controls", isOn: displayBinding(\.gammaControlsEnabled))
                     .disabled(!store.preferences.gammaEnabled)
 
-                HStack {
-                    Slider(
-                        value: displaySliderBinding(\.gammaBrightness, range: ControlRanges.gammaBrightnessPercent),
-                        in: Double(ControlRanges.gammaBrightnessPercent.lowerBound)...Double(ControlRanges.gammaBrightnessPercent.upperBound),
-                        step: 1
-                    )
-                        .disabled(!store.preferences.gammaEnabled || !displayPreferences.gammaControlsEnabled)
-                    Text("\(displayPreferences.gammaBrightness)%")
-                        .monospacedDigit()
-                        .frame(width: 52, alignment: .trailing)
-                }
+                gammaSliderRow(title: "Brightness", keyPath: \.gammaBrightness, range: ControlRanges.gammaBrightnessPercent)
+                gammaSliderRow(title: "Contrast", keyPath: \.gammaContrast, range: ControlRanges.gammaContrastPercent)
 
-                HStack {
-                    Slider(
-                        value: displaySliderBinding(\.gammaContrast, range: ControlRanges.gammaContrastPercent),
-                        in: Double(ControlRanges.gammaContrastPercent.lowerBound)...Double(ControlRanges.gammaContrastPercent.upperBound),
-                        step: 1
-                    )
-                        .disabled(!store.preferences.gammaEnabled || !displayPreferences.gammaControlsEnabled)
-                    Text("\(displayPreferences.gammaContrast)%")
-                        .monospacedDigit()
-                        .frame(width: 52, alignment: .trailing)
+                if !store.preferences.gammaEnabled {
+                    Text("Enable gamma on the Schedule screen to use these.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if !displayPreferences.gammaControlsEnabled {
+                    Text("Turn on “Use gamma controls” to adjust software brightness and contrast.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+            } header: {
+                sectionHeader("Gamma Brightness & Contrast", help: HelpText.gamma, helpTitle: "Software (gamma) controls")
             }
 
-            Section("Hardware DDC") {
+            Section {
                 if display.isBuiltIn {
-                    Label("Built-in panel", systemImage: "laptopcomputer")
+                    Label("Built-in panel — no DDC", systemImage: "laptopcomputer")
+                        .foregroundStyle(.secondary)
+                    Text("Built-in displays don't support DDC. Use the gamma brightness above, or your keyboard's brightness keys.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     LabeledContent("Backend", value: store.ddcStatus.message)
                     Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
-                        LabeledContent("DDC display", value: "\(displayPreferences.ddcDisplayIndex)")
+                        LabeledContent("DDC display index (ddcctl fallback)", value: "\(displayPreferences.ddcDisplayIndex)")
                     }
+
+                    hardwareSliderRow(title: "Brightness", icon: "sun.max", value: displayPreferences.hardwareBrightness) {
+                        store.setHardwareBrightness($0, for: display)
+                    }
+                    hardwareSliderRow(title: "Contrast", icon: "circle.lefthalf.filled", value: displayPreferences.hardwareContrast) {
+                        store.setHardwareContrast($0, for: display)
+                    }
+                    hardwareSliderRow(title: "Volume", icon: "speaker.wave.2.fill", value: displayPreferences.hardwareVolume) {
+                        store.setHardwareVolume($0, for: display)
+                    }
+
+                    LabeledContent("Last DDC", value: store.ddcMessage)
+                    Text("Sliders send to the monitor live as you drag.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Slider(
-                            value: displaySliderBinding(\.hardwareBrightness),
-                            in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound),
-                            step: 1
-                        )
-                            .disabled(!store.canUseDDC(for: display))
-                        Text("\(displayPreferences.hardwareBrightness)%")
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                        Button {
-                            store.applyBrightness(for: display)
-                        } label: {
-                            Label("Apply Brightness", systemImage: "sun.max")
-                        }
-                        .disabled(!store.canUseDDC(for: display))
-                    }
-
-                    HStack {
-                        Slider(
-                            value: displaySliderBinding(\.hardwareContrast),
-                            in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound),
-                            step: 1
-                        )
-                            .disabled(!store.canUseDDC(for: display))
-                        Text("\(displayPreferences.hardwareContrast)%")
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                        Button {
-                            store.applyContrast(for: display)
-                        } label: {
-                            Label("Apply Contrast", systemImage: "circle.lefthalf.filled")
-                        }
-                        .disabled(!store.canUseDDC(for: display))
-                    }
-                }
-
-                LabeledContent("Last DDC", value: store.ddcMessage)
+            } header: {
+                sectionHeader("Hardware DDC", help: HelpText.ddc, helpTitle: "Hardware (DDC/CI) controls")
             }
         }
         .formStyle(.grouped)
         .padding()
         .navigationTitle(display.name)
+    }
+
+    private func sectionHeader(_ title: String, help: String, helpTitle: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+            InfoButton(title: helpTitle, message: help)
+        }
+    }
+
+    private func gammaSliderRow(
+        title: String,
+        keyPath: WritableKeyPath<DisplayPreferences, Int>,
+        range: ClosedRange<Int>
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .frame(width: 74, alignment: .leading)
+            Slider(
+                value: displaySliderBinding(keyPath, range: range),
+                in: Double(range.lowerBound)...Double(range.upperBound)
+            )
+            .disabled(!gammaSlidersEnabled)
+            Text("\(displayPreferences[keyPath: keyPath])%")
+                .monospacedDigit()
+                .frame(width: 52, alignment: .trailing)
+        }
+    }
+
+    private func hardwareSliderRow(
+        title: String,
+        icon: String,
+        value: Int,
+        setter: @escaping (Int) -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .frame(width: 18)
+                .foregroundStyle(.secondary)
+            Text(title)
+                .frame(width: 64, alignment: .leading)
+            Slider(
+                value: Binding { Double(value) } set: { setter(Int($0.rounded())) },
+                in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound)
+            )
+            .disabled(!store.canUseDDC(for: display))
+            Text("\(value)%")
+                .monospacedDigit()
+                .frame(width: 44, alignment: .trailing)
+        }
     }
 
     private func displayBinding<Value>(

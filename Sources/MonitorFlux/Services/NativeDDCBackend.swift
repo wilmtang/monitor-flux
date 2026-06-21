@@ -38,6 +38,10 @@ struct NativeDDCBackend: Sendable {
         try setVCPFeature(0x12, value: value, display: display)
     }
 
+    func setVolume(_ value: Int, display: DisplayInfo) throws {
+        try setVCPFeature(0x62, value: value, display: display)
+    }
+
     func setVCPFeature(_ feature: UInt8, value: Int, display: DisplayInfo) throws {
         guard !display.isBuiltIn else {
             throw NativeDDCError.builtInDisplay

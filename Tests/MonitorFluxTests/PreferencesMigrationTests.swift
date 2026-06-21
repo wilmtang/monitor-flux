@@ -53,6 +53,17 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.nightTemperature, 3000)
     }
 
+    func testNewPreferencesDefaultsAreBackwardCompatible() throws {
+        // Older payloads omit the volume / keyboard-control / dock fields entirely.
+        let displayPreferences = try JSONDecoder().decode(DisplayPreferences.self, from: Data("{}".utf8))
+        XCTAssertEqual(displayPreferences.hardwareVolume, 50)
+
+        let appPreferences = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
+        XCTAssertFalse(appPreferences.keyboardControlEnabled)
+        XCTAssertFalse(appPreferences.showInDock)
+        XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)
+    }
+
     func testDisplayPreferencesClampDecodedValues() throws {
         let json = """
         {

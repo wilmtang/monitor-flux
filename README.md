@@ -25,11 +25,12 @@ tables and stops writing gamma. Hardware DDC controls can still be used.
 ## UI
 
 - The **menu bar popup** (`QuickControlsView`, `.menuBarExtraStyle(.window)`) is
-  modeled after MonitorControl: a card per display with live brightness and
-  contrast sliders, plus a global ambience (color-temperature) slider and an
-  Off/Manual/Schedule mode control. DDC writes are debounced so dragging doesn't
-  flood the I2C bus. The app is menu-bar-first (no Dock icon by default; a "Show
-  in Dock" setting toggles it).
+  modeled after MonitorControl: a card per display with live brightness, contrast,
+  and volume sliders (a custom `MonitorSlider` — rounded track, icon-in-track, no
+  tick marks), plus a global ambience (color-temperature) slider and an
+  Off/Manual/Schedule mode. DDC writes are debounced so dragging doesn't flood the
+  I2C bus. The Settings/Quit rows highlight on hover and show their shortcuts. The
+  app is menu-bar-first (no Dock icon by default; a "Show in Dock" setting toggles it).
 - The **Schedule** screen is modeled after f.lux preferences: three phase
   temperatures (Daytime / Sunset / Bedtime) over the same Kelvin range, a phase
   selector, a draggable three-handle schedule curve, wake/bedtime controls, and a
@@ -39,6 +40,25 @@ tables and stops writing gamma. Hardware DDC controls can still be used.
   - Warm color enablement for that display.
   - Gamma brightness/contrast for pixel-level control.
   - Hardware DDC brightness/contrast for external monitor firmware control.
+
+## Keyboard control
+
+When enabled (Settings ▸ Keyboard), MonitorFlux taps the keyboard's brightness and
+volume media keys and routes them to the external display **under your pointer** over
+DDC — so the same keys that dim the built-in panel now drive whichever monitor you're
+pointing at. Hold **Control** to dim the built-in panel (software/gamma) instead. This
+needs Accessibility permission (System Settings ▸ Privacy & Security ▸ Accessibility),
+since swallowing HID key events is privileged. Implemented with a `CGEventTap` in
+`KeyboardControlService`.
+
+## Avoiding color conflicts
+
+Gamma is a single, shared resource. macOS **Night Shift** and apps like **f.lux** also
+rewrite the gamma tables, so running them alongside MonitorFlux makes the two fight —
+colors flicker or look wrong. MonitorFlux shows a warning on the Schedule screen with a
+shortcut to Display settings; disable Night Shift and quit other color tools for correct
+results. Every MonitorFlux gamma write still flows through the single
+`GammaTemperatureService`, and ⓘ buttons in the UI explain gamma vs DDC for newcomers.
 
 ## Safety Rules
 

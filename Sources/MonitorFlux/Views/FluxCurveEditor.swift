@@ -128,11 +128,11 @@ struct FluxCurveEditor: View {
     private func color(for handle: FluxCurveHandle) -> Color {
         switch handle {
         case .day:
-            .orange
+            .yellow
         case .sunset:
-            .pink
+            .orange
         case .night:
-            .blue
+            .indigo
         }
     }
 

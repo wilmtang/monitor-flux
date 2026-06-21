@@ -1,17 +1,17 @@
 import AppKit
 import SwiftUI
 
-/// The MonitorControl-style popup shown from the menu bar: per-display brightness and
-/// contrast, plus a global f.lux-style ambience (color temperature) control. Detailed
+/// The MonitorControl-style popup shown from the menu bar: per-display brightness, contrast,
+/// and volume, plus a global f.lux-style ambience (color temperature) control. Detailed
 /// configuration lives in the on-demand window opened from the footer.
 struct QuickControlsView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             header
-            ambienceSection
+            ambienceCard
 
             if store.displays.isEmpty {
                 Text("No displays detected")
@@ -24,10 +24,17 @@ struct QuickControlsView: View {
             }
 
             Divider()
-            footer
+
+            PopupMenuRow(title: "Settings…", shortcut: "⌘,") {
+                openWindow(id: "main")
+                store.activateMainWindow()
+            }
+            PopupMenuRow(title: "Quit MonitorFlux", shortcut: "⌘Q") {
+                NSApp.terminate(nil)
+            }
         }
-        .padding(16)
-        .frame(width: 308)
+        .padding(14)
+        .frame(width: 312)
     }
 
     private var header: some View {
@@ -46,16 +53,31 @@ struct QuickControlsView: View {
 
     // MARK: - Ambience (global color temperature)
 
-    private var ambienceSection: some View {
+    private var ambienceCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sliderRow(
+            HStack(spacing: 6) {
+                Text("Ambience")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                InfoButton(title: "Ambience (color temperature)", message: HelpText.gamma)
+                Spacer()
+            }
+
+            controlRow(
                 icon: "thermometer.sun",
-                value: ambienceBinding,
+                value: Double(ambienceTemperature),
                 range: ControlRanges.kelvin,
-                step: 100,
-                readout: "\(ambienceTemperature) K",
-                disabled: !ambienceEnabled
-            )
+                enabled: ambienceEnabled,
+                readout: "\(ambienceTemperature) K"
+            ) { newValue in
+                let rounded = Int((newValue / 100.0).rounded()) * 100
+                // Dragging warmth here is an immediate "set it now" override -> Manual.
+                store.updateGlobalPreferences { preferences in
+                    preferences.gammaEnabled = true
+                    preferences.colorMode = .manual
+                    preferences.manualTemperature = rounded
+                }
+            }
 
             Picker("Mode", selection: modeBinding) {
                 ForEach(ColorMode.allCases) { mode in
@@ -65,6 +87,8 @@ struct QuickControlsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
         }
+        .padding(12)
+        .background(cardBackground)
     }
 
     private var ambienceEnabled: Bool {
@@ -76,21 +100,6 @@ struct QuickControlsView: View {
             ?? (store.preferences.colorMode == .manual
                 ? store.preferences.manualTemperature
                 : store.preferences.dayTemperature)
-    }
-
-    private var ambienceBinding: Binding<Double> {
-        Binding {
-            Double(ambienceTemperature)
-        } set: { newValue in
-            let rounded = Int((newValue / 100.0).rounded()) * 100
-            // Dragging warmth in the popup is an immediate "set it now" override, so
-            // it switches to Manual; the mode control returns to Schedule.
-            store.updateGlobalPreferences { preferences in
-                preferences.gammaEnabled = true
-                preferences.colorMode = .manual
-                preferences.manualTemperature = rounded
-            }
-        }
     }
 
     private var modeBinding: Binding<ColorMode> {
@@ -122,105 +131,113 @@ struct QuickControlsView: View {
             }
 
             if display.isBuiltIn {
-                // Built-in panels have no DDC; expose the software (gamma) brightness,
-                // clearly the dimming control rather than backlight.
-                sliderRow(
+                // Built-in panels have no DDC; expose the software (gamma) brightness.
+                controlRow(
                     icon: "sun.max",
-                    value: gammaBrightnessBinding(display),
+                    value: Double(preferences.gammaBrightness),
                     range: ControlRanges.gammaBrightnessPercent,
-                    step: 1,
-                    readout: "\(preferences.gammaBrightness)%",
-                    disabled: !store.preferences.gammaEnabled
-                )
+                    enabled: store.preferences.gammaEnabled,
+                    readout: "\(preferences.gammaBrightness)%"
+                ) { newValue in
+                    store.updateDisplayPreferences(for: display) { displayPreferences in
+                        displayPreferences.gammaBrightness = Int(newValue.rounded())
+                            .clamped(to: ControlRanges.gammaBrightnessPercent)
+                    }
+                }
+                Text("Software dimming (built-in panel has no DDC)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             } else {
-                sliderRow(
+                controlRow(
                     icon: "sun.max",
-                    value: hardwareBrightnessBinding(display),
+                    value: Double(preferences.hardwareBrightness),
                     range: ControlRanges.hardwarePercent,
-                    step: 1,
-                    readout: "\(preferences.hardwareBrightness)%",
-                    disabled: false
-                )
-                sliderRow(
+                    enabled: true,
+                    readout: "\(preferences.hardwareBrightness)%"
+                ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
+
+                controlRow(
                     icon: "circle.lefthalf.filled",
-                    value: hardwareContrastBinding(display),
+                    value: Double(preferences.hardwareContrast),
                     range: ControlRanges.hardwarePercent,
-                    step: 1,
-                    readout: "\(preferences.hardwareContrast)%",
-                    disabled: false
-                )
+                    enabled: true,
+                    readout: "\(preferences.hardwareContrast)%"
+                ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
+
+                controlRow(
+                    icon: "speaker.wave.2.fill",
+                    value: Double(preferences.hardwareVolume),
+                    range: ControlRanges.hardwarePercent,
+                    enabled: true,
+                    readout: "\(preferences.hardwareVolume)%"
+                ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
             }
         }
+        .padding(12)
+        .background(cardBackground)
     }
 
-    private func hardwareBrightnessBinding(_ display: DisplayInfo) -> Binding<Double> {
-        Binding {
-            Double(store.displayPreferences(for: display).hardwareBrightness)
-        } set: { newValue in
-            store.setHardwareBrightness(Int(newValue.rounded()), for: display)
-        }
-    }
+    // MARK: - Building blocks
 
-    private func hardwareContrastBinding(_ display: DisplayInfo) -> Binding<Double> {
-        Binding {
-            Double(store.displayPreferences(for: display).hardwareContrast)
-        } set: { newValue in
-            store.setHardwareContrast(Int(newValue.rounded()), for: display)
-        }
-    }
-
-    private func gammaBrightnessBinding(_ display: DisplayInfo) -> Binding<Double> {
-        Binding {
-            Double(store.displayPreferences(for: display).gammaBrightness)
-        } set: { newValue in
-            store.updateDisplayPreferences(for: display) { displayPreferences in
-                displayPreferences.gammaBrightness = Int(newValue.rounded())
-                    .clamped(to: ControlRanges.gammaBrightnessPercent)
-            }
-        }
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack {
-            Button("Settings…") {
-                openWindow(id: "main")
-                store.activateMainWindow()
-            }
-            Spacer()
-            Button("Quit") {
-                NSApp.terminate(nil)
-            }
-        }
-        .buttonStyle(.borderless)
-    }
-
-    // MARK: - Slider row
-
-    private func sliderRow(
+    private func controlRow(
         icon: String,
-        value: Binding<Double>,
+        value: Double,
         range: ClosedRange<Int>,
-        step: Double,
+        enabled: Bool,
         readout: String,
-        disabled: Bool
+        onChange: @escaping (Double) -> Void
     ) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon)
-                .frame(width: 18)
-                .foregroundStyle(.secondary)
-            Slider(
+            MonitorSlider(
+                systemImage: icon,
                 value: value,
-                in: Double(range.lowerBound)...Double(range.upperBound),
-                step: step
+                range: Double(range.lowerBound)...Double(range.upperBound),
+                isEnabled: enabled,
+                onChange: onChange
             )
-            .disabled(disabled)
             Text(readout)
-                .font(.caption)
+                .font(.callout)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(Color.primary.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+    }
+}
+
+/// A footer row that behaves like a real menu item: full-width hit target, accent
+/// highlight on hover, and a trailing keyboard-shortcut hint.
+private struct PopupMenuRow: View {
+    let title: String
+    let shortcut: String?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer()
+                if let shortcut {
+                    Text(shortcut)
+                        .foregroundStyle(isHovering ? .white : .secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isHovering ? Color.accentColor.opacity(0.9) : .clear)
+            )
+            .foregroundStyle(isHovering ? .white : .primary)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

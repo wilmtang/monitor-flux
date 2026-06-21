@@ -16,6 +16,15 @@ final class Arm64DDCPacketTests: XCTestCase {
         XCTAssertEqual(packet[4], 100)  // low byte clamped to 100
     }
 
+    func testVolumePacketUsesVCP0x62() {
+        let packet = Arm64DDCBackend.packet(feature: 0x62, value: 30)
+
+        XCTAssertEqual(packet[2], 0x62) // VCP feature: audio speaker volume
+        XCTAssertEqual(packet[4], 30)   // low byte
+        let seed = UInt8((0x37 << 1) ^ 0x51)
+        XCTAssertEqual(packet.last, packet.dropLast().reduce(seed) { $0 ^ $1 })
+    }
+
     func testChecksumUsesAddressSeed() {
         // The trailing checksum is an XOR over the leading bytes seeded with the I2C
         // address bytes (0x37 << 1) ^ 0x51, which aren't part of the buffer.

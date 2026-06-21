@@ -59,6 +59,16 @@ struct HardwareDDCBackend: Sendable {
         )
     }
 
+    /// Volume has no `ddcctl` fallback (Intel-only tool, and volume support varies),
+    /// so it uses the native architecture backend only.
+    func setVolume(_ value: Int, display: DisplayInfo) throws {
+        #if arch(arm64)
+        try arm64.setVolume(value, display: display)
+        #else
+        try native.setVolume(value, display: display)
+        #endif
+    }
+
     private func primarySetBrightness(_ value: Int, display: DisplayInfo) throws {
         #if arch(arm64)
         try arm64.setBrightness(value, display: display)

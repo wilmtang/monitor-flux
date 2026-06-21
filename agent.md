@@ -33,6 +33,10 @@ pkill -x MonitorFlux || true
 - `Services/HardwareDDCBackend.swift`: arch-selected native DDC (`#if arch(arm64)`)
   plus the optional `ddcctl` fallback.
 - `Services/LocationService.swift`: CoreLocation one-shot fix for the solar schedule.
+- `Services/KeyboardControlService.swift`: a `CGEventTap` that routes the brightness/
+  volume media keys to the display under the cursor (needs Accessibility permission).
+- `Views/Components.swift`: shared `MonitorSlider` (MonitorControl-style, no tick
+  marks), `InfoButton` (jargon explainers), and `GammaConflictBanner`.
 - `Views/`: SwiftUI window, the `QuickControlsView` menu-bar popup, settings, and
   per-display controls.
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
@@ -53,6 +57,13 @@ pkill -x MonitorFlux || true
   (see `AppStore.scheduleDDCApply`) so a drag doesn't flood the I2C bus.
 - Keep DDC writes off the main thread; gamma writes stay routed through the single
   `GammaTemperatureService` writer.
+- Use `MonitorSlider` (not a stepped SwiftUI `Slider`) for the popup; a `step:` on a
+  macOS `Slider` draws tick marks. Round in the setter instead.
+- Gamma is a single-owner resource: surface the `GammaConflictBanner` so users disable
+  Night Shift / other color apps. Explain gamma vs DDC with `InfoButton` (assume the
+  reader doesn't know the jargon).
+- The media-key tap (`KeyboardControlService`) needs Accessibility permission; ad-hoc
+  dev builds re-prompt after each rebuild because the code signature changes.
 - New behavior should get focused tests unless it directly touches real display
   hardware. The arm64 DDC packet builder and `SolarCalculator` are pure and tested.
 

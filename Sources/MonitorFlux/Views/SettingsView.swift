@@ -19,6 +19,18 @@ struct SettingsView: View {
                 LabeledContent("Login item", value: store.loginItemMessage)
             }
 
+            Section("Keyboard") {
+                Toggle("Use brightness & volume keys", isOn: Binding {
+                    store.preferences.keyboardControlEnabled
+                } set: { isOn in
+                    store.setKeyboardControl(isOn)
+                })
+                LabeledContent("Status", value: store.keyboardStatus)
+                Text("The brightness and volume keys control the external display under your pointer over DDC. Hold Control to dim the built-in panel instead. Requires Accessibility permission (System Settings ▸ Privacy & Security ▸ Accessibility).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Gamma") {
                 Toggle("Enable gamma", isOn: Binding {
                     store.preferences.gammaEnabled

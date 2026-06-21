@@ -34,7 +34,7 @@ struct ColorScheduleView: View {
                 }
 
                 VStack(spacing: 10) {
-                    Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound), step: 100)
+                    Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound))
                         .disabled(!store.preferences.gammaEnabled || store.preferences.colorMode == .off)
                     HStack {
                         Text(editingLabel)
@@ -48,15 +48,21 @@ struct ColorScheduleView: View {
                     }
                 }
 
-                Picker("Phase", selection: $selectedPhase) {
-                    ForEach(ColorPhase.allCases) { phase in
-                        Text(phase.label).tag(phase)
+                VStack(spacing: 4) {
+                    Picker("Phase", selection: $selectedPhase) {
+                        ForEach(ColorPhase.allCases) { phase in
+                            Text(phase.label).tag(phase)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .frame(width: 380)
+                    .disabled(store.preferences.colorMode != .clock)
+
+                    Text("Pick a phase, then drag the slider above to set its warmth.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 380)
                 .frame(maxWidth: .infinity)
-                .disabled(store.preferences.colorMode != .clock)
 
                 Text(scheduleSummary)
                     .font(.title3)
@@ -76,6 +82,8 @@ struct ColorScheduleView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(.white.opacity(0.16))
                 )
+
+                curveLegend
 
                 HStack(spacing: 6) {
                     Stepper(value: preferenceBinding(\.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
@@ -99,10 +107,15 @@ struct ColorScheduleView: View {
                         .foregroundStyle(.orange.opacity(0.9))
                 }
 
+                if store.preferences.gammaEnabled {
+                    GammaConflictBanner()
+                }
+
                 Divider()
 
                 HStack(spacing: 14) {
                     Toggle("Enable gamma", isOn: preferenceBinding(\.gammaEnabled))
+                    InfoButton(title: "What is gamma?", message: HelpText.gamma)
                     Toggle("Start at login", isOn: Binding {
                         store.preferences.startAtLogin
                     } set: { isEnabled in
@@ -218,6 +231,29 @@ struct ColorScheduleView: View {
             return "—"
         }
         return MinuteFormatting.label(for: minutes)
+    }
+
+    private var curveLegend: some View {
+        HStack(spacing: 14) {
+            legendDot(.yellow, "Daytime", store.preferences.dayTemperature)
+            legendDot(.orange, "Sunset", store.preferences.sunsetTemperature)
+            legendDot(.indigo, "Bedtime", store.preferences.nightTemperature)
+            Spacer()
+            Text("Drag each dot to set its time & warmth")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func legendDot(_ color: Color, _ label: String, _ kelvin: Int) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text("\(label) · \(kelvin) K")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var temperatureSliderBinding: Binding<Double> {
