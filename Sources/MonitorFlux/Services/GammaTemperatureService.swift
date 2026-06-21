@@ -34,6 +34,7 @@ final class GammaTemperatureService {
 
     private var baselines: [CGDirectDisplayID: GammaTables] = [:]
     private var appliedAdjustments: [CGDirectDisplayID: GammaAdjustment] = [:]
+    private var didStartSession = false
     private let tableSize = 256
 
     func apply(displays: [DisplayInfo], preferences: AppPreferences) -> GammaApplySummary {
@@ -46,16 +47,19 @@ final class GammaTemperatureService {
             )
         }
 
+        ensureSessionStarted()
+
         var applied = 0
         var skipped = 0
         var failed = 0
         let adjustmentsByDisplay = GammaPlan.adjustments(displays: displays, preferences: preferences)
         let enabledDisplayIDs = Set(adjustmentsByDisplay.keys)
 
-        if !Set(appliedAdjustments.keys).isSubset(of: enabledDisplayIDs) {
-            CGDisplayRestoreColorSyncSettings()
-            baselines.removeAll()
-            appliedAdjustments.removeAll()
+        // Restore only displays we previously adjusted that are no longer enabled,
+        // so disabling color on one display doesn't flicker the others.
+        let droppedIDs = Set(appliedAdjustments.keys).subtracting(enabledDisplayIDs)
+        if !droppedIDs.isEmpty {
+            restoreDisplays(droppedIDs)
         }
 
         for display in displays {
@@ -113,6 +117,35 @@ final class GammaTemperatureService {
         CGDisplayRestoreColorSyncSettings()
         baselines.removeAll()
         appliedAdjustments.removeAll()
+    }
+
+    /// On the first gamma write of a session, clear any color tables left behind by
+    /// a previous run (a crash or force-quit skips `applicationWillTerminate`), so
+    /// per-display baselines are captured from clean system tables rather than from
+    /// an already-warmed table — which would compound warmth on every launch.
+    private func ensureSessionStarted() {
+        guard !didStartSession else {
+            return
+        }
+
+        didStartSession = true
+        CGDisplayRestoreColorSyncSettings()
+        baselines.removeAll()
+        appliedAdjustments.removeAll()
+    }
+
+    private func restoreDisplays(_ ids: Set<CGDirectDisplayID>) {
+        var didGlobalRestore = false
+        for id in ids {
+            if let baseline = baselines[id] {
+                try? setTables(baseline, for: id)
+            } else if !didGlobalRestore {
+                CGDisplayRestoreColorSyncSettings()
+                didGlobalRestore = true
+            }
+            baselines[id] = nil
+            appliedAdjustments[id] = nil
+        }
     }
 
     private func restoreIfNeeded() {

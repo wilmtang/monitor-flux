@@ -9,7 +9,7 @@ enum PreferencesStore {
         }
 
         do {
-            return try JSONDecoder().decode(AppPreferences.self, from: data)
+            return try JSONDecoder().decode(AppPreferences.self, from: data).normalized()
         } catch {
             return .defaults
         }
@@ -17,7 +17,7 @@ enum PreferencesStore {
 
     static func save(_ preferences: AppPreferences) {
         do {
-            let data = try JSONEncoder().encode(preferences)
+            let data = try JSONEncoder().encode(preferences.normalized())
             UserDefaults.standard.set(data, forKey: key)
         } catch {
             assertionFailure("Failed to encode preferences: \(error)")

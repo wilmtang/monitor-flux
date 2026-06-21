@@ -1,14 +1,37 @@
 import Foundation
 
+enum HardwareDDCError: LocalizedError, Sendable {
+    case nativeAndFallbackFailed(native: String, fallback: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .nativeAndFallbackFailed(let native, let fallback):
+            "Native DDC failed: \(native). Fallback failed: \(fallback)"
+        }
+    }
+}
+
 struct HardwareDDCBackend: Sendable {
+    #if arch(arm64)
+    private let arm64 = Arm64DDCBackend()
+    #else
     private let native = NativeDDCBackend()
+    #endif
     private let commandLine = DDCCommandLineBackend()
+
+    private var primaryName: String {
+        #if arch(arm64)
+        "Native IOAVService"
+        #else
+        "Native IOKit"
+        #endif
+    }
 
     var status: DDCBackendStatus {
         if commandLine.status.isAvailable {
             return DDCBackendStatus(
                 isAvailable: true,
-                toolName: "Native IOKit + \(commandLine.status.toolName)",
+                toolName: "\(primaryName) + \(commandLine.status.toolName)",
                 toolPath: commandLine.status.toolPath,
                 message: "Native DDC, fallback \(commandLine.status.toolName)"
             )
@@ -16,31 +39,59 @@ struct HardwareDDCBackend: Sendable {
 
         return DDCBackendStatus(
             isAvailable: true,
-            toolName: "Native IOKit",
+            toolName: primaryName,
             toolPath: nil,
             message: "Native DDC"
         )
     }
 
     func setBrightness(_ value: Int, display: DisplayInfo, fallbackIndex: Int) throws {
-        do {
-            try native.setBrightness(value, display: display)
-        } catch {
-            guard commandLine.status.isAvailable else {
-                throw error
-            }
-            try commandLine.setBrightness(value, displayIndex: fallbackIndex)
-        }
+        try perform(
+            primary: { try primarySetBrightness(value, display: display) },
+            fallback: { try commandLine.setBrightness(value, displayIndex: fallbackIndex) }
+        )
     }
 
     func setContrast(_ value: Int, display: DisplayInfo, fallbackIndex: Int) throws {
+        try perform(
+            primary: { try primarySetContrast(value, display: display) },
+            fallback: { try commandLine.setContrast(value, displayIndex: fallbackIndex) }
+        )
+    }
+
+    private func primarySetBrightness(_ value: Int, display: DisplayInfo) throws {
+        #if arch(arm64)
+        try arm64.setBrightness(value, display: display)
+        #else
+        try native.setBrightness(value, display: display)
+        #endif
+    }
+
+    private func primarySetContrast(_ value: Int, display: DisplayInfo) throws {
+        #if arch(arm64)
+        try arm64.setContrast(value, display: display)
+        #else
+        try native.setContrast(value, display: display)
+        #endif
+    }
+
+    /// Try the native (architecture-specific) backend, then `ddcctl` if it exists,
+    /// reporting both errors when neither works.
+    private func perform(primary: () throws -> Void, fallback: () throws -> Void) throws {
         do {
-            try native.setContrast(value, display: display)
-        } catch {
+            try primary()
+        } catch let primaryError {
             guard commandLine.status.isAvailable else {
-                throw error
+                throw primaryError
             }
-            try commandLine.setContrast(value, displayIndex: fallbackIndex)
+            do {
+                try fallback()
+            } catch let fallbackError {
+                throw HardwareDDCError.nativeAndFallbackFailed(
+                    native: primaryError.localizedDescription,
+                    fallback: fallbackError.localizedDescription
+                )
+            }
         }
     }
 }

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ColorScheduleView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var selectedPhase = "Daytime"
+    @State private var selectedPhase: ColorPhase = .daytime
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,11 +34,14 @@ struct ColorScheduleView: View {
                 }
 
                 VStack(spacing: 10) {
-                    Slider(value: temperatureSliderBinding, in: 1000...6500, step: 100)
+                    Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound), step: 100)
                         .disabled(!store.preferences.gammaEnabled || store.preferences.colorMode == .off)
                     HStack {
+                        Text(editingLabel)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                         Spacer()
-                        Text("\(displayTemperature) K")
+                        Text("\(editedTemperature) K")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -46,13 +49,14 @@ struct ColorScheduleView: View {
                 }
 
                 Picker("Phase", selection: $selectedPhase) {
-                    Text("Daytime").tag("Daytime")
-                    Text("Sunset").tag("Sunset")
-                    Text("Bedtime").tag("Bedtime")
+                    ForEach(ColorPhase.allCases) { phase in
+                        Text(phase.label).tag(phase)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 380)
                 .frame(maxWidth: .infinity)
+                .disabled(store.preferences.colorMode != .clock)
 
                 Text(scheduleSummary)
                     .font(.title3)
@@ -61,9 +65,11 @@ struct ColorScheduleView: View {
 
                 FluxCurveEditor(
                     dayTemperature: preferenceBinding(\.dayTemperature),
+                    sunsetTemperature: preferenceBinding(\.sunsetTemperature),
                     nightTemperature: preferenceBinding(\.nightTemperature),
                     warmStartMinutes: preferenceBinding(\.warmStartMinutes),
                     coolStartMinutes: preferenceBinding(\.coolStartMinutes),
+                    sunsetStartMinutes: preferenceBinding(\.sunsetStartMinutes),
                     transitionMinutes: store.preferences.transitionMinutes
                 )
                 .background(
@@ -72,7 +78,7 @@ struct ColorScheduleView: View {
                 )
 
                 HStack(spacing: 6) {
-                    Stepper(value: preferenceBinding(\.coolStartMinutes), in: 0...1435, step: 15) {
+                    Stepper(value: preferenceBinding(\.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
                         Text(MinuteFormatting.label(for: store.preferences.coolStartMinutes))
                             .font(.title2)
                             .foregroundStyle(.blue)
@@ -82,7 +88,7 @@ struct ColorScheduleView: View {
                         .font(.title3)
                         .foregroundStyle(.blue.opacity(0.9))
                     Spacer()
-                    Stepper(value: preferenceBinding(\.warmStartMinutes), in: 0...1435, step: 15) {
+                    Stepper(value: preferenceBinding(\.warmStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
                         Text(MinuteFormatting.label(for: store.preferences.warmStartMinutes))
                             .font(.title2)
                             .foregroundStyle(.orange)
@@ -97,7 +103,11 @@ struct ColorScheduleView: View {
 
                 HStack(spacing: 14) {
                     Toggle("Enable gamma", isOn: preferenceBinding(\.gammaEnabled))
-                    Toggle("Start at login", isOn: preferenceBinding(\.startAtLogin))
+                    Toggle("Start at login", isOn: Binding {
+                        store.preferences.startAtLogin
+                    } set: { isEnabled in
+                        store.setStartAtLogin(isEnabled)
+                    })
                     Spacer()
                     Button("Done") {
                         NSApp.keyWindow?.close()
@@ -109,24 +119,48 @@ struct ColorScheduleView: View {
 
             Form {
                 Section("Custom Colors") {
-                    Stepper(value: preferenceBinding(\.dayTemperature), in: 1000...6500, step: 100) {
-                        LabeledContent("Day", value: "\(store.preferences.dayTemperature) K")
+                    Stepper(value: preferenceBinding(\.dayTemperature), in: ControlRanges.kelvin, step: 100) {
+                        LabeledContent("Daytime", value: "\(store.preferences.dayTemperature) K")
                     }
 
-                    Stepper(value: preferenceBinding(\.nightTemperature), in: 1000...6500, step: 100) {
-                        LabeledContent("Night", value: "\(store.preferences.nightTemperature) K")
+                    Stepper(value: preferenceBinding(\.sunsetTemperature), in: ControlRanges.kelvin, step: 100) {
+                        LabeledContent("Sunset", value: "\(store.preferences.sunsetTemperature) K")
                     }
 
-                    Stepper(value: preferenceBinding(\.transitionMinutes), in: 0...240, step: 5) {
+                    Stepper(value: preferenceBinding(\.nightTemperature), in: ControlRanges.kelvin, step: 100) {
+                        LabeledContent("Bedtime", value: "\(store.preferences.nightTemperature) K")
+                    }
+
+                    Stepper(value: preferenceBinding(\.transitionMinutes), in: ControlRanges.transitionMinutes, step: 5) {
                         LabeledContent("Fade", value: "\(store.preferences.transitionMinutes) min")
                     }
                 }
 
-                Section("Location") {
+                Section("Location & Sun") {
+                    Picker("Schedule from", selection: preferenceBinding(\.scheduleSource)) {
+                        ForEach(ScheduleSource.allCases) { source in
+                            Text(source.label).tag(source)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
                     HStack {
                         TextField("Latitude", text: preferenceBinding(\.latitude))
                         TextField("Longitude", text: preferenceBinding(\.longitude))
                     }
+
+                    Button {
+                        store.requestLocation()
+                    } label: {
+                        Label("Use my location", systemImage: "location")
+                    }
+                    LabeledContent("Location access", value: store.locationStatus)
+
+                    if store.preferences.scheduleSource == .solar {
+                        LabeledContent("Sunrise", value: solarLabel(store.solarTimes?.sunriseMinutes))
+                        LabeledContent("Sunset", value: solarLabel(store.solarTimes?.sunsetMinutes))
+                    }
+
                     LabeledContent("Gamma", value: store.colorMessage)
                 }
 
@@ -143,11 +177,24 @@ struct ColorScheduleView: View {
         .navigationTitle("Schedule")
     }
 
-    private var displayTemperature: Int {
+    /// The temperature actually applied to displays right now (drives status text).
+    private var liveTemperature: Int {
         store.currentTemperature
             ?? (store.preferences.colorMode == .manual
                 ? store.preferences.manualTemperature
                 : store.preferences.dayTemperature)
+    }
+
+    /// The temperature the slider edits: the manual value in Manual mode, otherwise
+    /// the selected phase's stored value.
+    private var editedTemperature: Int {
+        store.preferences.colorMode == .manual
+            ? store.preferences.manualTemperature
+            : store.preferences.temperature(for: selectedPhase)
+    }
+
+    private var editingLabel: String {
+        store.preferences.colorMode == .manual ? "Manual" : selectedPhase.label
     }
 
     private var statusHeadline: String {
@@ -157,29 +204,32 @@ struct ColorScheduleView: View {
         guard store.preferences.colorMode != .off else {
             return "Color warming is off"
         }
-        return displayTemperature >= 5200 ? "The sun is up-go outside!" : "Warming down for the night"
+        return liveTemperature >= 5200 ? "The sun is up-go outside!" : "Warming down for the night"
     }
 
     private var scheduleSummary: String {
         let wake = MinuteFormatting.label(for: store.preferences.coolStartMinutes)
         let bed = MinuteFormatting.label(for: store.preferences.warmStartMinutes)
-        return "Wake \(wake), bedtime \(bed) (\(displayTemperature) K)"
+        return "Wake \(wake), bedtime \(bed) (\(liveTemperature) K)"
+    }
+
+    private func solarLabel(_ minutes: Int?) -> String {
+        guard let minutes else {
+            return "—"
+        }
+        return MinuteFormatting.label(for: minutes)
     }
 
     private var temperatureSliderBinding: Binding<Double> {
         Binding {
-            Double(displayTemperature)
+            Double(editedTemperature)
         } set: { newValue in
             let rounded = Int((newValue / 100.0).rounded()) * 100
             store.updateGlobalPreferences { preferences in
-                switch selectedPhase {
-                case "Bedtime":
-                    preferences.nightTemperature = rounded
-                case "Sunset":
+                if preferences.colorMode == .manual {
                     preferences.manualTemperature = rounded
-                    preferences.colorMode = .manual
-                default:
-                    preferences.dayTemperature = rounded
+                } else {
+                    preferences.setTemperature(rounded, for: selectedPhase)
                 }
             }
         }

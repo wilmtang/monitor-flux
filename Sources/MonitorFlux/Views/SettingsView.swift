@@ -5,6 +5,20 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("General") {
+                Toggle("Show in Dock", isOn: Binding {
+                    store.preferences.showInDock
+                } set: { isOn in
+                    store.setShowInDock(isOn)
+                })
+                Toggle("Start at login", isOn: Binding {
+                    store.preferences.startAtLogin
+                } set: { isOn in
+                    store.setStartAtLogin(isOn)
+                })
+                LabeledContent("Login item", value: store.loginItemMessage)
+            }
+
             Section("Gamma") {
                 Toggle("Enable gamma", isOn: Binding {
                     store.preferences.gammaEnabled
@@ -20,6 +34,7 @@ struct SettingsView: View {
             Section("Runtime") {
                 LabeledContent("DDC backend", value: store.ddcStatus.message)
                 LabeledContent("DDC fallback", value: store.ddcStatus.toolPath ?? "No external tool")
+                LabeledContent("Login item", value: store.loginItemMessage)
             }
 
             Section("Actions") {

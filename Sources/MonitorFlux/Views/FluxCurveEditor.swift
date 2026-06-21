@@ -2,18 +2,21 @@ import SwiftUI
 
 enum FluxCurveHandle: Hashable {
     case day
+    case sunset
     case night
 }
 
 struct FluxCurveEditor: View {
     @Binding var dayTemperature: Int
+    @Binding var sunsetTemperature: Int
     @Binding var nightTemperature: Int
     @Binding var warmStartMinutes: Int
     @Binding var coolStartMinutes: Int
+    @Binding var sunsetStartMinutes: Int
     let transitionMinutes: Int
 
-    private let minKelvin = 1000
-    private let maxKelvin = 6500
+    private let minKelvin = ControlRanges.kelvin.lowerBound
+    private let maxKelvin = ControlRanges.kelvin.upperBound
 
     var body: some View {
         GeometryReader { proxy in
@@ -26,6 +29,7 @@ struct FluxCurveEditor: View {
                 }
 
                 handle(.day, in: size)
+                handle(.sunset, in: size)
                 handle(.night, in: size)
             }
             .contentShape(Rectangle())
@@ -104,7 +108,7 @@ struct FluxCurveEditor: View {
 
     private func handle(_ handle: FluxCurveHandle, in size: CGSize) -> some View {
         let point = point(for: handle, in: size)
-        let color = handle == .day ? Color.orange : Color.blue
+        let color = color(for: handle)
 
         return Circle()
             .fill(color.opacity(0.9))
@@ -118,7 +122,29 @@ struct FluxCurveEditor: View {
                         update(handle, location: value.location, size: size)
                     }
             )
-            .accessibilityLabel(handle == .day ? "Daytime color handle" : "Night color handle")
+            .accessibilityLabel("\(phaseLabel(for: handle)) color handle")
+    }
+
+    private func color(for handle: FluxCurveHandle) -> Color {
+        switch handle {
+        case .day:
+            .orange
+        case .sunset:
+            .pink
+        case .night:
+            .blue
+        }
+    }
+
+    private func phaseLabel(for handle: FluxCurveHandle) -> String {
+        switch handle {
+        case .day:
+            "Daytime"
+        case .sunset:
+            "Sunset"
+        case .night:
+            "Bedtime"
+        }
     }
 
     private func point(for handle: FluxCurveHandle, in size: CGSize) -> CGPoint {
@@ -127,6 +153,11 @@ struct FluxCurveEditor: View {
             CGPoint(
                 x: CGFloat(coolStartMinutes) / 1440.0 * size.width,
                 y: yPosition(for: dayTemperature, height: size.height)
+            )
+        case .sunset:
+            CGPoint(
+                x: CGFloat(sunsetStartMinutes) / 1440.0 * size.width,
+                y: yPosition(for: sunsetTemperature, height: size.height)
             )
         case .night:
             CGPoint(
@@ -144,6 +175,9 @@ struct FluxCurveEditor: View {
         case .day:
             coolStartMinutes = minute
             dayTemperature = kelvin
+        case .sunset:
+            sunsetStartMinutes = minute
+            sunsetTemperature = kelvin
         case .night:
             warmStartMinutes = minute
             nightTemperature = kelvin
@@ -154,9 +188,11 @@ struct FluxCurveEditor: View {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock
         preferences.dayTemperature = dayTemperature
+        preferences.sunsetTemperature = sunsetTemperature
         preferences.nightTemperature = nightTemperature
         preferences.warmStartMinutes = warmStartMinutes
         preferences.coolStartMinutes = coolStartMinutes
+        preferences.sunsetStartMinutes = sunsetStartMinutes
         preferences.transitionMinutes = transitionMinutes
         return preferences
     }
@@ -174,7 +210,7 @@ struct FluxCurveEditor: View {
 
         let raw = Int((x / width * 1440).rounded())
         let rounded = Int((Double(raw) / 15.0).rounded()) * 15
-        return rounded.clamped(to: 0...1435)
+        return rounded.clamped(to: ControlRanges.minuteOfDay)
     }
 
     private func roundedKelvin(from y: CGFloat, height: CGFloat) -> Int {
@@ -184,6 +220,6 @@ struct FluxCurveEditor: View {
 
         let progress = Double((height - y) / height).clamped(to: 0...1)
         let raw = minKelvin + Int((Double(maxKelvin - minKelvin) * progress).rounded())
-        return (Int((Double(raw) / 100.0).rounded()) * 100).clamped(to: minKelvin...maxKelvin)
+        return (Int((Double(raw) / 100.0).rounded()) * 100).clamped(to: ControlRanges.kelvin)
     }
 }

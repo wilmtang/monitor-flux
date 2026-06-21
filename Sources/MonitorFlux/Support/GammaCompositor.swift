@@ -25,8 +25,8 @@ enum GammaCompositor {
         brightnessPercent: Int,
         contrastPercent: Int
     ) -> Double {
-        let brightness = Double(brightnessPercent.clamped(to: 0...150)) / 100.0
-        let contrast = Double(contrastPercent.clamped(to: 0...200)) / 100.0
+        let brightness = Double(brightnessPercent.clamped(to: ControlRanges.gammaBrightnessPercent)) / 100.0
+        let contrast = Double(contrastPercent.clamped(to: ControlRanges.gammaContrastPercent)) / 100.0
         let warmed = value * channelMultiplier
         let contrasted = ((warmed - 0.5) * contrast) + 0.5
         return (contrasted * brightness).clamped(to: 0...1)

@@ -10,15 +10,48 @@ enum ColorSchedule {
         case .off:
             return nil
         case .manual:
-            return preferences.manualTemperature.clamped(to: 1000...10000)
+            return preferences.manualTemperature.clamped(to: ControlRanges.kelvin)
         case .clock:
+            let effective = solarAdjustedPreferences(preferences, date: date, calendar: calendar)
             let minute = calendar.component(.hour, from: date) * 60
                 + calendar.component(.minute, from: date)
             return scheduledTemperature(
-                preferences: preferences,
+                preferences: effective,
                 minuteOfDay: minute
             )
         }
+    }
+
+    /// When the schedule is location-driven, replace the daytime (sunrise) and sunset
+    /// anchors with the day's computed solar times; bedtime stays the user's set hour,
+    /// matching f.lux. Returns the preferences unchanged for manual schedules or when
+    /// the latitude/longitude can't be parsed.
+    static func solarAdjustedPreferences(
+        _ preferences: AppPreferences,
+        date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> AppPreferences {
+        guard preferences.scheduleSource == .solar,
+              let latitude = Double(preferences.latitude),
+              let longitude = Double(preferences.longitude)
+        else {
+            return preferences
+        }
+
+        let times = SolarCalculator.times(
+            latitude: latitude,
+            longitude: longitude,
+            date: date,
+            timeZone: calendar.timeZone
+        )
+        var copy = preferences
+        if let sunrise = times.sunriseMinutes {
+            copy.coolStartMinutes = sunrise
+        }
+        if let sunset = times.sunsetMinutes {
+            copy.sunsetStartMinutes = sunset
+        }
+        return copy
     }
 
     static func scheduledTemperature(
@@ -26,22 +59,32 @@ enum ColorSchedule {
         minuteOfDay: Int
     ) -> Int {
         let minute = ((minuteOfDay % 1440) + 1440) % 1440
-        let transition = preferences.transitionMinutes.clamped(to: 0...240)
-        let day = preferences.dayTemperature.clamped(to: 1000...10000)
-        let night = preferences.nightTemperature.clamped(to: 1000...10000)
+        let transition = preferences.transitionMinutes.clamped(to: ControlRanges.transitionMinutes)
 
-        let sinceWarm = circularMinutes(from: preferences.warmStartMinutes, to: minute)
-        let sinceCool = circularMinutes(from: preferences.coolStartMinutes, to: minute)
+        // One anchor per phase: how long ago it began, and the temperature it holds.
+        let anchors = ColorPhase.allCases
+            .map { phase in
+                (
+                    since: circularMinutes(from: preferences.startMinutes(for: phase), to: minute),
+                    temperature: preferences.temperature(for: phase).clamped(to: ControlRanges.kelvin)
+                )
+            }
+            .sorted { $0.since < $1.since }
 
-        if transition > 0, sinceWarm < transition {
-            return interpolate(from: day, to: night, progress: Double(sinceWarm) / Double(transition))
+        // The most recently passed anchor is active; the next-most-recent is the
+        // phase we are fading out of during the transition window after it begins.
+        let active = anchors[0]
+        let previous = anchors[1]
+
+        if transition > 0, active.since < transition {
+            return interpolate(
+                from: previous.temperature,
+                to: active.temperature,
+                progress: Double(active.since) / Double(transition)
+            )
         }
 
-        if transition > 0, sinceCool < transition {
-            return interpolate(from: night, to: day, progress: Double(sinceCool) / Double(transition))
-        }
-
-        return sinceWarm < sinceCool ? night : day
+        return active.temperature
     }
 
     private static func circularMinutes(from start: Int, to end: Int) -> Int {

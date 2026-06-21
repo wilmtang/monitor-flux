@@ -106,7 +106,7 @@ struct DDCCommandLineBackend: Sendable {
         process.executableURL = URL(fileURLWithPath: tool.path)
         process.arguments = tool.arguments(
             kind: kind,
-            value: value.clamped(to: 0...100),
+            value: value.clamped(to: ControlRanges.hardwarePercent),
             displayIndex: displayIndex
         )
 

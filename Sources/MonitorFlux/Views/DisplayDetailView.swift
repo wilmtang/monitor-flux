@@ -28,7 +28,11 @@ struct DisplayDetailView: View {
                     .disabled(!store.preferences.gammaEnabled)
 
                 HStack {
-                    Slider(value: displaySliderBinding(\.gammaBrightness, range: 0...150), in: 0...150, step: 1)
+                    Slider(
+                        value: displaySliderBinding(\.gammaBrightness, range: ControlRanges.gammaBrightnessPercent),
+                        in: Double(ControlRanges.gammaBrightnessPercent.lowerBound)...Double(ControlRanges.gammaBrightnessPercent.upperBound),
+                        step: 1
+                    )
                         .disabled(!store.preferences.gammaEnabled || !displayPreferences.gammaControlsEnabled)
                     Text("\(displayPreferences.gammaBrightness)%")
                         .monospacedDigit()
@@ -36,7 +40,11 @@ struct DisplayDetailView: View {
                 }
 
                 HStack {
-                    Slider(value: displaySliderBinding(\.gammaContrast, range: 0...200), in: 0...200, step: 1)
+                    Slider(
+                        value: displaySliderBinding(\.gammaContrast, range: ControlRanges.gammaContrastPercent),
+                        in: Double(ControlRanges.gammaContrastPercent.lowerBound)...Double(ControlRanges.gammaContrastPercent.upperBound),
+                        step: 1
+                    )
                         .disabled(!store.preferences.gammaEnabled || !displayPreferences.gammaControlsEnabled)
                     Text("\(displayPreferences.gammaContrast)%")
                         .monospacedDigit()
@@ -50,14 +58,18 @@ struct DisplayDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     LabeledContent("Backend", value: store.ddcStatus.message)
-                    Stepper(value: displayBinding(\.ddcDisplayIndex), in: 1...8) {
+                    Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
                         LabeledContent("DDC display", value: "\(displayPreferences.ddcDisplayIndex)")
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Slider(value: displaySliderBinding(\.hardwareBrightness), in: 0...100, step: 1)
+                        Slider(
+                            value: displaySliderBinding(\.hardwareBrightness),
+                            in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound),
+                            step: 1
+                        )
                             .disabled(!store.canUseDDC(for: display))
                         Text("\(displayPreferences.hardwareBrightness)%")
                             .monospacedDigit()
@@ -71,7 +83,11 @@ struct DisplayDetailView: View {
                     }
 
                     HStack {
-                        Slider(value: displaySliderBinding(\.hardwareContrast), in: 0...100, step: 1)
+                        Slider(
+                            value: displaySliderBinding(\.hardwareContrast),
+                            in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound),
+                            step: 1
+                        )
                             .disabled(!store.canUseDDC(for: display))
                         Text("\(displayPreferences.hardwareContrast)%")
                             .monospacedDigit()
@@ -107,7 +123,7 @@ struct DisplayDetailView: View {
 
     private func displaySliderBinding(
         _ keyPath: WritableKeyPath<DisplayPreferences, Int>,
-        range: ClosedRange<Int> = 0...100
+        range: ClosedRange<Int> = ControlRanges.hardwarePercent
     ) -> Binding<Double> {
         Binding {
             Double(displayPreferences[keyPath: keyPath])

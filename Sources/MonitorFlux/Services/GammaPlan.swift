@@ -13,6 +13,7 @@ enum GammaPlan {
         let targetTemperature = ColorSchedule.targetTemperature(preferences: preferences)
         return Dictionary(uniqueKeysWithValues: displays.compactMap { display in
             let displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
+                .normalized()
             let adjustment = GammaAdjustment(
                 temperature: displayPreferences.colorEnabled ? targetTemperature : nil,
                 brightnessPercent: displayPreferences.gammaControlsEnabled

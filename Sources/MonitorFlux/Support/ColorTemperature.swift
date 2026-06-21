@@ -2,8 +2,8 @@ import Foundation
 
 enum ColorTemperature {
     static func multipliers(for kelvin: Int) -> (red: Double, green: Double, blue: Double) {
-        let target = rgb(for: kelvin.clamped(to: 1000...10000))
-        let neutral = rgb(for: 6500)
+        let target = rgb(for: kelvin.clamped(to: ControlRanges.kelvin))
+        let neutral = rgb(for: ControlRanges.kelvin.upperBound)
 
         return (
             red: (target.red / neutral.red).clamped(to: 0...1),

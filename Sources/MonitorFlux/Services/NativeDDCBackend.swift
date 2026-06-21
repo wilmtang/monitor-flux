@@ -81,7 +81,7 @@ struct NativeDDCBackend: Sendable {
     }
 
     static func packet(feature: UInt8, value: Int) -> [UInt8] {
-        let clamped = UInt16(value.clamped(to: 0...100))
+        let clamped = UInt16(value.clamped(to: ControlRanges.hardwarePercent))
         let high = UInt8((clamped >> 8) & 0xFF)
         let low = UInt8(clamped & 0xFF)
         var bytes: [UInt8] = [

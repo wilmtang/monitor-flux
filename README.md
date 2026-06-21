@@ -1,30 +1,92 @@
 # MonitorFlux
 
-MonitorFlux is a macOS utility prototype for combining two jobs without letting
-them fight over the display pipeline:
+MonitorFlux is a macOS display-control app that combines f.lux-style color
+temperature scheduling with MonitorControl-style per-display controls.
 
-- f.lux-style warm color temperature scheduling through one owned gamma
-  compositor.
-- Optional gamma brightness and contrast per display, composed into the same
-  transfer table as warmth so the features do not overwrite each other.
-- MonitorControl-style per-monitor hardware brightness and contrast through
-  DDC/CI where the display and GPU path support it.
+The important design rule is that MonitorFlux owns exactly one gamma pipeline.
+Warmth, gamma brightness, and gamma contrast are composed into one transfer
+table per display, so those features do not overwrite each other or flicker by
+fighting for the same macOS gamma table.
 
-Gamma can be disabled globally in the app settings. When gamma is disabled,
-MonitorFlux restores the system color tables and hardware DDC controls can still
-be used.
+## How It Works
 
-## Current Backend
+MonitorFlux has two separate control paths:
 
-The hardware DDC backend uses macOS IOKit I2C/DDC APIs directly. No Homebrew
-tool is required. If `ddcctl` is already installed, MonitorFlux can use it as a
-fallback, but it is not a prerequisite.
+- **Gamma path:** color temperature, software brightness, and software contrast.
+  These are pixel-level adjustments. They are planned in `GammaPlan`, composed
+  in `GammaCompositor`, and applied by `GammaTemperatureService`.
+- **Hardware DDC path:** brightness and contrast commands sent to external
+  monitor firmware. These use native macOS IOKit I2C/DDC APIs first, with
+  `ddcctl` only as an optional fallback if it already exists on the machine.
 
-DDC/CI support still depends on the monitor, cable, dock, GPU path, and macOS
-driver exposure. Built-in displays do not use DDC.
+Gamma can be disabled globally. When disabled, MonitorFlux restores system color
+tables and stops writing gamma. Hardware DDC controls can still be used.
+
+## UI
+
+- The **menu bar popup** (`QuickControlsView`, `.menuBarExtraStyle(.window)`) is
+  modeled after MonitorControl: a card per display with live brightness and
+  contrast sliders, plus a global ambience (color-temperature) slider and an
+  Off/Manual/Schedule mode control. DDC writes are debounced so dragging doesn't
+  flood the I2C bus. The app is menu-bar-first (no Dock icon by default; a "Show
+  in Dock" setting toggles it).
+- The **Schedule** screen is modeled after f.lux preferences: three phase
+  temperatures (Daytime / Sunset / Bedtime) over the same Kelvin range, a phase
+  selector, a draggable three-handle schedule curve, wake/bedtime controls, and a
+  **Manual times / Sunrise & sunset** source. In solar mode the daytime and sunset
+  anchors come from your location (CoreLocation + `SolarCalculator`).
+- Each **Display** screen separates:
+  - Warm color enablement for that display.
+  - Gamma brightness/contrast for pixel-level control.
+  - Hardware DDC brightness/contrast for external monitor firmware control.
+
+## Safety Rules
+
+- Do not add another independent gamma writer. All gamma-affecting features must
+  flow through `GammaPlan` and `GammaCompositor`.
+- Do not repeatedly write identical gamma tables. `GammaTemperatureService`
+  tracks the last applied adjustment per display and skips unchanged writes to
+  avoid flicker.
+- Do not fake hardware brightness with gamma unless the UI clearly labels it as
+  gamma brightness.
+- Do not require Homebrew tools. Native DDC is the primary implementation.
+- Keep preference values normalized with `ControlRanges` before saving or using
+  them.
+
+## DDC Caveats
+
+DDC/CI support depends on the monitor, cable, dock, GPU path, and what macOS
+exposes through IOKit. Built-in displays do not use DDC. The native path is
+architecture-specific: **Apple Silicon** uses the private `IOAVService`
+(`Arm64DDCBackend`, the same approach as MonitorControl/Lunar), while **Intel**
+uses the IOFramebuffer I2C path (`NativeDDCBackend`). `ddcctl` is an optional
+Intel-only fallback; when the native path fails and `ddcctl` is present,
+MonitorFlux tries it and reports both errors if both backends fail. DDC over a
+Mac's built-in HDMI port is generally unsupported — use USB-C/DisplayPort.
+
+`IOAVService` is a private API. That's fine for a personal app but is not
+App-Store-safe; it's isolated in `Arm64DDCBackend` behind the same error-reporting
+fallback as the rest of the DDC stack.
 
 ## Run
 
 ```sh
 ./script/build_and_run.sh
 ```
+
+Useful variants:
+
+```sh
+./script/build_and_run.sh --verify
+./script/build_and_run.sh --logs
+./script/build_and_run.sh --telemetry
+```
+
+## Test
+
+```sh
+swift test
+```
+
+The tests cover schedule math, gamma composition, gamma planning, DDC packet
+construction, and preference migration/normalization.
