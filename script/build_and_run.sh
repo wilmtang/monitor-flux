@@ -72,12 +72,22 @@ PLIST
 # private IOAVService / @_silgen_name symbols used for Apple Silicon DDC keep resolving.
 codesign --force --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
 
+# In safe mode the app drives its UI but performs no gamma/DDC/backlight writes, so it
+# doesn't fight f.lux/MonitorControl or flicker the screen. Used for verify/smoke runs.
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  if [ "${SAFE_MODE:-0}" = "1" ]; then
+    MONITORFLUX_SAFE_MODE=1 /usr/bin/open -n "$APP_BUNDLE"
+  else
+    /usr/bin/open -n "$APP_BUNDLE"
+  fi
 }
 
 case "$MODE" in
   run)
+    open_app
+    ;;
+  --safe|safe)
+    SAFE_MODE=1
     open_app
     ;;
   --debug|debug)
@@ -92,12 +102,14 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   --verify|verify)
+    SAFE_MODE=1
     open_app
     sleep 1
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--safe|--debug|--logs|--telemetry|--verify]" >&2
+    echo "  --safe: run without any gamma/DDC/backlight writes (no screen flicker, no f.lux conflict)" >&2
     exit 2
     ;;
 esac

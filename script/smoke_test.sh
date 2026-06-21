@@ -19,7 +19,9 @@ pkill -x MonitorFlux >/dev/null 2>&1 || true
 pkill -x MonitorFlux >/dev/null 2>&1 || true
 sleep 1
 
-MONITORFLUX_OPEN_MAIN=1 /usr/bin/open -n "$APP_BUNDLE"
+# Safe mode: drive the UI but write no gamma/DDC/backlight, so the smoke test never
+# flickers the screen or fights f.lux/MonitorControl.
+MONITORFLUX_SAFE_MODE=1 MONITORFLUX_OPEN_MAIN=1 /usr/bin/open -n "$APP_BUNDLE"
 sleep 2
 
 set +e

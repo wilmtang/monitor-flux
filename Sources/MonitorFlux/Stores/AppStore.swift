@@ -28,6 +28,10 @@ final class AppStore: ObservableObject {
     /// Cached real backlight level (0...1) per display that supports DisplayServices.
     @Published private(set) var nativeBrightness: [CGDirectDisplayID: Double] = [:]
 
+    /// Set by `MONITORFLUX_SAFE_MODE=1`. Skips every gamma/DDC/backlight hardware write so
+    /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
+    let safeMode: Bool
+
     let locationService = LocationService()
     let keyboardService = KeyboardControlService()
     private let displayService = DisplayService()
@@ -41,6 +45,7 @@ final class AppStore: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        safeMode = ProcessInfo.processInfo.environment["MONITORFLUX_SAFE_MODE"] == "1"
         preferences = PreferencesStore.load().normalized()
         refreshDisplays()
         startTimer()
@@ -57,7 +62,9 @@ final class AppStore: ObservableObject {
         }
 
         keyboardService.store = self
-        if preferences.keyboardControlEnabled {
+        if safeMode {
+            keyboardStatus = "Off (safe mode)"
+        } else if preferences.keyboardControlEnabled {
             keyboardStatus = keyboardService.start() ? "Active" : "Needs Accessibility permission"
         }
 
@@ -140,6 +147,9 @@ final class AppStore: ObservableObject {
     func setNativeBrightness(_ value01: Double, for display: DisplayInfo) {
         let clamped = value01.clamped(to: 0...1)
         nativeBrightness[display.id] = clamped
+        guard !safeMode else {
+            return
+        }
         nativeBrightnessBackend.setBrightness(Float(clamped), for: display.id)
     }
 
@@ -343,6 +353,10 @@ final class AppStore: ObservableObject {
             ddcMessage = display.isBuiltIn ? "Built-in displays do not use DDC" : ddcStatus.message
             return
         }
+        guard !safeMode else {
+            ddcMessage = "Safe mode — DDC not sent"
+            return
+        }
         let value = displayPreferences(for: display).hardwareVolume
         ddcMessage = "Applying volume \(value)% to \(display.name)"
         let backend = ddcBackend
@@ -403,6 +417,9 @@ final class AppStore: ObservableObject {
     }
 
     func restoreColorTables() {
+        guard !safeMode else {
+            return
+        }
         gammaService.restore()
         currentTemperature = nil
         colorMessage = "Color restored"
@@ -420,6 +437,10 @@ final class AppStore: ObservableObject {
         currentTemperature = preferences.gammaEnabled
             ? ColorSchedule.targetTemperature(preferences: preferences)
             : nil
+        guard !safeMode else {
+            colorMessage = "Safe mode — gamma not applied"
+            return
+        }
         let summary = gammaService.apply(
             displays: displays,
             preferences: preferences
@@ -472,6 +493,10 @@ final class AppStore: ObservableObject {
             ddcMessage = display.isBuiltIn
                 ? "Built-in displays do not use DDC"
                 : ddcStatus.message
+            return
+        }
+        guard !safeMode else {
+            ddcMessage = "Safe mode — DDC not sent"
             return
         }
 

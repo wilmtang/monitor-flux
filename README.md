@@ -99,10 +99,16 @@ fallback as the rest of the DDC stack.
 Useful variants:
 
 ```sh
+./script/build_and_run.sh --safe       # drive the UI but write no gamma/DDC/backlight
 ./script/build_and_run.sh --verify
 ./script/build_and_run.sh --logs
 ./script/build_and_run.sh --telemetry
 ```
+
+**Safe mode** (`--safe`, also used by `--verify` and `smoke_test.sh`, via
+`MONITORFLUX_SAFE_MODE=1`) runs the full app without any gamma/DDC/backlight writes, so
+testing doesn't flicker your screen or conflict with f.lux/MonitorControl. Use the plain
+`run` (no flag) when you actually want MonitorFlux to control your displays.
 
 ## Test
 

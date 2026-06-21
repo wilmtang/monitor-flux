@@ -10,8 +10,14 @@ commands to hardware.
 - Verify launch: `./script/build_and_run.sh --verify`
 - Run tests: `swift test`
 - Smoke-test the detailed window opens (not blank / not duplicated): `./script/smoke_test.sh`
+- Run without touching hardware: `./script/build_and_run.sh --safe`
 
-Stop the running dev app before doing risky gamma work:
+**Safe mode** (`MONITORFLUX_SAFE_MODE=1`, set by `--safe`, `--verify`, and `smoke_test.sh`)
+drives the full UI but performs **no gamma/DDC/backlight writes** — so testing doesn't
+flicker the screen or fight f.lux/MonitorControl. Use it for any iteration where you only
+need to see the UI. All hardware-writing paths in `AppStore` are gated on `safeMode`.
+
+Stop the running dev app before doing risky gamma work (or just use `--safe`):
 
 ```sh
 pkill -x MonitorFlux || true
