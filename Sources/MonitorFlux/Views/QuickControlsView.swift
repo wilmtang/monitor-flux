@@ -131,22 +131,36 @@ struct QuickControlsView: View {
             }
 
             if display.isBuiltIn {
-                // Built-in panels have no DDC; expose the software (gamma) brightness.
-                controlRow(
-                    icon: "sun.max",
-                    value: Double(preferences.gammaBrightness),
-                    range: ControlRanges.gammaBrightnessPercent,
-                    enabled: store.preferences.gammaEnabled,
-                    readout: "\(preferences.gammaBrightness)%"
-                ) { newValue in
-                    store.updateDisplayPreferences(for: display) { displayPreferences in
-                        displayPreferences.gammaBrightness = Int(newValue.rounded())
-                            .clamped(to: ControlRanges.gammaBrightnessPercent)
+                if store.canUseNativeBrightness(display) {
+                    // Real backlight via DisplayServices.
+                    let level = store.nativeBrightnessValue(for: display)
+                    controlRow(
+                        icon: "sun.max",
+                        value: level * 100,
+                        range: ControlRanges.hardwarePercent,
+                        enabled: true,
+                        readout: "\(Int((level * 100).rounded()))%"
+                    ) { newValue in
+                        store.setNativeBrightness(newValue / 100.0, for: display)
                     }
+                } else {
+                    // No backlight API; fall back to software (gamma) dimming.
+                    controlRow(
+                        icon: "sun.max",
+                        value: Double(preferences.gammaBrightness),
+                        range: ControlRanges.gammaBrightnessPercent,
+                        enabled: store.preferences.gammaEnabled,
+                        readout: "\(preferences.gammaBrightness)%"
+                    ) { newValue in
+                        store.updateDisplayPreferences(for: display) { displayPreferences in
+                            displayPreferences.gammaBrightness = Int(newValue.rounded())
+                                .clamped(to: ControlRanges.gammaBrightnessPercent)
+                        }
+                    }
+                    Text("Software dimming (built-in panel has no DDC)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                Text("Software dimming (built-in panel has no DDC)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             } else {
                 controlRow(
                     icon: "sun.max",

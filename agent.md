@@ -32,6 +32,8 @@ pkill -x MonitorFlux || true
 - `Services/Arm64DDCBackend.swift`: Apple Silicon DDC via the private `IOAVService`.
 - `Services/HardwareDDCBackend.swift`: arch-selected native DDC (`#if arch(arm64)`)
   plus the optional `ddcctl` fallback.
+- `Services/NativeBrightnessBackend.swift`: real backlight for the built-in/Apple
+  panels via the private DisplayServices framework (resolved with `dlopen`/`dlsym`).
 - `Services/LocationService.swift`: CoreLocation one-shot fix for the solar schedule.
 - `Services/KeyboardControlService.swift`: a `CGEventTap` that routes the brightness/
   volume media keys to the display under the cursor (needs Accessibility permission).

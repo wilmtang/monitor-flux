@@ -46,10 +46,12 @@ tables and stops writing gamma. Hardware DDC controls can still be used.
 When enabled (Settings ▸ Keyboard), MonitorFlux taps the keyboard's brightness and
 volume media keys and routes them to the external display **under your pointer** over
 DDC — so the same keys that dim the built-in panel now drive whichever monitor you're
-pointing at. Hold **Control** to dim the built-in panel (software/gamma) instead. This
-needs Accessibility permission (System Settings ▸ Privacy & Security ▸ Accessibility),
-since swallowing HID key events is privileged. Implemented with a `CGEventTap` in
-`KeyboardControlService`.
+pointing at. Hold **Control** to dim the **built-in panel's real backlight** instead
+(via the private DisplayServices framework — `NativeBrightnessBackend`; falls back to
+gamma if unavailable). This needs Accessibility permission (System Settings ▸ Privacy &
+Security ▸ Accessibility), since swallowing HID key events is privileged. Implemented
+with a `CGEventTap` in `KeyboardControlService`. The built-in display's brightness
+slider in the popup and detail window also drives the real backlight.
 
 ## Avoiding color conflicts
 

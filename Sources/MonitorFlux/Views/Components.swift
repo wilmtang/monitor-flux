@@ -17,6 +17,12 @@ enum HelpText {
     contrast, and volume. It works on external displays only (not the built-in panel) and \
     depends on the monitor, cable, and port. On Apple Silicon this uses the private IOAVService.
     """
+
+    static let backlight = """
+    This sets the display's real backlight brightness through the private DisplayServices \
+    framework — the same level the menu-bar brightness slider and the keyboard brightness keys \
+    change. It works on the built-in panel and Apple displays.
+    """
 }
 
 /// A small ⓘ button that reveals a popover explainer. Assumes the reader doesn't know the jargon.

@@ -24,11 +24,14 @@ final class AppStore: ObservableObject {
     @Published private(set) var loginItemMessage = LoginItemService.statusLabel()
     @Published private(set) var locationStatus = "Not requested"
     @Published private(set) var keyboardStatus = "Off"
+    /// Cached real backlight level (0...1) per display that supports DisplayServices.
+    @Published private(set) var nativeBrightness: [CGDirectDisplayID: Double] = [:]
 
     let locationService = LocationService()
     let keyboardService = KeyboardControlService()
     private let displayService = DisplayService()
     private let ddcBackend = HardwareDDCBackend()
+    private let nativeBrightnessBackend = NativeBrightnessBackend()
     private let gammaService = GammaTemperatureService()
     private var timer: Timer?
     private var ddcWriteWorkItems: [String: DispatchWorkItem] = [:]
@@ -118,9 +121,34 @@ final class AppStore: ObservableObject {
 
     func refreshDisplays() {
         displays = displayService.listDisplays()
+        refreshNativeBrightness()
         if !seedMissingDisplayPreferences() {
             reconcileColor()
         }
+    }
+
+    func canUseNativeBrightness(_ display: DisplayInfo) -> Bool {
+        nativeBrightnessBackend.canControl(display.id)
+    }
+
+    func nativeBrightnessValue(for display: DisplayInfo) -> Double {
+        nativeBrightness[display.id] ?? Double(nativeBrightnessBackend.brightness(of: display.id) ?? 0.5)
+    }
+
+    func setNativeBrightness(_ value01: Double, for display: DisplayInfo) {
+        let clamped = value01.clamped(to: 0...1)
+        nativeBrightness[display.id] = clamped
+        nativeBrightnessBackend.setBrightness(Float(clamped), for: display.id)
+    }
+
+    private func refreshNativeBrightness() {
+        var levels: [CGDirectDisplayID: Double] = [:]
+        for display in displays where nativeBrightnessBackend.canControl(display.id) {
+            if let value = nativeBrightnessBackend.brightness(of: display.id) {
+                levels[display.id] = Double(value)
+            }
+        }
+        nativeBrightness = levels
     }
 
     func displayPreferences(for display: DisplayInfo) -> DisplayPreferences {
@@ -209,11 +237,7 @@ final class AppStore: ObservableObject {
             guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
                 return false
             }
-            let current = displayPreferences(for: builtIn).gammaBrightness
-            updateDisplayPreferences(for: builtIn) { preferences in
-                preferences.gammaBrightness = (current + delta).clamped(to: ControlRanges.gammaBrightnessPercent)
-            }
-            return true
+            return adjustBuiltInBrightness(builtIn, by: delta)
         }
         guard let target = displayUnderCursor() else {
             return false
@@ -223,6 +247,19 @@ final class AppStore: ObservableObject {
         }
         let current = displayPreferences(for: target).hardwareBrightness
         setHardwareBrightness(current + delta, for: target)
+        return true
+    }
+
+    private func adjustBuiltInBrightness(_ display: DisplayInfo, by delta: Int) -> Bool {
+        if canUseNativeBrightness(display) {
+            setNativeBrightness(nativeBrightnessValue(for: display) + Double(delta) / 100.0, for: display)
+            return true
+        }
+        // Fallback: software gamma dimming when DisplayServices is unavailable.
+        let current = displayPreferences(for: display).gammaBrightness
+        updateDisplayPreferences(for: display) { preferences in
+            preferences.gammaBrightness = (current + delta).clamped(to: ControlRanges.gammaBrightnessPercent)
+        }
         return true
     }
 

@@ -47,14 +47,25 @@ struct DisplayDetailView: View {
                 sectionHeader("Gamma Brightness & Contrast", help: HelpText.gamma, helpTitle: "Software (gamma) controls")
             }
 
-            Section {
-                if display.isBuiltIn {
-                    Label("Built-in panel — no DDC", systemImage: "laptopcomputer")
-                        .foregroundStyle(.secondary)
-                    Text("Built-in displays don't support DDC. Use the gamma brightness above, or your keyboard's brightness keys.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
+            if display.isBuiltIn {
+                Section {
+                    if store.canUseNativeBrightness(display) {
+                        nativeBacklightRow
+                        Text("Sets the real backlight — the same level the brightness keys change.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Label("No adjustable backlight", systemImage: "laptopcomputer")
+                            .foregroundStyle(.secondary)
+                        Text("Use the gamma (software) brightness above, or your keyboard's brightness keys.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    sectionHeader("Backlight", help: HelpText.backlight, helpTitle: "Backlight")
+                }
+            } else {
+                Section {
                     LabeledContent("Backend", value: store.ddcStatus.message)
                     Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
                         LabeledContent("DDC display index (ddcctl fallback)", value: "\(displayPreferences.ddcDisplayIndex)")
@@ -74,9 +85,9 @@ struct DisplayDetailView: View {
                     Text("Sliders send to the monitor live as you drag.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } header: {
+                    sectionHeader("Hardware DDC", help: HelpText.ddc, helpTitle: "Hardware (DDC/CI) controls")
                 }
-            } header: {
-                sectionHeader("Hardware DDC", help: HelpText.ddc, helpTitle: "Hardware (DDC/CI) controls")
             }
         }
         .formStyle(.grouped)
@@ -107,6 +118,27 @@ struct DisplayDetailView: View {
             Text("\(displayPreferences[keyPath: keyPath])%")
                 .monospacedDigit()
                 .frame(width: 52, alignment: .trailing)
+        }
+    }
+
+    private var nativeBacklightRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sun.max")
+                .frame(width: 18)
+                .foregroundStyle(.secondary)
+            Text("Brightness")
+                .frame(width: 64, alignment: .leading)
+            Slider(
+                value: Binding {
+                    store.nativeBrightnessValue(for: display) * 100
+                } set: { newValue in
+                    store.setNativeBrightness(newValue / 100.0, for: display)
+                },
+                in: 0...100
+            )
+            Text("\(Int((store.nativeBrightnessValue(for: display) * 100).rounded()))%")
+                .monospacedDigit()
+                .frame(width: 44, alignment: .trailing)
         }
     }
 
