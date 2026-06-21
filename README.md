@@ -112,3 +112,9 @@ swift test
 
 The tests cover schedule math, gamma composition, gamma planning, DDC packet
 construction, and preference migration/normalization.
+
+## Acknowledgements
+
+MonitorFlux's Apple Silicon DDC, built-in backlight, and media-key handling were
+developed by studying [MonitorControl](https://github.com/MonitorControl/MonitorControl)
+(MIT). See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and the full license.

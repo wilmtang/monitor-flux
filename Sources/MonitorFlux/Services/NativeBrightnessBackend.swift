@@ -3,9 +3,9 @@ import Darwin
 import Foundation
 
 // Real backlight control for the built-in panel (and Apple displays) goes through the
-// private DisplayServices framework — the same approach MonitorControl uses. The
-// framework isn't on the default linker search path, so we resolve the symbols at
-// runtime with dlopen/dlsym rather than linking them.
+// private DisplayServices framework — the same approach MonitorControl (MIT) uses; see
+// ACKNOWLEDGEMENTS.md. The framework isn't on the default linker search path, so we
+// resolve the symbols at runtime with dlopen/dlsym rather than linking them.
 private typealias DSSetBrightness = @convention(c) (CGDirectDisplayID, Float) -> Int32
 private typealias DSGetBrightness = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
 private typealias DSCanChange = @convention(c) (CGDirectDisplayID) -> Bool

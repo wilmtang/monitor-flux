@@ -3,9 +3,9 @@ import ApplicationServices
 import CoreGraphics
 
 /// Intercepts the keyboard's brightness and volume media keys with a `CGEventTap` and
-/// routes them to the display under the cursor (DDC), MonitorControl-style. Holding
-/// Control targets the built-in panel (software/gamma) instead. Requires Accessibility
-/// permission, since taps that swallow HID events are privileged.
+/// routes them to the display under the cursor (DDC), MonitorControl-style (MIT; see
+/// ACKNOWLEDGEMENTS.md). Holding Control targets the built-in panel's backlight instead.
+/// Requires Accessibility permission, since taps that swallow HID events are privileged.
 ///
 /// VCP-style media-key codes carried in an `NSSystemDefined` event's `data1`.
 private enum MediaKey {

@@ -4,9 +4,9 @@ import IOKit
 
 // DDC/CI over I2C on Apple Silicon goes through the private `IOAVService` API rather
 // than the Intel IOFramebuffer path. The technique and byte layout follow MonitorControl
-// (MIT) — github.com/MonitorControl/MonitorControl `Support/Arm64DDC.swift` — and Lunar.
-// These symbols are exported by IOKit (already linked); `@_silgen_name` binds to them
-// the same way `NativeDDCBackend` binds to `CGDisplayIOServicePort`.
+// (MIT), `Support/Arm64DDC.swift`; see ACKNOWLEDGEMENTS.md. These symbols are exported by
+// IOKit (already linked); `@_silgen_name` binds to them the same way `NativeDDCBackend`
+// binds to `CGDisplayIOServicePort`.
 @_silgen_name("IOAVServiceCreateWithService")
 private func IOAVServiceCreateWithService(
     _ allocator: CFAllocator?,
