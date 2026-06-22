@@ -176,13 +176,17 @@ struct QuickControlsView: View {
                     readout: "\(preferences.hardwareContrast)%"
                 ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
 
-                controlRow(
-                    icon: "speaker.wave.2.fill",
-                    value: Double(preferences.hardwareVolume),
-                    range: ControlRanges.hardwarePercent,
-                    enabled: true,
-                    readout: "\(preferences.hardwareVolume)%"
-                ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
+                // Volume is only shown when the monitor actually has speakers (or the user
+                // forced it on) — a speakerless display gets no useless volume slider.
+                if store.shouldShowVolumeControl(for: display) {
+                    controlRow(
+                        icon: "speaker.wave.2.fill",
+                        value: Double(preferences.hardwareVolume),
+                        range: ControlRanges.hardwarePercent,
+                        enabled: true,
+                        readout: "\(preferences.hardwareVolume)%"
+                    ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
+                }
             }
         }
         .padding(12)

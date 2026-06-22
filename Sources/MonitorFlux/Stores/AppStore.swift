@@ -33,6 +33,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var keyboardStatus = "Off"
     /// Cached real backlight level (0...1) per display that supports DisplayServices.
     @Published private(set) var nativeBrightness: [CGDirectDisplayID: Double] = [:]
+    /// Displays that expose an audio output (monitor speakers). Drives whether the DDC
+    /// volume slider is shown — a speakerless monitor gets no volume control.
+    @Published private(set) var displaysWithAudio: Set<CGDirectDisplayID> = []
 
     /// Set by `MONITORFLUX_SAFE_MODE=1`. Skips every gamma/DDC/backlight hardware write so
     /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
@@ -43,6 +46,7 @@ final class AppStore: ObservableObject {
     private let displayService = DisplayService()
     private let ddcBackend = HardwareDDCBackend()
     private let nativeBrightnessBackend = NativeBrightnessBackend()
+    private let audioCapabilityService = AudioCapabilityService()
     private let gammaService = GammaTemperatureService()
     private var mainWindow: MainWindow?
     private var timer: Timer?
@@ -146,9 +150,35 @@ final class AppStore: ObservableObject {
         ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays()
         refreshNativeBrightness()
+        refreshAudioCapability()
         if !seedMissingDisplayPreferences() {
             reconcileColor()
         }
+    }
+
+    private func refreshAudioCapability() {
+        let deviceNames = audioCapabilityService.displayAudioDeviceNames()
+        var withAudio: Set<CGDirectDisplayID> = []
+        for display in displays where !display.isBuiltIn {
+            if audioCapabilityService.displayHasAudio(named: display.name, deviceNames: deviceNames) {
+                withAudio.insert(display.id)
+            }
+        }
+        displaysWithAudio = withAudio
+    }
+
+    /// Whether an audio output (monitor speakers) was detected for this display.
+    func displayHasDetectedAudio(_ display: DisplayInfo) -> Bool {
+        displaysWithAudio.contains(display.id)
+    }
+
+    /// Whether to show the DDC volume slider for a display: external, and either it reports
+    /// an audio output (monitor speakers) or the user forced the control on.
+    func shouldShowVolumeControl(for display: DisplayInfo) -> Bool {
+        guard !display.isBuiltIn else {
+            return false
+        }
+        return displayHasDetectedAudio(display) || displayPreferences(for: display).forceVolumeControl
     }
 
     func canUseNativeBrightness(_ display: DisplayInfo) -> Bool {
@@ -391,7 +421,7 @@ final class AppStore: ObservableObject {
     }
 
     func adjustVolumeUnderCursor(by delta: Int) -> Bool {
-        guard let target = displayUnderCursor(), !target.isBuiltIn else {
+        guard let target = displayUnderCursor(), shouldShowVolumeControl(for: target) else {
             return false
         }
         let current = displayPreferences(for: target).hardwareVolume

@@ -66,6 +66,9 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     var hardwareVolume = 50
     var gammaBrightness = 100
     var gammaContrast = 100
+    /// Force-show the DDC volume slider even when no audio output is detected for this
+    /// display. Off by default: the slider is hidden unless the monitor reports speakers.
+    var forceVolumeControl = false
 
     enum CodingKeys: String, CodingKey {
         case colorEnabled
@@ -76,6 +79,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         case hardwareVolume
         case gammaBrightness
         case gammaContrast
+        case forceVolumeControl
         case brightness
         case contrast
     }
@@ -113,6 +117,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
             .clamped(to: ControlRanges.gammaBrightnessPercent)
         gammaContrast = (try container.decodeIfPresent(Int.self, forKey: .gammaContrast) ?? 100)
             .clamped(to: ControlRanges.gammaContrastPercent)
+        forceVolumeControl = try container.decodeIfPresent(Bool.self, forKey: .forceVolumeControl) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -125,6 +130,7 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         try container.encode(hardwareVolume, forKey: .hardwareVolume)
         try container.encode(gammaBrightness, forKey: .gammaBrightness)
         try container.encode(gammaContrast, forKey: .gammaContrast)
+        try container.encode(forceVolumeControl, forKey: .forceVolumeControl)
     }
 }
 

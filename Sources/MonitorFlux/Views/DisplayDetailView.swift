@@ -77,8 +77,16 @@ struct DisplayDetailView: View {
                     hardwareSliderRow(title: "Contrast", icon: "circle.lefthalf.filled", value: displayPreferences.hardwareContrast) {
                         store.setHardwareContrast($0, for: display)
                     }
-                    hardwareSliderRow(title: "Volume", icon: "speaker.wave.2.fill", value: displayPreferences.hardwareVolume) {
-                        store.setHardwareVolume($0, for: display)
+                    if store.shouldShowVolumeControl(for: display) {
+                        hardwareSliderRow(title: "Volume", icon: "speaker.wave.2.fill", value: displayPreferences.hardwareVolume) {
+                            store.setHardwareVolume($0, for: display)
+                        }
+                    }
+                    if !store.displayHasDetectedAudio(display) {
+                        Toggle("Show volume control", isOn: displayBinding(\.forceVolumeControl))
+                        Text("No speakers were detected on this monitor, so the volume slider is hidden. Enable this only if it has built-in speakers you control over DDC.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     LabeledContent("Last DDC", value: store.ddcMessage)
