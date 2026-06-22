@@ -5,6 +5,13 @@ struct ColorScheduleView: View {
     @State private var selectedPhase: ColorPhase = .daytime
 
     var body: some View {
+        ScrollView {
+            content
+        }
+        .navigationTitle("Schedule")
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(spacing: 16) {
@@ -187,7 +194,6 @@ struct ColorScheduleView: View {
             }
             .formStyle(.grouped)
         }
-        .navigationTitle("Schedule")
     }
 
     /// The temperature actually applied to displays right now (drives status text).

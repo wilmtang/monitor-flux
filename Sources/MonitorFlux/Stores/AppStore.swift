@@ -286,19 +286,25 @@ final class AppStore: ObservableObject {
     private static let mainWindowDefaultSize = NSSize(width: 880, height: 600)
 
     private func makeMainWindow() -> MainWindow {
-        let window = MainWindow(
-            contentRect: NSRect(origin: .zero, size: Self.mainWindowDefaultSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
+        // A hosting *controller* (not a bare NSHostingView) is what renders a
+        // NavigationSplitView's sidebar + detail correctly, and its default
+        // `sizingOptions` must stay (clearing them renders the columns blank). Those
+        // options size the window to SwiftUI's fitting height, though, which for a tall
+        // detail pane is enormous — that was the off-screen "blank window". Pinning an
+        // ideal size on the root bounds the fitting height to 880x600 so the window opens
+        // and reopens at a sane size, while `maxWidth/Height: .infinity` still lets the
+        // user resize it. Detail panes scroll internally (see ColorScheduleView).
+        let root = ContentView()
+            .environmentObject(self)
+            .frame(
+                minWidth: 720, idealWidth: Self.mainWindowDefaultSize.width, maxWidth: .infinity,
+                minHeight: 500, idealHeight: Self.mainWindowDefaultSize.height, maxHeight: .infinity
+            )
+        let controller = NSHostingController(rootView: root)
+        let window = MainWindow(contentViewController: controller)
         window.title = "MonitorFlux"
-        // Use an `NSHostingView` as the content view rather than
-        // `NSWindow(contentViewController:)`: a hosting *controller* drives the window
-        // size from SwiftUI's fitting size, so a closed-then-reopened window re-fit its
-        // content to a giant height and ordered front off-screen. A content *view* lays
-        // out inside whatever frame we set and never resizes the window.
-        window.contentView = NSHostingView(rootView: ContentView().environmentObject(self))
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(Self.mainWindowDefaultSize)
         window.contentMinSize = NSSize(width: 720, height: 500)
         window.isReleasedWhenClosed = false
         window.isRestorable = false
