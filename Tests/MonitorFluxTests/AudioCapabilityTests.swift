@@ -25,6 +25,14 @@ final class AudioCapabilityTests: XCTestCase {
         XCTAssertTrue(service.displayHasAudio(named: "DELL U2720Q", deviceNames: ["DELL U2720Q (1)"]))
     }
 
+    func testSimilarSiblingNameIsNotAFalsePositive() {
+        // A speakerless "DELL U2720" must NOT be flagged just because a sibling model's
+        // audio device "DELL U2720Q" contains its name as a substring.
+        XCTAssertFalse(service.displayHasAudio(named: "DELL U2720", deviceNames: ["DELL U2720Q"]))
+        // And the reverse: a short/generic display name isn't matched by a longer device.
+        XCTAssertFalse(service.displayHasAudio(named: "LG", deviceNames: ["LG TV"]))
+    }
+
     func testUnrelatedDeviceIsNotAudio() {
         XCTAssertFalse(
             service.displayHasAudio(named: "AW3225QF", deviceNames: ["DELL U2720Q", "Studio Display"])

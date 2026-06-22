@@ -24,6 +24,10 @@ final class KeyboardControlService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private let step = 6
+    /// Media keys whose key-down we handled, so we swallow only their matching key-up.
+    /// Without this, a key we let through (e.g. volume on a speakerless monitor) would have
+    /// its key-up swallowed anyway, handing the system an unbalanced down-without-up.
+    private var ownedKeys: Set<Int> = []
 
     var hasAccessibilityPermission: Bool {
         AXIsProcessTrusted()
@@ -80,6 +84,23 @@ final class KeyboardControlService {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: true)
         }
+    }
+
+    /// Handle a media-key press, remembering whether we owned it so the matching key-up is
+    /// swallowed iff the key-down was. Returns true when handled (the tap swallows the down).
+    func handleKeyDown(keyCode: Int, controlHeld: Bool) -> Bool {
+        let handled = handle(keyCode: keyCode, controlHeld: controlHeld)
+        if handled {
+            ownedKeys.insert(keyCode)
+        } else {
+            ownedKeys.remove(keyCode)
+        }
+        return handled
+    }
+
+    /// Swallow a key-up only if we handled its key-down.
+    func consumeKeyUp(keyCode: Int) -> Bool {
+        ownedKeys.remove(keyCode) != nil
     }
 
     /// Returns true when MonitorFlux handled the key (so the tap swallows the event).
@@ -141,10 +162,13 @@ private func mediaKeyTapCallback(
     let isKeyDown = ((keyFlags & 0xFF00) >> 8) == 0x0A
     let controlHeld = event.flags.contains(.maskControl)
 
-    // Act on key-down; swallow the matching key-up too so the system never sees keys we own.
-    let handled = isKeyDown
-        ? MainActor.assumeIsolated { service.handle(keyCode: keyCode, controlHeld: controlHeld) }
-        : true
+    // Act on key-down; swallow the matching key-up only if we owned the down, so a key we
+    // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.
+    let handled = MainActor.assumeIsolated {
+        isKeyDown
+            ? service.handleKeyDown(keyCode: keyCode, controlHeld: controlHeld)
+            : service.consumeKeyUp(keyCode: keyCode)
+    }
 
     return handled ? nil : Unmanaged.passUnretained(event)
 }

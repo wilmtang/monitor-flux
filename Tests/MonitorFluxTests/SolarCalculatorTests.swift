@@ -33,6 +33,21 @@ final class SolarCalculatorTests: XCTestCase {
         XCTAssertEqual(Double(sunset), 21 * 60 + 11, accuracy: 25)
     }
 
+    func testMismatchedLongitudeDoesNotInvertSunriseSunset() {
+        // Coordinates whose longitude is far from the time zone's UTC offset used to come
+        // back inverted (sunrise after sunset), producing a backwards color schedule. Now
+        // such a result is discarded (nil) so the schedule falls back to the manual anchors.
+        let utc = TimeZone(identifier: "UTC")!
+        let times = SolarCalculator.times(latitude: 0, longitude: 179, date: utcDate(2026, 3, 20), timeZone: utc)
+
+        if let sunrise = times.sunriseMinutes, let sunset = times.sunsetMinutes {
+            XCTAssertLessThan(sunrise, sunset, "sunrise must never come back after sunset")
+        } else {
+            XCTAssertNil(times.sunriseMinutes)
+            XCTAssertNil(times.sunsetMinutes)
+        }
+    }
+
     func testPolarSummerHasNoSunset() {
         let utc = TimeZone(identifier: "UTC")!
         let times = SolarCalculator.times(latitude: 78, longitude: 15, date: utcDate(2023, 6, 21), timeZone: utc)

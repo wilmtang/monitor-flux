@@ -15,22 +15,36 @@ struct AudioCapabilityService {
             .compactMap { name(of: $0) }
     }
 
-    /// Whether a display with this name has a matching display-audio output device.
+    /// Whether a display with this name has a matching display-audio output device. Uses
+    /// exact (normalized) name equality rather than substring matching — a substring match
+    /// wrongly flags one monitor as having audio when its name is contained in a sibling's
+    /// audio-device name (e.g. "DELL U2720" vs "DELL U2720Q"). The duplicate-name suffix
+    /// macOS adds ("… (1)") is stripped first so it still matches the bare display name.
     func displayHasAudio(named displayName: String, deviceNames: [String]) -> Bool {
         let target = Self.normalize(displayName)
         guard !target.isEmpty else {
             return false
         }
         return deviceNames.contains { audioName in
-            let candidate = Self.normalize(audioName)
-            guard !candidate.isEmpty else {
-                return false
-            }
-            return candidate == target || candidate.contains(target) || target.contains(candidate)
+            Self.normalize(Self.strippingDuplicateSuffix(audioName)) == target
         }
     }
 
-    /// Lowercase, alphanumerics only — so "DELL U2720Q" and "DELL-U2720Q (1)" compare equal.
+    /// Drop a trailing " (1)", " (2)", … that macOS appends to disambiguate duplicate
+    /// device names, leaving the underlying monitor name.
+    static func strippingDuplicateSuffix(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasSuffix(")"), let open = trimmed.lastIndex(of: "(") else {
+            return name
+        }
+        let inside = trimmed[trimmed.index(after: open)..<trimmed.index(before: trimmed.endIndex)]
+        guard !inside.isEmpty, inside.allSatisfy(\.isNumber) else {
+            return name
+        }
+        return String(trimmed[trimmed.startIndex..<open]).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Lowercase, alphanumerics only — so "DELL U2720Q" and "DELL-U2720Q" compare equal.
     static func normalize(_ value: String) -> String {
         String(value.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
     }

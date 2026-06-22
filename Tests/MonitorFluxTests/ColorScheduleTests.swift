@@ -56,6 +56,32 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertEqual(ColorSchedule.scheduledTemperature(preferences: preferences, minuteOfDay: 7 * 60 + 30), 4750)
     }
 
+    func testLongTransitionDoesNotSnapAtPhaseBoundary() {
+        // Default phases put sunset (20:00) and bedtime (21:00) only 60 min apart. A fade
+        // longer than that gap used to leave the sunset fade mid-way at 20:59 and then snap
+        // to the bedtime fade-from value at 21:00 (~2300 K jump). The fade is now capped to
+        // the gap, so the schedule stays continuous: no minute-to-minute step is large.
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .clock
+        preferences.transitionMinutes = 240
+
+        var previous = ColorSchedule.scheduledTemperature(preferences: preferences, minuteOfDay: -1)
+        var maxStep = 0
+        for minute in 0..<1440 {
+            let value = ColorSchedule.scheduledTemperature(preferences: preferences, minuteOfDay: minute)
+            maxStep = max(maxStep, abs(value - previous))
+            previous = value
+        }
+
+        // Smooth fades change by at most a few hundred K per minute; the old snap was >2000.
+        XCTAssertLessThan(maxStep, 200, "schedule should fade smoothly, not snap (max step \(maxStep) K/min)")
+
+        // Specifically across the tight sunset→bedtime boundary.
+        let before = ColorSchedule.scheduledTemperature(preferences: preferences, minuteOfDay: 20 * 60 + 59)
+        let after = ColorSchedule.scheduledTemperature(preferences: preferences, minuteOfDay: 21 * 60)
+        XCTAssertLessThan(abs(after - before), 200)
+    }
+
     func testSolarScheduleReplacesSunriseAndSunsetAnchors() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock

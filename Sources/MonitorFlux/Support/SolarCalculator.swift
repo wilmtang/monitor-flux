@@ -70,10 +70,19 @@ enum SolarCalculator {
         let julianRise = solarTransit - hourAngle / 360.0
         let julianSet = solarTransit + hourAngle / 360.0
 
-        return Times(
-            sunriseMinutes: localMinuteOfDay(julianDate: julianRise, calendar: calendar),
-            sunsetMinutes: localMinuteOfDay(julianDate: julianSet, calendar: calendar)
-        )
+        let sunrise = localMinuteOfDay(julianDate: julianRise, calendar: calendar)
+        let sunset = localMinuteOfDay(julianDate: julianSet, calendar: calendar)
+
+        // When the entered coordinates don't match the system time zone (longitude far from
+        // the zone's UTC offset), the computed rise/set can land on different local days and
+        // come back inverted (sunrise after sunset). Feeding that into the schedule would
+        // make it run backwards — warm at midday, cool at night — so discard it and let the
+        // caller fall back to the manual sunrise/sunset anchors.
+        guard sunrise < sunset else {
+            return Times(sunriseMinutes: nil, sunsetMinutes: nil)
+        }
+
+        return Times(sunriseMinutes: sunrise, sunsetMinutes: sunset)
     }
 
     private static func localMinuteOfDay(julianDate: Double, calendar: Calendar) -> Int {

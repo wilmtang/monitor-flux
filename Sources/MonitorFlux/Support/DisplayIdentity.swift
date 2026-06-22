@@ -34,6 +34,12 @@ enum DisplayIdentity {
     /// Stable keys for a connected set of displays, in input order. Two displays that share
     /// an EDID identity (a matched pair of monitors that don't report distinct serials) get
     /// an occurrence suffix so each still has its own preferences while both are connected.
+    ///
+    /// Known limitation: for such a serial-less identical pair the suffix is assigned by
+    /// input order (the system's online-display ordering), which isn't a stable physical
+    /// property — so the two panels can swap their saved settings across a reconnect or
+    /// reboot. There's no stable per-unit identifier to key off in that case; monitors that
+    /// report a distinct serial (the common case) are unaffected.
     static func keys(for sources: [Source]) -> [String] {
         var seenCount: [String: Int] = [:]
         return sources.map { source in

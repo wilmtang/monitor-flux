@@ -52,7 +52,12 @@ private final class Arm64DDCServiceCache: @unchecked Sendable {
     private let lock = NSLock()
     private var services: [CGDirectDisplayID: CFTypeRef] = [:]
 
-    func service(for id: CGDirectDisplayID, resolve: () -> CFTypeRef?) -> CFTypeRef? {
+    /// Resolve (and cache) the service for `id`, choosing the best candidate that isn't
+    /// already assigned to a *different* display. Two identical monitors (same model, no
+    /// distinct serial) score equally against every candidate, so without this they'd both
+    /// pick candidate[0] and DDC writes for the second would hit the first. `resolveRanked`
+    /// returns candidates best-first; we skip any already handed to another display.
+    func service(for id: CGDirectDisplayID, resolveRanked: () -> [CFTypeRef]) -> CFTypeRef? {
         lock.lock()
         if let cached = services[id] {
             lock.unlock()
@@ -60,15 +65,31 @@ private final class Arm64DDCServiceCache: @unchecked Sendable {
         }
         lock.unlock()
 
-        // Resolve outside the lock (the IORegistry walk is slow); last writer wins.
-        guard let resolved = resolve() else {
+        // Resolve outside the lock (the IORegistry walk is slow).
+        let ranked = resolveRanked()
+        guard !ranked.isEmpty else {
             return nil
         }
+
         lock.lock()
-        let service = services[id] ?? resolved
-        services[id] = service
+        defer { lock.unlock() }
+        if let cached = services[id] {
+            return cached
+        }
+        let assigned = services.values
+        let chosen = ranked.first { candidate in
+            !assigned.contains { ($0 as AnyObject) === (candidate as AnyObject) }
+        } ?? ranked[0]
+        services[id] = chosen
+        return chosen
+    }
+
+    /// Drop one display's cached service (e.g. after a failed write to it), leaving other
+    /// displays' cached services intact so they don't have to re-walk the IORegistry.
+    func invalidate(displayID: CGDirectDisplayID) {
+        lock.lock()
+        services[displayID] = nil
         lock.unlock()
-        return service
     }
 
     func invalidate() {
@@ -103,15 +124,16 @@ struct Arm64DDCBackend: Sendable {
         guard !display.isBuiltIn else {
             throw Arm64DDCError.builtInDisplay
         }
-        guard let service = Arm64DDCServiceCache.shared.service(for: display.id, resolve: {
-            Self.avService(for: display.id)
+        guard let service = Arm64DDCServiceCache.shared.service(for: display.id, resolveRanked: {
+            Self.avServicesRanked(for: display.id)
         }) else {
             throw Arm64DDCError.noMatchingService
         }
         guard Self.write(service: service, feature: feature, value: value) else {
             // A stale cached service (e.g. the monitor was re-plugged) can fail the write;
-            // drop it so the next attempt re-resolves from a fresh IORegistry walk.
-            Arm64DDCServiceCache.shared.invalidate()
+            // drop just this display's entry so the next attempt re-resolves, without
+            // forcing every other display to re-walk the IORegistry.
+            Arm64DDCServiceCache.shared.invalidate(displayID: display.id)
             throw Arm64DDCError.writeFailed
         }
     }
@@ -169,39 +191,35 @@ struct Arm64DDCBackend: Sendable {
     }
 
     /// Walk the IORegistry pairing each framebuffer (`AppleCLCD2` / `IOMobileFramebufferShim`)
-    /// with the external `DCPAVServiceProxy` that follows it, then match the resulting
-    /// services to `displayID` by EDID product/serial (via public CoreGraphics APIs).
-    private static func avService(for displayID: CGDirectDisplayID) -> CFTypeRef? {
+    /// with the external `DCPAVServiceProxy` that follows it, then rank the resulting services
+    /// for `displayID` by EDID product/serial match (via public CoreGraphics APIs), best
+    /// first. Ties keep IORegistry discovery order; the cache uses the ranking to give two
+    /// identical monitors distinct services instead of both taking candidate[0].
+    private static func avServicesRanked(for displayID: CGDirectDisplayID) -> [CFTypeRef] {
         let candidates = discoverCandidates()
         guard !candidates.isEmpty else {
-            return nil
+            return []
         }
 
         let model = Int64(CGDisplayModelNumber(displayID))
         let serial = Int64(CGDisplaySerialNumber(displayID))
 
-        var best: (score: Int, service: CFTypeRef)?
-        for candidate in candidates {
-            var score = 0
-            if serial != 0, candidate.serialNumber == serial {
-                score += 5
+        return candidates
+            .enumerated()
+            .map { index, candidate -> (score: Int, index: Int, service: CFTypeRef) in
+                var score = 0
+                if serial != 0, candidate.serialNumber == serial {
+                    score += 5
+                }
+                if model != 0, candidate.productID == model {
+                    score += 3
+                }
+                return (score, index, candidate.service)
             }
-            if model != 0, candidate.productID == model {
-                score += 3
+            .sorted { first, second in
+                first.score != second.score ? first.score > second.score : first.index < second.index
             }
-            if best == nil || score > best!.score {
-                best = (score, candidate.service)
-            }
-        }
-
-        if let best, best.score > 0 {
-            return best.service
-        }
-        // No identity match: a single external display/service pair is unambiguous.
-        if candidates.count == 1 {
-            return candidates[0].service
-        }
-        return best?.service
+            .map(\.service)
     }
 
     private static func discoverCandidates() -> [Candidate] {

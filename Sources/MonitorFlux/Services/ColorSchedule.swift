@@ -76,11 +76,22 @@ enum ColorSchedule {
         let active = anchors[0]
         let previous = anchors[1]
 
-        if transition > 0, active.since < transition {
+        // Cap the fade so it finishes before the next phase begins. Otherwise, with a
+        // transition longer than the gap between two phases (e.g. the default 60-min
+        // sunset→bedtime spacing and a fade > 60), the previous phase's own fade is still
+        // mid-way when this phase starts, and fading from `previous.temperature` (its
+        // target, not the on-screen value) would snap the color. `anchors` is sorted by
+        // "minutes since it began", so the largest `since` is the next phase to restart;
+        // the gap from this phase's start to that one is `active.since + 1440 - maxSince`.
+        let maxSince = anchors[anchors.count - 1].since
+        let gapToNextPhase = active.since + 1440 - maxSince
+        let effectiveTransition = min(transition, gapToNextPhase)
+
+        if effectiveTransition > 0, active.since < effectiveTransition {
             return interpolate(
                 from: previous.temperature,
                 to: active.temperature,
-                progress: Double(active.since) / Double(transition)
+                progress: Double(active.since) / Double(effectiveTransition)
             )
         }
 

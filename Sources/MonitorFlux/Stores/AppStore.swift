@@ -498,8 +498,12 @@ final class AppStore: ObservableObject {
             } catch {
                 failureMessage = error.localizedDescription
             }
-            Task { @MainActor in
-                self?.ddcMessage = failureMessage ?? "Applied volume \(value)% to \(displayName)"
+            // DispatchQueue.main.async preserves submission (FIFO) order; separate Tasks
+            // don't, so a stale "Applied N%" could otherwise land after a newer write.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.ddcMessage = failureMessage ?? "Applied volume \(value)% to \(displayName)"
+                }
             }
         }
     }
@@ -680,8 +684,11 @@ final class AppStore: ObservableObject {
             } catch {
                 failureMessage = error.localizedDescription
             }
-            Task { @MainActor in
-                self?.ddcMessage = failureMessage ?? "Applied \(label) \(value)% to \(displayName)"
+            // FIFO main-queue hop so status messages can't arrive out of order (see applyVolume).
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.ddcMessage = failureMessage ?? "Applied \(label) \(value)% to \(displayName)"
+                }
             }
         }
     }
