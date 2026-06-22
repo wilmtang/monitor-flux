@@ -45,6 +45,14 @@ struct HardwareDDCBackend: Sendable {
         )
     }
 
+    /// Drop any cached per-display I2C service handles. Called when the display layout
+    /// changes so a re-plugged monitor re-resolves instead of writing to a stale handle.
+    func invalidateServiceCache() {
+        #if arch(arm64)
+        Arm64DDCBackend.invalidateServiceCache()
+        #endif
+    }
+
     func setBrightness(_ value: Int, display: DisplayInfo, fallbackIndex: Int) throws {
         try perform(
             primary: { try primarySetBrightness(value, display: display) },

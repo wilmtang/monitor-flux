@@ -13,7 +13,8 @@ struct MonitorFluxApp: App {
         } label: {
             // The menu bar label renders at launch even when no window is open, so
             // it's where we wire the delegate and apply the launch activation policy.
-            Image(systemName: "sun.max")
+            // thermometer.sun.fill = color temperature, distinct from MonitorControl's sun.
+            Image(systemName: "thermometer.sun.fill")
                 .onAppear {
                     appDelegate.store = store
                     store.refreshActivationPolicy()
@@ -40,10 +41,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        // Test hook: open the detailed window at launch so a smoke test can verify it
-        // renders (the menu-bar popup that normally opens it can't be scripted).
-        if ProcessInfo.processInfo.environment["MONITORFLUX_OPEN_MAIN"] == "1" {
-            store?.showMainWindow()
+        // Test hooks: drive the detailed window at launch so a smoke test can verify it
+        // (the menu-bar popup that normally opens it can't be scripted reliably).
+        switch ProcessInfo.processInfo.environment["MONITORFLUX_OPEN_MAIN"] {
+        case "1":
+            // `activating: false`: show the window for the smoke test without pulling the
+            // app to the foreground or stealing focus from the developer's current work.
+            store?.showMainWindow(activating: false)
+        case "reopen":
+            // Open → close → reopen. This is the path users hit by closing the window
+            // and clicking Settings again; a regression leaves the reopened window
+            // off-screen/oversized, so the smoke test finds no on-screen window.
+            runReopenCycle()
+        default:
+            break
+        }
+    }
+
+    /// Used only by the `MONITORFLUX_OPEN_MAIN=reopen` smoke test. Real runloop gaps
+    /// between the steps let SwiftUI lay out (and, on a regression, mis-size) the window.
+    /// Non-activating throughout so running the test doesn't steal focus.
+    private func runReopenCycle() {
+        store?.showMainWindow(activating: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            NSApp.windows.first {
+                $0.styleMask.contains(.titled) && $0.title == "MonitorFlux"
+            }?.close()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                self?.store?.showMainWindow(activating: false)
+            }
         }
     }
 
@@ -56,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        store?.flushPendingPreferencesSave()
         store?.restoreColorTables()
     }
 }

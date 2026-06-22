@@ -240,6 +240,55 @@ struct AppPreferences: Codable, Equatable, Sendable {
 }
 
 extension AppPreferences {
+    /// The subset of state that changes the gamma/color output. Mutating only DDC or
+    /// native-backlight values (a brightness/contrast/volume drag) leaves this unchanged,
+    /// so the relatively expensive main-thread gamma recompute can be skipped — that's
+    /// what keeps a hardware drag smooth. Time-of-day is excluded on purpose: the 60s
+    /// timer drives clock-based temperature changes, not preference mutations.
+    struct ColorSignature: Equatable {
+        var gammaEnabled: Bool
+        var colorMode: ColorMode
+        var manualTemperature: Int
+        var dayTemperature: Int
+        var sunsetTemperature: Int
+        var nightTemperature: Int
+        var warmStartMinutes: Int
+        var coolStartMinutes: Int
+        var sunsetStartMinutes: Int
+        var transitionMinutes: Int
+        var scheduleSource: ScheduleSource
+        var latitude: String
+        var longitude: String
+        /// Per display: the gamma-affecting fields, keyed by display key.
+        var perDisplay: [String: [Int]]
+    }
+
+    var colorSignature: ColorSignature {
+        ColorSignature(
+            gammaEnabled: gammaEnabled,
+            colorMode: colorMode,
+            manualTemperature: manualTemperature,
+            dayTemperature: dayTemperature,
+            sunsetTemperature: sunsetTemperature,
+            nightTemperature: nightTemperature,
+            warmStartMinutes: warmStartMinutes,
+            coolStartMinutes: coolStartMinutes,
+            sunsetStartMinutes: sunsetStartMinutes,
+            transitionMinutes: transitionMinutes,
+            scheduleSource: scheduleSource,
+            latitude: latitude,
+            longitude: longitude,
+            perDisplay: displayPreferences.mapValues { displayPreferences in
+                [
+                    displayPreferences.colorEnabled ? 1 : 0,
+                    displayPreferences.gammaControlsEnabled ? 1 : 0,
+                    displayPreferences.gammaBrightness,
+                    displayPreferences.gammaContrast,
+                ]
+            }
+        )
+    }
+
     /// The stored color temperature for a schedule phase.
     func temperature(for phase: ColorPhase) -> Int {
         switch phase {

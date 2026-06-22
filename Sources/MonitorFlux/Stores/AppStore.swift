@@ -15,8 +15,14 @@ final class AppStore: ObservableObject {
                 preferences = normalized
                 return
             }
-            PreferencesStore.save(preferences)
-            reconcileColor()
+            // Coalesce disk writes and skip the gamma recompute unless a color-affecting
+            // field actually changed. A continuous brightness/contrast/volume drag fires
+            // this dozens of times a second; doing a synchronous save + full gamma pass on
+            // every tick is what made the controls feel laggy next to MonitorControl.
+            schedulePreferencesSave()
+            if oldValue.colorSignature != preferences.colorSignature {
+                reconcileColor()
+            }
         }
     }
     @Published private(set) var currentTemperature: Int?
@@ -38,9 +44,16 @@ final class AppStore: ObservableObject {
     private let ddcBackend = HardwareDDCBackend()
     private let nativeBrightnessBackend = NativeBrightnessBackend()
     private let gammaService = GammaTemperatureService()
-    private var mainWindow: NSWindow?
+    private var mainWindow: MainWindow?
     private var timer: Timer?
+    /// Trailing (coalesced) DDC writes per control, and the last time each one actually
+    /// wrote, so `scheduleDDC` can throttle a drag instead of only firing on release.
     private var ddcWriteWorkItems: [String: DispatchWorkItem] = [:]
+    private var ddcLastWrite: [String: DispatchTime] = [:]
+    /// Serializes the actual I2C writes so a throttled drag can't overlap two writes to
+    /// the same bus. `.userInitiated` keeps the monitor responsive during a drag.
+    private let ddcQueue = DispatchQueue(label: "app.monitorflux.ddc", qos: .userInitiated)
+    private var pendingPreferencesSave: DispatchWorkItem?
     private var displayRefreshGeneration = 0
     private var cancellables = Set<AnyCancellable>()
 
@@ -129,6 +142,8 @@ final class AppStore: ObservableObject {
     }
 
     func refreshDisplays() {
+        // The display layout may have changed; cached DDC service handles can be stale.
+        ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays()
         refreshNativeBrightness()
         if !seedMissingDisplayPreferences() {
@@ -184,6 +199,26 @@ final class AppStore: ObservableObject {
         preferences = next.normalized()
     }
 
+    /// Persist preferences shortly after the last change rather than on every mutation, so
+    /// a continuous slider drag doesn't encode + write the whole blob dozens of times a
+    /// second. Flushed eagerly on quit so nothing is lost.
+    private func schedulePreferencesSave() {
+        pendingPreferencesSave?.cancel()
+        let snapshot = preferences
+        let item = DispatchWorkItem { PreferencesStore.save(snapshot) }
+        pendingPreferencesSave = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
+    }
+
+    func flushPendingPreferencesSave() {
+        guard let pending = pendingPreferencesSave else {
+            return
+        }
+        pending.cancel()
+        pendingPreferencesSave = nil
+        PreferencesStore.save(preferences)
+    }
+
     func setStartAtLogin(_ isEnabled: Bool) {
         do {
             try LoginItemService.setEnabled(isEnabled)
@@ -221,23 +256,81 @@ final class AppStore: ObservableObject {
     /// `WindowGroup` so there is exactly one instance and its content/environment always
     /// binds — `openWindow` from a `.window` `MenuBarExtra` in an accessory app opens
     /// blank, duplicate windows.
-    func showMainWindow() {
-        if mainWindow == nil {
-            let controller = NSHostingController(rootView: ContentView().environmentObject(self))
-            let window = NSWindow(contentViewController: controller)
-            window.title = "MonitorFlux"
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 880, height: 600))
-            window.minSize = NSSize(width: 720, height: 500)
-            window.isReleasedWhenClosed = false
-            window.isRestorable = false
-            window.center()
-            window.setFrameAutosaveName("MonitorFluxMainWindow")
-            mainWindow = window
+    /// - Parameter activating: when true (the real "Settings…" path) the app comes to the
+    ///   foreground and the window takes keyboard focus. The smoke test passes false so it
+    ///   can put the window on screen for `CGWindowList` without yanking focus away from
+    ///   whatever the user is doing while tests run.
+    func showMainWindow(activating: Bool = true) {
+        let window = mainWindow ?? makeMainWindow()
+        mainWindow = window
+        // Reopening a closed window, or restoring a frame saved on a now-disconnected
+        // display, can leave it sized or positioned off every screen — it orders front
+        // but is invisible, so "Settings" looks like it does nothing. Re-anchor first.
+        ensureWindowIsUsable(window)
+        if activating {
+            window.allowsActivation = true
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        } else {
+            // Test path: the window must appear on screen for CGWindowList, but showing it
+            // must not pull focus from the developer's work. Making the window unable to
+            // become key/main means ordering it front doesn't activate the app — which is
+            // exactly what was stealing focus when running the tests.
+            window.allowsActivation = false
+            window.orderFront(nil)
         }
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        mainWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private static let mainWindowDefaultSize = NSSize(width: 880, height: 600)
+
+    private func makeMainWindow() -> MainWindow {
+        let window = MainWindow(
+            contentRect: NSRect(origin: .zero, size: Self.mainWindowDefaultSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "MonitorFlux"
+        // Use an `NSHostingView` as the content view rather than
+        // `NSWindow(contentViewController:)`: a hosting *controller* drives the window
+        // size from SwiftUI's fitting size, so a closed-then-reopened window re-fit its
+        // content to a giant height and ordered front off-screen. A content *view* lays
+        // out inside whatever frame we set and never resizes the window.
+        window.contentView = NSHostingView(rootView: ContentView().environmentObject(self))
+        window.contentMinSize = NSSize(width: 720, height: 500)
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.center()
+        window.setFrameAutosaveName("MonitorFluxMainWindow")
+        return window
+    }
+
+    /// Reset the window to a sane, on-screen frame when it would otherwise be invisible:
+    /// larger than any display, or with too little overlap with a screen to see or grab.
+    /// A well-placed, user-resized frame is left untouched.
+    private func ensureWindowIsUsable(_ window: NSWindow) {
+        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+        guard !visibleFrames.isEmpty else {
+            return
+        }
+        let frame = window.frame
+        let frameArea = frame.width * frame.height
+
+        let oversized = visibleFrames.allSatisfy { screen in
+            frame.width > screen.width || frame.height > screen.height
+        }
+        let visibleArea = visibleFrames.reduce(CGFloat(0)) { total, screen in
+            let overlap = screen.intersection(frame)
+            return overlap.isNull ? total : total + overlap.width * overlap.height
+        }
+        let mostlyOffscreen = frameArea <= 0 || visibleArea < frameArea * 0.5
+
+        if oversized || mostlyOffscreen {
+            window.setContentSize(Self.mainWindowDefaultSize)
+            window.center()
+        }
     }
 
     func setKeyboardControl(_ isEnabled: Bool) {
@@ -361,16 +454,17 @@ final class AppStore: ObservableObject {
         ddcMessage = "Applying volume \(value)% to \(display.name)"
         let backend = ddcBackend
         let displayName = display.name
-        Task { @MainActor in
-            let failureMessage = await Task.detached {
-                do {
-                    try backend.setVolume(value, display: display)
-                    return nil as String?
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
-            ddcMessage = failureMessage ?? "Applied volume \(value)% to \(displayName)"
+        ddcQueue.async { [weak self] in
+            let failureMessage: String?
+            do {
+                try backend.setVolume(value, display: display)
+                failureMessage = nil
+            } catch {
+                failureMessage = error.localizedDescription
+            }
+            Task { @MainActor in
+                self?.ddcMessage = failureMessage ?? "Applied volume \(value)% to \(displayName)"
+            }
         }
     }
 
@@ -403,17 +497,41 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// How often a held drag is allowed to push a DDC write. Throttling (rather than the
+    /// old trailing-only debounce) lets the monitor track the slider live instead of only
+    /// jumping once the user lets go — the behaviour that made MonitorControl feel smoother.
+    private static let ddcThrottleInterval = 0.045
+
     private func scheduleDDC(key: String, for display: DisplayInfo, _ apply: @escaping () -> Void) {
         guard canUseDDC(for: display) else {
             return
         }
+        let now = DispatchTime.now()
+        let elapsed = ddcLastWrite[key].map {
+            Double(now.uptimeNanoseconds &- $0.uptimeNanoseconds) / 1_000_000_000
+        } ?? .infinity
+
+        // A newer value supersedes any still-pending trailing write for this control.
         ddcWriteWorkItems[key]?.cancel()
+        ddcWriteWorkItems[key] = nil
+
+        guard elapsed < Self.ddcThrottleInterval else {
+            // Leading edge: enough time has passed, write now so the monitor tracks.
+            ddcLastWrite[key] = now
+            apply()
+            return
+        }
+
+        // Trailing edge: coalesce until the throttle window elapses, then write the
+        // latest value so the drag still settles on exactly where the user left it.
+        let delay = Self.ddcThrottleInterval - elapsed
         let item = DispatchWorkItem { [weak self] in
             self?.ddcWriteWorkItems[key] = nil
+            self?.ddcLastWrite[key] = DispatchTime.now()
             apply()
         }
         ddcWriteWorkItems[key] = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: item)
+        DispatchQueue.main.asyncAfter(deadline: now + delay, execute: item)
     }
 
     func restoreColorTables() {
@@ -465,9 +583,18 @@ final class AppStore: ObservableObject {
 
         for display in displays {
             if next.displayPreferences[display.key] == nil {
-                var displayPreferences = DisplayPreferences()
-                displayPreferences.ddcDisplayIndex = display.isBuiltIn ? 1 : externalIndex
-                next.displayPreferences[display.key] = displayPreferences
+                // Carry settings forward from the old display-ID key (pre stable-identity
+                // builds) when this monitor is still on the same ID this session, so the
+                // switch to a stable key doesn't reset the user's brightness/contrast/color.
+                let legacyKey = String(display.id)
+                if legacyKey != display.key, let legacy = next.displayPreferences[legacyKey] {
+                    next.displayPreferences[display.key] = legacy
+                    next.displayPreferences[legacyKey] = nil
+                } else {
+                    var displayPreferences = DisplayPreferences()
+                    displayPreferences.ddcDisplayIndex = display.isBuiltIn ? 1 : externalIndex
+                    next.displayPreferences[display.key] = displayPreferences
+                }
                 changed = true
             }
 
@@ -504,27 +631,39 @@ final class AppStore: ObservableObject {
         let backend = ddcBackend
         let displayName = display.name
 
-        Task { @MainActor in
-            let failureMessage = await Task.detached {
-                do {
-                    switch kind {
-                    case .brightness:
-                        try backend.setBrightness(value, display: display, fallbackIndex: displayIndex)
-                    case .contrast:
-                        try backend.setContrast(value, display: display, fallbackIndex: displayIndex)
-                    }
-                    return nil as String?
-                } catch {
-                    return error.localizedDescription
+        ddcQueue.async { [weak self] in
+            let failureMessage: String?
+            do {
+                switch kind {
+                case .brightness:
+                    try backend.setBrightness(value, display: display, fallbackIndex: displayIndex)
+                case .contrast:
+                    try backend.setContrast(value, display: display, fallbackIndex: displayIndex)
                 }
-            }.value
-
-            if let failureMessage {
-                ddcMessage = failureMessage
-            } else {
-                ddcMessage = "Applied \(label) \(value)% to \(displayName)"
+                failureMessage = nil
+            } catch {
+                failureMessage = error.localizedDescription
+            }
+            Task { @MainActor in
+                self?.ddcMessage = failureMessage ?? "Applied \(label) \(value)% to \(displayName)"
             }
         }
+    }
+}
+
+/// The detailed window. Subclassing `NSWindow` lets the smoke test show it on screen
+/// without activating the app: when `allowsActivation` is false the window can't become
+/// key or main, so ordering it front leaves focus with whatever app the developer is using.
+/// Real use sets `allowsActivation` true, so it behaves like an ordinary window.
+final class MainWindow: NSWindow {
+    var allowsActivation = true
+
+    override var canBecomeKey: Bool {
+        allowsActivation
+    }
+
+    override var canBecomeMain: Bool {
+        allowsActivation
     }
 }
 

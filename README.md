@@ -121,18 +121,20 @@ The tests cover schedule math, gamma composition, gamma planning, DDC packet
 construction, and preference migration/normalization.
 
 For UI/integration regressions that unit tests can't catch (the window not opening,
-opening blank, or opening duplicates), there's a launch smoke test:
+opening blank, opening duplicates, or opening off-screen), there's a launch smoke test:
 
 ```sh
 ./script/smoke_test.sh
 ```
 
-It builds the app, launches it with the detailed window opened
-(`MONITORFLUX_OPEN_MAIN=1`), and asserts via `CGWindowList` that exactly one sizable
-window is on screen. For deeper assertions ("a Brightness slider exists and dragging it
-changes state"), the right tool is **XCUITest** (Apple's accessibility-driven UI test
-framework) — it needs an Xcode app target + UI-test target, which a pure SwiftPM package
-doesn't provide.
+It builds the app and runs two scenarios: `MONITORFLUX_OPEN_MAIN=1` (open the detailed
+window once) and `MONITORFLUX_OPEN_MAIN=reopen` (open, close, then reopen — what users hit
+by clicking Settings again after closing). For each it asserts via `CGWindowList` that
+exactly one sizable window is on screen **and substantially within a display** — the
+containment check is what catches a reopened window that orders front off-screen or
+oversized. For deeper assertions ("a Brightness slider exists and dragging it changes
+state"), the right tool is **XCUITest** (Apple's accessibility-driven UI test framework) —
+it needs an Xcode app target + UI-test target, which a pure SwiftPM package doesn't provide.
 
 ## Acknowledgements
 

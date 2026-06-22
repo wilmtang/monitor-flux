@@ -74,11 +74,17 @@ codesign --force --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
 
 # In safe mode the app drives its UI but performs no gamma/DDC/backlight writes, so it
 # doesn't fight f.lux/MonitorControl or flicker the screen. Used for verify/smoke runs.
+# BACKGROUND=1 adds `open -g` so the app doesn't grab focus — used by --verify so building
+# during a test run doesn't interrupt the developer.
 open_app() {
+  local bg_flag=""
+  if [ "${BACKGROUND:-0}" = "1" ]; then
+    bg_flag="-g"
+  fi
   if [ "${SAFE_MODE:-0}" = "1" ]; then
-    MONITORFLUX_SAFE_MODE=1 /usr/bin/open -n "$APP_BUNDLE"
+    MONITORFLUX_SAFE_MODE=1 /usr/bin/open $bg_flag -n "$APP_BUNDLE"
   else
-    /usr/bin/open -n "$APP_BUNDLE"
+    /usr/bin/open $bg_flag -n "$APP_BUNDLE"
   fi
 }
 
@@ -103,6 +109,7 @@ case "$MODE" in
     ;;
   --verify|verify)
     SAFE_MODE=1
+    BACKGROUND=1
     open_app
     sleep 1
     pgrep -x "$APP_NAME" >/dev/null

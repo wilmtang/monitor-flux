@@ -42,8 +42,45 @@ enum Arm64DDCError: LocalizedError, Sendable {
     }
 }
 
-/// Stateless Apple Silicon DDC writer. Like `NativeDDCBackend`, it resolves the display's
-/// service per call (no cached `CFTypeRef` state to keep it `Sendable` for detached writes).
+/// Caches the resolved `IOAVService` per display so a brightness/contrast/volume drag
+/// doesn't walk the whole IORegistry on every write — the per-write walk was a real source
+/// of DDC lag. Thread-safe because writes run on a background serial queue. Invalidated on
+/// display reconfiguration, where a hot-plug can hand the same `CGDirectDisplayID` a new
+/// service.
+private final class Arm64DDCServiceCache: @unchecked Sendable {
+    static let shared = Arm64DDCServiceCache()
+    private let lock = NSLock()
+    private var services: [CGDirectDisplayID: CFTypeRef] = [:]
+
+    func service(for id: CGDirectDisplayID, resolve: () -> CFTypeRef?) -> CFTypeRef? {
+        lock.lock()
+        if let cached = services[id] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        // Resolve outside the lock (the IORegistry walk is slow); last writer wins.
+        guard let resolved = resolve() else {
+            return nil
+        }
+        lock.lock()
+        let service = services[id] ?? resolved
+        services[id] = service
+        lock.unlock()
+        return service
+    }
+
+    func invalidate() {
+        lock.lock()
+        services.removeAll()
+        lock.unlock()
+    }
+}
+
+/// Apple Silicon DDC writer. Resolves each display's `IOAVService` once and caches it
+/// (see `Arm64DDCServiceCache`); stays a `Sendable` value type so it can be used from the
+/// background DDC queue.
 struct Arm64DDCBackend: Sendable {
     func setBrightness(_ value: Int, display: DisplayInfo) throws {
         try setVCPFeature(0x10, value: value, display: display)
@@ -57,14 +94,24 @@ struct Arm64DDCBackend: Sendable {
         try setVCPFeature(0x62, value: value, display: display)
     }
 
+    /// Drop any cached `IOAVService`s; call when the display layout changes.
+    static func invalidateServiceCache() {
+        Arm64DDCServiceCache.shared.invalidate()
+    }
+
     func setVCPFeature(_ feature: UInt8, value: Int, display: DisplayInfo) throws {
         guard !display.isBuiltIn else {
             throw Arm64DDCError.builtInDisplay
         }
-        guard let service = Self.avService(for: display.id) else {
+        guard let service = Arm64DDCServiceCache.shared.service(for: display.id, resolve: {
+            Self.avService(for: display.id)
+        }) else {
             throw Arm64DDCError.noMatchingService
         }
         guard Self.write(service: service, feature: feature, value: value) else {
+            // A stale cached service (e.g. the monitor was re-plugged) can fail the write;
+            // drop it so the next attempt re-resolves from a fresh IORegistry walk.
+            Arm64DDCServiceCache.shared.invalidate()
             throw Arm64DDCError.writeFailed
         }
     }
@@ -87,8 +134,10 @@ struct Arm64DDCBackend: Sendable {
 
     private static func write(service: CFTypeRef, feature: UInt8, value: Int) -> Bool {
         var bytes = packet(feature: feature, value: value)
+        // No settle delay before the first attempt: with the service cached, the common
+        // (success-on-first-try) path is now a single fast I2C write. Only back off
+        // between retries, where a brief pause genuinely helps a busy bus recover.
         for attempt in 0..<5 {
-            usleep(10000)
             let result = bytes.withUnsafeMutableBytes { buffer -> IOReturn in
                 guard let base = buffer.baseAddress else {
                     return kIOReturnBadArgument

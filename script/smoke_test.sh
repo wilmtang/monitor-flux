@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# End-to-end smoke test: builds the app, launches it with the detailed window opened
-# (MONITORFLUX_OPEN_MAIN=1), and asserts via CGWindowList that exactly one sizable
-# window is on screen. This catches the class of bug unit tests can't — the window not
-# opening, opening blank-framed, or opening duplicates.
+# End-to-end smoke test: builds the app, launches it driving the detailed window, and
+# asserts via CGWindowList that exactly one sizable window is on screen and substantially
+# within a display. This catches the class of bug unit tests can't — the window not
+# opening, opening blank-framed, opening duplicates, or (the reopen-after-close
+# regression) opening off-screen/oversized so "Settings" appears to do nothing.
+#
+# It runs two scenarios:
+#   open    (MONITORFLUX_OPEN_MAIN=1)      — the window opens once.
+#   reopen  (MONITORFLUX_OPEN_MAIN=reopen) — open, close, then reopen; this is what users
+#                                            hit clicking Settings again after closing.
 #
 # For deeper UI assertions ("a Brightness slider exists and moving it changes state"),
 # use XCUITest, which needs an Xcode app+UITest target — see README/agent.md.
@@ -20,14 +26,31 @@ pkill -x MonitorFlux >/dev/null 2>&1 || true
 sleep 1
 
 # Safe mode: drive the UI but write no gamma/DDC/backlight, so the smoke test never
-# flickers the screen or fights f.lux/MonitorControl.
-MONITORFLUX_SAFE_MODE=1 MONITORFLUX_OPEN_MAIN=1 /usr/bin/open -n "$APP_BUNDLE"
-sleep 2
+# flickers the screen or fights f.lux/MonitorControl. The reopen scenario needs extra
+# settle time because the app opens, closes, then reopens the window with runloop gaps.
+run_scenario() {
+  local mode="$1" settle="$2"
+  echo "scenario: MONITORFLUX_OPEN_MAIN=$mode"
+  # -g launches in the background; combined with the app's non-activating test path, the
+  # window appears for CGWindowList without stealing focus from the developer's work.
+  MONITORFLUX_SAFE_MODE=1 MONITORFLUX_OPEN_MAIN="$mode" /usr/bin/open -gn "$APP_BUNDLE"
+  sleep "$settle"
+  set +e
+  swift "$ROOT_DIR/script/check_main_window.swift"
+  local result=$?
+  set -e
+  pkill -x MonitorFlux >/dev/null 2>&1 || true
+  sleep 1
+  return "$result"
+}
 
-set +e
-swift "$ROOT_DIR/script/check_main_window.swift"
-RESULT=$?
-set -e
+RESULT=0
+run_scenario 1 2 || RESULT=1
+run_scenario reopen 3 || RESULT=1
 
-pkill -x MonitorFlux >/dev/null 2>&1 || true
+if [ "$RESULT" -eq 0 ]; then
+  echo "smoke test: PASS"
+else
+  echo "smoke test: FAIL"
+fi
 exit "$RESULT"

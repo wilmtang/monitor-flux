@@ -20,14 +20,14 @@ final class DisplayService {
         let error = CGGetOnlineDisplayList(maxDisplays, &displayIDs, &displayCount)
 
         guard error == .success else {
-            return NSScreen.screens.compactMap { screen in
+            let fallbackIDs = NSScreen.screens.compactMap { screen -> CGDirectDisplayID? in
                 let key = NSDeviceDescriptionKey("NSScreenNumber")
                 guard let number = screen.deviceDescription[key] as? NSNumber else {
                     return nil
                 }
-                let displayID = CGDirectDisplayID(number.uint32Value)
-                return makeDisplayInfo(id: displayID, name: screen.localizedName)
+                return CGDirectDisplayID(number.uint32Value)
             }
+            return makeDisplayInfos(ids: fallbackIDs, names: screenNames)
         }
 
         if displayCount == maxDisplays {
@@ -36,12 +36,31 @@ final class DisplayService {
             _ = CGGetOnlineDisplayList(maxDisplays, &displayIDs, &displayCount)
         }
 
-        return displayIDs
-            .prefix(Int(displayCount))
-            .map { displayID in
+        return makeDisplayInfos(ids: Array(displayIDs.prefix(Int(displayCount))), names: screenNames)
+    }
+
+    /// Build `DisplayInfo`s with stable EDID-based keys. Keys are assigned across the whole
+    /// set at once so identical monitors (which share an EDID identity) can be disambiguated.
+    private func makeDisplayInfos(
+        ids: [CGDirectDisplayID],
+        names: [CGDirectDisplayID: String]
+    ) -> [DisplayInfo] {
+        let sources = ids.map { id in
+            DisplayIdentity.Source(
+                vendor: CGDisplayVendorNumber(id),
+                model: CGDisplayModelNumber(id),
+                serial: CGDisplaySerialNumber(id),
+                displayID: id
+            )
+        }
+        let keys = DisplayIdentity.keys(for: sources)
+
+        return zip(ids, keys)
+            .map { id, persistentID in
                 makeDisplayInfo(
-                    id: displayID,
-                    name: screenNames[displayID] ?? "Display \(displayID)"
+                    id: id,
+                    name: names[id] ?? "Display \(id)",
+                    persistentID: persistentID
                 )
             }
             .sorted { first, second in
@@ -52,13 +71,18 @@ final class DisplayService {
             }
     }
 
-    private func makeDisplayInfo(id: CGDirectDisplayID, name: String) -> DisplayInfo {
+    private func makeDisplayInfo(
+        id: CGDirectDisplayID,
+        name: String,
+        persistentID: String
+    ) -> DisplayInfo {
         let bounds = CGDisplayBounds(id)
         let size = "\(Int(bounds.width)) x \(Int(bounds.height))"
         let origin = "(\(Int(bounds.origin.x)), \(Int(bounds.origin.y)))"
         return DisplayInfo(
             id: id,
             name: name,
+            persistentID: persistentID,
             frameDescription: "\(size) @ \(origin)",
             isBuiltIn: CGDisplayIsBuiltin(id) != 0,
             isOnline: CGDisplayIsOnline(id) != 0
