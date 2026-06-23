@@ -43,6 +43,35 @@ the panel — the exact control the monitor's own brightness buttons use. So:
   monitor `100%` sits well below its HDR highlight nits — same as holding the monitor's
   brightness-up button to the top.
 
+## DDC vs gamma dimming — which to use
+
+**For actually dimming brightness, DDC (real backlight) wins.** Gamma dimming is for color
+warming, for going *below* the hardware floor, or as a fallback when DDC/backlight isn't
+available. The difference: DDC lowers the monitor's **actual backlight** (fewer photons);
+gamma leaves the backlight at full power and just tells the GPU to output **darker pixels**.
+
+| | **DDC** (real backlight) | **Gamma** (software) |
+|---|---|---|
+| Real light reduction? | **Yes** — fewer photons, easier on the eyes | No — backlight unchanged; only the signal is darkened |
+| Image quality | full bit depth & contrast preserved | **banding / posterization** — scaling values into a smaller range loses precision |
+| Contrast (LCD) | unchanged | **drops** — blacks stay lit, so they gray out vs dimmed whites |
+| Power / OLED wear | **lower** (less emission) | no savings |
+| Where it works | external monitors only (DDC/CI) | **any** display, incl. the built-in panel |
+| Speed | slower (I²C bus) | instant (GPU-side) |
+| Color temperature | can't | **only** way to warm color |
+| How low it goes | stops at the monitor's lit floor | can go much darker, toward black |
+
+Gamma genuinely wins for: warming color temperature (the f.lux-style night warmth), dimming
+**below** the hardware minimum (a pitch-dark room), the **universal fallback** for the
+built-in panel or any monitor without DDC, and avoiding **PWM** flicker (hold the backlight
+high, dim via gamma). MonitorFlux follows this: hardware for brightness (DDC for external,
+the real backlight for built-in), gamma for color warmth and as the brightness fallback.
+
+Night-use tip: **DDC/backlight to dim + gamma only to warm** — real light reduction without
+the banding, plus the warm tone. Stacking gamma brightness on an already-low backlight is
+where banding shows up, so lean on the hardware slider for brightness and the ambience slider
+for warmth.
+
 ## UI
 
 - The **menu bar popup** (`QuickControlsView`, `.menuBarExtraStyle(.window)`) is
