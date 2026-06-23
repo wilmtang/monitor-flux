@@ -1,9 +1,13 @@
 import Carbon.HIToolbox
 import SwiftUI
 
-/// A control that records a global keyboard shortcut: click to arm, then press a combo (with
-/// at least one modifier, so a bare key can't be globally swallowed). Escape cancels; the ✕
-/// clears it. Captures via a local key monitor while the Settings window is focused.
+/// Records a global keyboard shortcut: click to arm, then press a combo (with at least one
+/// modifier, so a bare key can't be globally swallowed). Escape cancels; ✕ clears.
+///
+/// Capture uses an app-level local `NSEvent` monitor rather than an NSView in the responder
+/// chain: SwiftUI doesn't reliably route key events to an embedded NSView, but a local
+/// monitor sees every key the app receives — including ⌘ combos, which arrive as keyDown
+/// events here before they're turned into menu key-equivalents.
 struct ShortcutRecorder: View {
     let label: String
     var hasConflict = false
@@ -21,7 +25,9 @@ struct ShortcutRecorder: View {
                     .foregroundStyle(.yellow)
                     .help("This shortcut is already used by another app — pick a different combination.")
             }
-            Button(action: toggle) {
+            Button {
+                toggle()
+            } label: {
                 Text(buttonTitle)
                     .font(.callout.monospaced())
                     .frame(minWidth: 96)
@@ -29,7 +35,9 @@ struct ShortcutRecorder: View {
             .buttonStyle(.bordered)
             .help(isRecording ? "Press a shortcut, or Escape to cancel" : "Record a shortcut")
 
-            Button(action: clear) {
+            Button {
+                shortcut = nil
+            } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
             }
@@ -48,7 +56,11 @@ struct ShortcutRecorder: View {
     }
 
     private func toggle() {
-        isRecording ? stop() : start()
+        if isRecording {
+            stop()
+        } else {
+            start()
+        }
     }
 
     private func start() {
@@ -59,10 +71,10 @@ struct ShortcutRecorder: View {
                 return nil
             }
             let modifiers = Self.carbonModifiers(from: event.modifierFlags)
-            // Require a modifier so we never register a bare key that would be swallowed
-            // globally (which would break normal typing of that key).
+            // Require a modifier so a bare key isn't registered (it would be swallowed
+            // globally). Let unmodified keys pass through to the app unchanged.
             guard modifiers != 0 else {
-                return nil
+                return event
             }
             shortcut = GlobalShortcut(keyCode: UInt32(event.keyCode), carbonModifiers: modifiers)
             stop()
@@ -76,10 +88,6 @@ struct ShortcutRecorder: View {
             NSEvent.removeMonitor(monitor)
         }
         monitor = nil
-    }
-
-    private func clear() {
-        shortcut = nil
     }
 
     static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {

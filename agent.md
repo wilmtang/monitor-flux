@@ -32,7 +32,23 @@ pkill -x MonitorFlux || true
   `NSHostingController` managed by `AppStore.showMainWindow()` — NOT a `WindowGroup`/
   `Settings` scene, because `openWindow` from a `.window` `MenuBarExtra` in an accessory
   app opens blank, duplicate windows. All app-level settings (Dock/keyboard/login) live
-  in the window's "General" pane so they're reachable without an app menu.
+  in the window's "General" pane so they're reachable without an app menu. **Window-sizing
+  gotcha (regressed twice — do not change without screenshotting):** the content MUST be an
+  `NSHostingController` (a bare `NSHostingView` renders a `NavigationSplitView` blank), its
+  default `sizingOptions` MUST stay (clearing them also blanks the columns), and the root
+  view is `.frame(idealWidth:idealHeight:)`-pinned so the controller doesn't size the window
+  to the tall detail pane (that produced an off-screen ~880x3305 "blank" window). Detail
+  panes scroll internally (`ColorScheduleView` is a `ScrollView`).
+- `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
+  (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
+  unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level
+  `NSEvent` local monitor — NOT an `NSViewRepresentable` (SwiftUI doesn't route key events to
+  an embedded NSView, so capture silently never fires).
+- `Services/AudioCapabilityService.swift`: CoreAudio detection of which displays have
+  speakers (HDMI/DisplayPort output device, exact normalized name match) — gates the DDC
+  volume slider so speakerless monitors don't show one.
+- `Support/DisplayIdentity.swift`: stable per-display key from EDID (vendor/model/serial),
+  NOT `CGDirectDisplayID` (which churns across reconnect/reboot). Preferences are keyed by it.
 - `Models/`: persisted app/display preferences and navigation selection. Three
   color phases (Daytime/Sunset/Bedtime) via `ColorPhase`; `ScheduleSource`.
 - `Stores/AppStore.swift`: main actor state owner and mutation gateway. Owns the
@@ -78,9 +94,32 @@ pkill -x MonitorFlux || true
   Night Shift / other color apps. Explain gamma vs DDC with `InfoButton` (assume the
   reader doesn't know the jargon).
 - The media-key tap (`KeyboardControlService`) needs Accessibility permission; ad-hoc
-  dev builds re-prompt after each rebuild because the code signature changes.
+  dev builds re-prompt after each rebuild because the code signature changes (set
+  `SIGN_IDENTITY` to a stable cert to keep the grant). Custom hotkeys (`HotKeyCenter`,
+  Carbon) need no Accessibility — prefer them for testing.
+- **The built-in panel's real backlight belongs to macOS.** Do NOT drive it from the
+  keyboard path or the schedule — macOS already manages it (auto-brightness, Night Shift),
+  and forcing a level fights macOS and jumps brightness on launch. The built-in is only
+  changed via its manual native-backlight slider (user-initiated). Keyboard brightness and
+  scheduled brightness apply to **external** displays (DDC); the built-in is skipped.
+- Saved DDC brightness/contrast is re-applied to **external** displays on launch/reconnect
+  (`restoreHardwareSettings`); never re-apply to the built-in.
 - New behavior should get focused tests unless it directly touches real display
   hardware. The arm64 DDC packet builder and `SolarCalculator` are pure and tested.
+
+## Verifying UI changes (hard-won)
+
+- **A passing smoke test does NOT mean the UI renders.** `smoke_test.sh` only checks window
+  *geometry* (on-screen, sane size) via `CGWindowList` — it has twice passed on a window that
+  was blank or wrongly sized. Always screenshot the actual window:
+  `screencapture -l<windowID> -o -x out.png` (get the id from `CGWindowListCopyWindowInfo`),
+  then read it. Test hooks: `MONITORFLUX_OPEN_MAIN=1|reopen`, `MONITORFLUX_SELECT=general|color|display`.
+- To drive a SwiftUI button in a test, use accessibility **`AXPress`** (find it by its `help`
+  string — SwiftUI buttons often expose no AX title), not synthetic coordinate clicks (they
+  miss). For shortcut recording, `AXPress` the Record button then `keystroke` the combo.
+- **Don't spam GUI launches.** Each `open` pops the window onto the user's screen and (for the
+  activating path) steals focus. Batch verification into one launch; the smoke/test hooks use a
+  non-activating window for this reason. Reuse a running instance instead of relaunching.
 
 ## Before Handing Off
 

@@ -804,12 +804,15 @@ final class AppStore: ObservableObject {
 
     private func applyScheduledBrightness(_ value: Int, for display: DisplayInfo) {
         if display.isBuiltIn {
-            if canUseNativeBrightness(display) {
-                setNativeBrightness(Double(value) / 100.0, for: display)
-            } else {
-                updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.gammaBrightnessPercent)
-                }
+            // The built-in backlight is macOS-managed (auto-brightness, Night Shift). Forcing
+            // a scheduled level onto it fights macOS and jumps the brightness on every launch,
+            // so leave the real backlight to macOS. Only software-dim built-ins that expose no
+            // backlight API at all.
+            guard !canUseNativeBrightness(display) else {
+                return
+            }
+            updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.gammaBrightnessPercent)
             }
         } else {
             setHardwareBrightness(value, for: display)

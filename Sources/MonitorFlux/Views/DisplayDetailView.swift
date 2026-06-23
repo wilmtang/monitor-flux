@@ -127,27 +127,40 @@ struct DisplayDetailView: View {
     }
 
     /// Automatic brightness/contrast on the day–night schedule.
+    @ViewBuilder
     private var scheduleSection: some View {
-        Section {
-            Toggle("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
-            if displayPreferences.scheduleBrightness {
-                scheduleTargetRow(title: "Daytime", keyPath: \.dayBrightness)
-                scheduleTargetRow(title: "Night", keyPath: \.nightBrightness)
+        if display.isBuiltIn, store.canUseNativeBrightness(display) {
+            // macOS already manages the built-in backlight (auto-brightness, Night Shift);
+            // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
+            Section {
+                Text("The built-in display's brightness follows macOS (auto-brightness, Night Shift), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
             }
-
-            if !display.isBuiltIn {
-                Toggle("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
-                if displayPreferences.scheduleContrast {
-                    scheduleTargetRow(title: "Daytime", keyPath: \.dayContrast)
-                    scheduleTargetRow(title: "Night", keyPath: \.nightContrast)
+        } else {
+            Section {
+                Toggle("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
+                if displayPreferences.scheduleBrightness {
+                    scheduleTargetRow(title: "Daytime", keyPath: \.dayBrightness)
+                    scheduleTargetRow(title: "Night", keyPath: \.nightBrightness)
                 }
-            }
 
-            Text("Automatically eases the real brightness/contrast from a daytime to a night target. A manual change holds until the next phase.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } header: {
-            sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
+                if !display.isBuiltIn {
+                    Toggle("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
+                    if displayPreferences.scheduleContrast {
+                        scheduleTargetRow(title: "Daytime", keyPath: \.dayContrast)
+                        scheduleTargetRow(title: "Night", keyPath: \.nightContrast)
+                    }
+                }
+
+                Text("Automatically eases the real brightness/contrast from a daytime to a night target. A manual change holds until the next phase.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
+            }
         }
     }
 
