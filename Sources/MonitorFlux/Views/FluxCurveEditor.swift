@@ -61,8 +61,8 @@ struct FluxCurveEditor: View {
 
         let gradient = Gradient(colors: [
             .blue.opacity(0.18),
-            .orange.opacity(0.26),
-            .orange.opacity(0.12)
+            .phaseSunset.opacity(0.30),
+            .phaseSunset.opacity(0.14)
         ])
         context.fill(area, with: .linearGradient(
             gradient,
@@ -73,7 +73,7 @@ struct FluxCurveEditor: View {
 
     private func drawTemperatureCurve(in context: inout GraphicsContext, size: CGSize) {
         let curve = temperaturePath(size: size)
-        context.stroke(curve, with: .color(.orange.opacity(0.72)), lineWidth: 2.5)
+        context.stroke(curve, with: .color(.phaseSunset.opacity(0.85)), lineWidth: 2.5)
 
         var baseline = Path()
         baseline.move(to: CGPoint(x: 0, y: size.height - 3))
@@ -128,11 +128,11 @@ struct FluxCurveEditor: View {
     private func color(for handle: FluxCurveHandle) -> Color {
         switch handle {
         case .day:
-            .yellow
+            .phaseDaytime
         case .sunset:
-            .orange
+            .phaseSunset
         case .night:
-            .indigo
+            .phaseBedtime
         }
     }
 

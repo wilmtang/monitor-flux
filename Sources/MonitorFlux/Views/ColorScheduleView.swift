@@ -15,15 +15,11 @@ struct ColorScheduleView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .fill(.orange.opacity(0.55))
-                        Circle()
-                            .trim(from: 0.08, to: 0.58)
-                            .fill(.blue.opacity(0.82))
-                            .rotationEffect(.degrees(22))
-                    }
-                    .frame(width: 44, height: 44)
+                    Image(systemName: statusIcon.symbol)
+                        .font(.system(size: 30))
+                        .foregroundStyle(statusIcon.color)
+                        .frame(width: 44, height: 44)
+                        .contentTransition(.symbolEffect(.replace))
 
                     Text(statusHeadline)
                         .font(.title2)
@@ -226,6 +222,17 @@ struct ColorScheduleView: View {
         return liveTemperature >= 5200 ? "The sun is up-go outside!" : "Warming down for the night"
     }
 
+    /// A glyph that mirrors the headline: a sun by day, a warm moon at night, dimmed when
+    /// color warming is off — instead of the abstract two-tone disc it replaces.
+    private var statusIcon: (symbol: String, color: Color) {
+        guard store.preferences.gammaEnabled, store.preferences.colorMode != .off else {
+            return ("moon.zzz.fill", .secondary)
+        }
+        return liveTemperature >= 5200
+            ? ("sun.max.fill", .phaseDaytime)
+            : ("moon.stars.fill", .phaseBedtime)
+    }
+
     private var scheduleSummary: String {
         let wake = MinuteFormatting.label(for: store.preferences.coolStartMinutes)
         let bed = MinuteFormatting.label(for: store.preferences.warmStartMinutes)
@@ -241,9 +248,9 @@ struct ColorScheduleView: View {
 
     private var curveLegend: some View {
         HStack(spacing: 14) {
-            legendDot(.yellow, "Daytime", store.preferences.dayTemperature)
-            legendDot(.orange, "Sunset", store.preferences.sunsetTemperature)
-            legendDot(.indigo, "Bedtime", store.preferences.nightTemperature)
+            legendDot(.phaseDaytime, "Daytime", store.preferences.dayTemperature)
+            legendDot(.phaseSunset, "Sunset", store.preferences.sunsetTemperature)
+            legendDot(.phaseBedtime, "Bedtime", store.preferences.nightTemperature)
             Spacer()
             Text("Drag each dot to set its time & warmth")
                 .font(.caption)

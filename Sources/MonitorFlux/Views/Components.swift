@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+/// Schedule-phase accent colors, shared by the curve editor handles, the legend, and the
+/// status icon so a phase looks the same everywhere. Sunset is a saturated "real" orange so
+/// it reads as clearly distinct from the daytime yellow next to it.
+extension Color {
+    static let phaseDaytime = Color.yellow
+    static let phaseSunset = Color(red: 1.0, green: 0.42, blue: 0.0)
+    static let phaseBedtime = Color.indigo
+}
+
 /// Plain-language explanations of the two control paths, surfaced via `InfoButton`.
 enum HelpText {
     static let gamma = """
