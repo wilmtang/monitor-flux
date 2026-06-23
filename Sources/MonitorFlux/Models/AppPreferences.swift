@@ -69,6 +69,14 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     /// Force-show the DDC volume slider even when no audio output is detected for this
     /// display. Off by default: the slider is hidden unless the monitor reports speakers.
     var forceVolumeControl = false
+    /// Per-display brightness/contrast scheduling: ride the day/night timeline from a
+    /// daytime target to a night target. Off by default.
+    var scheduleBrightness = false
+    var scheduleContrast = false
+    var dayBrightness = 90
+    var nightBrightness = 40
+    var dayContrast = 75
+    var nightContrast = 65
 
     enum CodingKeys: String, CodingKey {
         case colorEnabled
@@ -80,6 +88,12 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         case gammaBrightness
         case gammaContrast
         case forceVolumeControl
+        case scheduleBrightness
+        case scheduleContrast
+        case dayBrightness
+        case nightBrightness
+        case dayContrast
+        case nightContrast
         case brightness
         case contrast
     }
@@ -94,6 +108,10 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         copy.hardwareVolume = copy.hardwareVolume.clamped(to: ControlRanges.hardwarePercent)
         copy.gammaBrightness = copy.gammaBrightness.clamped(to: ControlRanges.gammaBrightnessPercent)
         copy.gammaContrast = copy.gammaContrast.clamped(to: ControlRanges.gammaContrastPercent)
+        copy.dayBrightness = copy.dayBrightness.clamped(to: ControlRanges.hardwarePercent)
+        copy.nightBrightness = copy.nightBrightness.clamped(to: ControlRanges.hardwarePercent)
+        copy.dayContrast = copy.dayContrast.clamped(to: ControlRanges.hardwarePercent)
+        copy.nightContrast = copy.nightContrast.clamped(to: ControlRanges.hardwarePercent)
         return copy
     }
 
@@ -118,6 +136,16 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         gammaContrast = (try container.decodeIfPresent(Int.self, forKey: .gammaContrast) ?? 100)
             .clamped(to: ControlRanges.gammaContrastPercent)
         forceVolumeControl = try container.decodeIfPresent(Bool.self, forKey: .forceVolumeControl) ?? false
+        scheduleBrightness = try container.decodeIfPresent(Bool.self, forKey: .scheduleBrightness) ?? false
+        scheduleContrast = try container.decodeIfPresent(Bool.self, forKey: .scheduleContrast) ?? false
+        dayBrightness = (try container.decodeIfPresent(Int.self, forKey: .dayBrightness) ?? 90)
+            .clamped(to: ControlRanges.hardwarePercent)
+        nightBrightness = (try container.decodeIfPresent(Int.self, forKey: .nightBrightness) ?? 40)
+            .clamped(to: ControlRanges.hardwarePercent)
+        dayContrast = (try container.decodeIfPresent(Int.self, forKey: .dayContrast) ?? 75)
+            .clamped(to: ControlRanges.hardwarePercent)
+        nightContrast = (try container.decodeIfPresent(Int.self, forKey: .nightContrast) ?? 65)
+            .clamped(to: ControlRanges.hardwarePercent)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -131,6 +159,12 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         try container.encode(gammaBrightness, forKey: .gammaBrightness)
         try container.encode(gammaContrast, forKey: .gammaContrast)
         try container.encode(forceVolumeControl, forKey: .forceVolumeControl)
+        try container.encode(scheduleBrightness, forKey: .scheduleBrightness)
+        try container.encode(scheduleContrast, forKey: .scheduleContrast)
+        try container.encode(dayBrightness, forKey: .dayBrightness)
+        try container.encode(nightBrightness, forKey: .nightBrightness)
+        try container.encode(dayContrast, forKey: .dayContrast)
+        try container.encode(nightContrast, forKey: .nightContrast)
     }
 }
 

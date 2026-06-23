@@ -17,6 +17,39 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertNil(ColorSchedule.targetTemperature(preferences: preferences))
     }
 
+    func testScheduledHardwareLevelHoldsDayThenNight() {
+        var preferences = AppPreferences.defaults
+        preferences.coolStartMinutes = 7 * 60     // wake / daytime begins
+        preferences.sunsetStartMinutes = 20 * 60  // sunset begins
+        preferences.warmStartMinutes = 21 * 60    // bedtime begins
+        preferences.transitionMinutes = 0         // no fade -> hard hold
+
+        // Midday holds the daytime target; deep night holds the night target.
+        XCTAssertEqual(
+            ColorSchedule.scheduledHardwareLevel(dayValue: 90, nightValue: 40, preferences: preferences, minuteOfDay: 12 * 60),
+            90
+        )
+        XCTAssertEqual(
+            ColorSchedule.scheduledHardwareLevel(dayValue: 90, nightValue: 40, preferences: preferences, minuteOfDay: 0),
+            40
+        )
+    }
+
+    func testScheduledHardwareLevelEasesAcrossSunset() {
+        var preferences = AppPreferences.defaults
+        preferences.coolStartMinutes = 7 * 60
+        preferences.sunsetStartMinutes = 20 * 60
+        preferences.warmStartMinutes = 21 * 60
+        preferences.transitionMinutes = 45
+
+        // Partway into the post-sunset fade, the level sits strictly between day and night.
+        let level = ColorSchedule.scheduledHardwareLevel(
+            dayValue: 90, nightValue: 40, preferences: preferences, minuteOfDay: 20 * 60 + 22
+        )
+        XCTAssertGreaterThan(level, 40)
+        XCTAssertLessThan(level, 90)
+    }
+
     func testClockScheduleChoosesDayAndNight() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock

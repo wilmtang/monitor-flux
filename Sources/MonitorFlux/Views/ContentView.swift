@@ -47,6 +47,12 @@ struct ContentView: View {
             if selection == nil {
                 selection = .color
             }
+            // Test hook: jump straight to a display's detail pane so a smoke/screenshot
+            // run can verify it without scripting the sidebar.
+            if ProcessInfo.processInfo.environment["MONITORFLUX_SELECT_DISPLAY"] == "1",
+               let display = store.displays.first(where: { !$0.isBuiltIn }) ?? store.displays.first {
+                selection = .display(display.key)
+            }
         }
     }
 

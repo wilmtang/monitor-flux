@@ -28,6 +28,28 @@ struct DisplayDetailView: View {
             }
 
             Section {
+                Toggle("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
+                if displayPreferences.scheduleBrightness {
+                    scheduleTargetRow(title: "Daytime", keyPath: \.dayBrightness)
+                    scheduleTargetRow(title: "Night", keyPath: \.nightBrightness)
+                }
+
+                if !display.isBuiltIn {
+                    Toggle("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
+                    if displayPreferences.scheduleContrast {
+                        scheduleTargetRow(title: "Daytime", keyPath: \.dayContrast)
+                        scheduleTargetRow(title: "Night", keyPath: \.nightContrast)
+                    }
+                }
+
+                Text("Targets ride the day–night schedule; a manual change holds until the next phase.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                sectionHeader("Schedule Brightness & Contrast", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
+            }
+
+            Section {
                 Toggle("Use gamma controls", isOn: displayBinding(\.gammaControlsEnabled))
                     .disabled(!store.preferences.gammaEnabled)
 
@@ -170,6 +192,49 @@ struct DisplayDetailView: View {
             Text("\(value)%")
                 .monospacedDigit()
                 .frame(width: 44, alignment: .trailing)
+        }
+    }
+
+    /// A target slider (0–100%) for a scheduled day/night value. Editing it re-applies the
+    /// schedule immediately so the change previews when that phase is currently active.
+    private func scheduleTargetRow(
+        title: String,
+        keyPath: WritableKeyPath<DisplayPreferences, Int>
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .frame(width: 74, alignment: .leading)
+                .foregroundStyle(.secondary)
+            Slider(
+                value: Binding {
+                    Double(displayPreferences[keyPath: keyPath])
+                } set: { newValue in
+                    store.updateDisplayPreferences(for: display) { displayPreferences in
+                        displayPreferences[keyPath: keyPath] = Int(newValue.rounded())
+                            .clamped(to: ControlRanges.hardwarePercent)
+                    }
+                    store.reapplySchedule(for: display)
+                },
+                in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound)
+            )
+            Text("\(displayPreferences[keyPath: keyPath])%")
+                .monospacedDigit()
+                .frame(width: 52, alignment: .trailing)
+        }
+    }
+
+    /// Like `displayBinding`, but re-applies the schedule after the change so toggling it on
+    /// (or editing a target) takes effect now instead of at the next minute tick.
+    private func scheduleBinding<Value>(
+        _ keyPath: WritableKeyPath<DisplayPreferences, Value>
+    ) -> Binding<Value> {
+        Binding {
+            displayPreferences[keyPath: keyPath]
+        } set: { newValue in
+            store.updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences[keyPath: keyPath] = newValue
+            }
+            store.reapplySchedule(for: display)
         }
     }
 

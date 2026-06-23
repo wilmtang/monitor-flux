@@ -32,6 +32,13 @@ enum HelpText {
     framework — the same level the menu-bar brightness slider and the keyboard brightness keys \
     change. It works on the built-in panel and Apple displays.
     """
+
+    static let schedule = """
+    Scheduled brightness and contrast follow the same day–night timeline as the color \
+    schedule: they hold the daytime target through the day, then ease to the night target \
+    around sunset (and back at wake). Adjusting a slider by hand overrides the schedule until \
+    the next phase change, so automation never fights you mid-task.
+    """
 }
 
 /// A small ⓘ button that reveals a popover explainer. Assumes the reader doesn't know the jargon.

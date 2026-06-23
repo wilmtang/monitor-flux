@@ -53,6 +53,11 @@ final class AppStore: ObservableObject {
     /// Trailing (coalesced) DDC writes per control, and the last time each one actually
     /// wrote, so `scheduleDDC` can throttle a drag instead of only firing on release.
     private var ddcWriteWorkItems: [String: DispatchWorkItem] = [:]
+    /// Last brightness/contrast the schedule wrote per display. We only re-apply when the
+    /// scheduled target changes, so a manual adjustment between phase transitions sticks
+    /// (f.lux-style) instead of being snapped back on the next tick.
+    private var lastScheduledBrightness: [CGDirectDisplayID: Int] = [:]
+    private var lastScheduledContrast: [CGDirectDisplayID: Int] = [:]
     private var ddcLastWrite: [String: DispatchTime] = [:]
     /// Serializes the actual I2C writes so a throttled drag can't overlap two writes to
     /// the same bus. `.userInitiated` keeps the monitor responsive during a drag.
@@ -154,6 +159,7 @@ final class AppStore: ObservableObject {
         if !seedMissingDisplayPreferences() {
             reconcileColor()
         }
+        applyScheduledHardware()
     }
 
     private func refreshAudioCapability() {
@@ -611,9 +617,80 @@ final class AppStore: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.reconcileColor()
+                self?.applyScheduledHardware()
             }
         }
         timer?.tolerance = 10
+    }
+
+    /// Drive each display's scheduled brightness/contrast toward its day/night target.
+    /// Called from the minute timer and after display/preference changes. Only writes when
+    /// the scheduled target actually changes (see `lastScheduled*`), so manual tweaks hold.
+    func applyScheduledHardware() {
+        guard !displays.isEmpty else {
+            return
+        }
+        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
+        let calendar = Calendar.current
+        let now = Date()
+        let minute = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+
+        for display in displays {
+            let displayPreferences = displayPreferences(for: display)
+
+            if displayPreferences.scheduleBrightness {
+                let target = ColorSchedule.scheduledHardwareLevel(
+                    dayValue: displayPreferences.dayBrightness,
+                    nightValue: displayPreferences.nightBrightness,
+                    preferences: effective,
+                    minuteOfDay: minute
+                )
+                if lastScheduledBrightness[display.id] != target {
+                    lastScheduledBrightness[display.id] = target
+                    applyScheduledBrightness(target, for: display)
+                }
+            } else {
+                lastScheduledBrightness[display.id] = nil
+            }
+
+            // Contrast is a DDC-only control, so the schedule skips the built-in panel.
+            if displayPreferences.scheduleContrast, !display.isBuiltIn {
+                let target = ColorSchedule.scheduledHardwareLevel(
+                    dayValue: displayPreferences.dayContrast,
+                    nightValue: displayPreferences.nightContrast,
+                    preferences: effective,
+                    minuteOfDay: minute
+                )
+                if lastScheduledContrast[display.id] != target {
+                    lastScheduledContrast[display.id] = target
+                    setHardwareContrast(target, for: display)
+                }
+            } else {
+                lastScheduledContrast[display.id] = nil
+            }
+        }
+    }
+
+    private func applyScheduledBrightness(_ value: Int, for display: DisplayInfo) {
+        if display.isBuiltIn {
+            if canUseNativeBrightness(display) {
+                setNativeBrightness(Double(value) / 100.0, for: display)
+            } else {
+                updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.gammaBrightnessPercent)
+                }
+            }
+        } else {
+            setHardwareBrightness(value, for: display)
+        }
+    }
+
+    /// Re-evaluate the schedule for a display immediately (e.g. after the user toggles it on
+    /// or edits a day/night target), bypassing the "unchanged target" guard so it applies now.
+    func reapplySchedule(for display: DisplayInfo) {
+        lastScheduledBrightness[display.id] = nil
+        lastScheduledContrast[display.id] = nil
+        applyScheduledHardware()
     }
 
     private func seedMissingDisplayPreferences() -> Bool {
