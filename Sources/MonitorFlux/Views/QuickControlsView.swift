@@ -226,8 +226,22 @@ struct QuickControlsView: View {
     }
 }
 
+/// Collapse the `MenuBarExtra(.window)` dropdown the way clicking a real `NSMenu` item does.
+/// SwiftUI doesn't expose a dismiss for it, so close the popup window directly: it's the
+/// visible, non-titled, mouse-accepting panel — distinct from the titled main window and the
+/// non-interactive OSD panel (which ignores mouse events).
+@MainActor
+func dismissMenuBarPopup() {
+    for window in NSApp.windows
+    where window.isVisible
+        && !window.styleMask.contains(.titled)
+        && !window.ignoresMouseEvents {
+        window.close()
+    }
+}
+
 /// A footer row that behaves like a real menu item: full-width hit target, accent
-/// highlight on hover, and a trailing keyboard-shortcut hint.
+/// highlight on hover, a trailing keyboard-shortcut hint — and it dismisses the dropdown.
 private struct PopupMenuRow: View {
     let title: String
     let shortcut: String?
@@ -235,7 +249,10 @@ private struct PopupMenuRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            dismissMenuBarPopup()
+            action()
+        } label: {
             HStack {
                 Text(title)
                 Spacer()
