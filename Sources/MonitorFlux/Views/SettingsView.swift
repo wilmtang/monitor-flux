@@ -57,22 +57,19 @@ struct SettingsView: View {
                 Text("Custom Shortcuts")
             }
 
-            Section("Gamma") {
-                Toggle("Enable gamma", isOn: Binding {
+            Section {
+                Toggle("Warm colors & software dimming", isOn: Binding {
                     store.preferences.gammaEnabled
                 } set: { isOn in
                     store.updateGlobalPreferences { preferences in
                         preferences.gammaEnabled = isOn
                     }
                 })
-                LabeledContent("Pipeline owner", value: "MonitorFlux")
-                LabeledContent("Status", value: store.colorMessage)
-            }
-
-            Section("Runtime") {
-                LabeledContent("DDC backend", value: store.ddcStatus.message)
-                LabeledContent("DDC fallback", value: store.ddcStatus.toolPath ?? "No external tool")
-                LabeledContent("Login item", value: store.loginItemMessage)
+                Text("Lets MonitorFlux warm the color and dim the image via the display's color tables (\u{201C}gamma\u{201D}). Turn off to use only the monitor's own brightness/contrast (DDC) and macOS color. Live status is on the Diagnostics screen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Color")
             }
 
             Section("Actions") {
@@ -80,12 +77,6 @@ struct SettingsView: View {
                     store.refreshDisplays()
                 } label: {
                     Label("Refresh Displays", systemImage: "arrow.clockwise")
-                }
-
-                Button {
-                    store.disableColorAndRestore()
-                } label: {
-                    Label("Disable Gamma and Restore", systemImage: "arrow.uturn.backward.circle")
                 }
             }
         }

@@ -17,8 +17,7 @@ struct DisplayDetailView: View {
             Section("Display") {
                 LabeledContent("Name", value: display.name)
                 LabeledContent("Kind", value: display.kindLabel)
-                LabeledContent("Frame", value: display.frameDescription)
-                LabeledContent("CoreGraphics ID", value: "\(display.id)")
+                LabeledContent("Resolution", value: display.frameDescription)
             }
 
             Section("Color") {
@@ -88,9 +87,12 @@ struct DisplayDetailView: View {
                 }
             } else {
                 Section {
-                    LabeledContent("Backend", value: store.ddcStatus.message)
-                    Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
-                        LabeledContent("DDC display index (ddcctl fallback)", value: "\(displayPreferences.ddcDisplayIndex)")
+                    // The ddcctl display index only matters on the Intel command-line
+                    // fallback; hide this technical control unless that tool is present.
+                    if store.ddcStatus.toolPath != nil {
+                        Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
+                            LabeledContent("ddcctl display index", value: "\(displayPreferences.ddcDisplayIndex)")
+                        }
                     }
 
                     hardwareSliderRow(title: "Brightness", icon: "sun.max", value: displayPreferences.hardwareBrightness) {
