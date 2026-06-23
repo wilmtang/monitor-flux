@@ -38,6 +38,24 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                ForEach(HotKeyAction.allCases) { action in
+                    ShortcutRecorder(
+                        label: action.label,
+                        shortcut: Binding {
+                            store.hotkey(for: action)
+                        } set: { newValue in
+                            store.setHotkey(newValue, for: action)
+                        }
+                    )
+                }
+                Text("Optional global shortcuts for each control, in addition to the keys above. These work anywhere and don't need Accessibility permission. Use at least one modifier (⌘⌥⌃⇧).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Custom Shortcuts")
+            }
+
             Section("Gamma") {
                 Toggle("Enable gamma", isOn: Binding {
                     store.preferences.gammaEnabled

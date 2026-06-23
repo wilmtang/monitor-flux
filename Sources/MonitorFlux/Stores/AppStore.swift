@@ -48,6 +48,7 @@ final class AppStore: ObservableObject {
     private let nativeBrightnessBackend = NativeBrightnessBackend()
     private let audioCapabilityService = AudioCapabilityService()
     private let osd = OSDController()
+    private let hotKeyCenter = HotKeyCenter()
     private let gammaService = GammaTemperatureService()
     private var mainWindow: MainWindow?
     private var timer: Timer?
@@ -89,6 +90,15 @@ final class AppStore: ObservableObject {
             keyboardStatus = "Off (safe mode)"
         } else if preferences.keyboardControlEnabled {
             keyboardStatus = keyboardService.start() ? "Active" : "Needs Accessibility permission"
+        }
+
+        // Custom global shortcuts use Carbon hot keys, which (unlike the media-key tap) need
+        // no Accessibility permission, so they're registered independently of that toggle.
+        hotKeyCenter.onAction = { [weak self] action in
+            self?.performHotKeyAction(action)
+        }
+        if !safeMode {
+            refreshHotKeys()
         }
 
         CGDisplayRegisterReconfigurationCallback(
@@ -455,6 +465,54 @@ final class AppStore: ObservableObject {
     /// Flash a sample OSD — used only by `MONITORFLUX_SHOW_OSD=1` to screenshot the overlay.
     func showSampleOSD() {
         osd.show(.brightness, fraction: 0.7, onDisplay: displays.first?.id)
+    }
+
+    // MARK: - Custom global hotkeys
+
+    private static let keyboardStep = 6
+
+    func hotkey(for action: HotKeyAction) -> GlobalShortcut? {
+        preferences.hotkeys[action.rawValue]
+    }
+
+    /// Assign (or clear, with nil) a custom global shortcut for an action and re-register.
+    func setHotkey(_ shortcut: GlobalShortcut?, for action: HotKeyAction) {
+        updateGlobalPreferences { preferences in
+            preferences.hotkeys[action.rawValue] = shortcut
+        }
+        refreshHotKeys()
+    }
+
+    private func refreshHotKeys() {
+        var map: [HotKeyAction: GlobalShortcut] = [:]
+        for (key, shortcut) in preferences.hotkeys {
+            if let action = HotKeyAction(rawValue: key) {
+                map[action] = shortcut
+            }
+        }
+        hotKeyCenter.update(map)
+    }
+
+    private func performHotKeyAction(_ action: HotKeyAction) {
+        let step = Self.keyboardStep
+        switch action {
+        case .brightnessUp:
+            _ = adjustBrightnessUnderCursor(by: step)
+        case .brightnessDown:
+            _ = adjustBrightnessUnderCursor(by: -step)
+        case .contrastUp:
+            _ = adjustContrastUnderCursor(by: step)
+        case .contrastDown:
+            _ = adjustContrastUnderCursor(by: -step)
+        case .colorWarmer:
+            _ = adjustColorTemperature(bySteps: -1)
+        case .colorCooler:
+            _ = adjustColorTemperature(bySteps: 1)
+        case .volumeUp:
+            _ = adjustVolumeUnderCursor(by: step)
+        case .volumeDown:
+            _ = adjustVolumeUnderCursor(by: -step)
+        }
     }
 
     private func displayUnderCursor() -> DisplayInfo? {

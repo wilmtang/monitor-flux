@@ -186,6 +186,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var latitude = "47.6"
     var longitude = "-122.3"
     var displayPreferences: [String: DisplayPreferences] = [:]
+    /// User-assigned global shortcuts, keyed by `HotKeyAction.rawValue`. Empty by default —
+    /// the media keys cover brightness/contrast/color/volume out of the box.
+    var hotkeys: [String: GlobalShortcut] = [:]
 
     static let defaults = AppPreferences()
 
@@ -207,6 +210,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case latitude
         case longitude
         case displayPreferences
+        case hotkeys
     }
 
     init() {}
@@ -255,6 +259,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
             [String: DisplayPreferences].self,
             forKey: .displayPreferences
         )?.mapValues { $0.normalized() } ?? [:]
+        hotkeys = try container.decodeIfPresent([String: GlobalShortcut].self, forKey: .hotkeys) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -276,6 +281,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)
+        try container.encode(hotkeys, forKey: .hotkeys)
     }
 }
 
