@@ -42,6 +42,8 @@ struct SettingsView: View {
                 ForEach(HotKeyAction.allCases) { action in
                     ShortcutRecorder(
                         label: action.label,
+                        icon: action.icon,
+                        defaultShortcut: action.defaultShortcut,
                         hasConflict: store.hotkeyConflicts.contains(action),
                         shortcut: Binding {
                             store.hotkey(for: action)

@@ -10,6 +10,8 @@ import SwiftUI
 /// events here before they're turned into menu key-equivalents.
 struct ShortcutRecorder: View {
     let label: String
+    var icon: String?
+    var defaultShortcut: GlobalShortcut?
     var hasConflict = false
     @Binding var shortcut: GlobalShortcut?
 
@@ -18,6 +20,11 @@ struct ShortcutRecorder: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            if let icon {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+            }
             Text(label)
             Spacer()
             if hasConflict, !isRecording {
@@ -30,20 +37,31 @@ struct ShortcutRecorder: View {
             } label: {
                 Text(buttonTitle)
                     .font(.callout.monospaced())
-                    .frame(minWidth: 96)
+                    .foregroundStyle(shortcut == nil && !isRecording ? .secondary : .primary)
+                    .frame(minWidth: 104)
             }
             .buttonStyle(.bordered)
-            .help(isRecording ? "Press a shortcut, or Escape to cancel" : "Record a shortcut")
+            .help(isRecording ? "Press a shortcut, or Escape to cancel" : "Click to record a shortcut")
 
-            Button {
-                shortcut = nil
+            Menu {
+                if let defaultShortcut {
+                    Button("Reset to default (\(defaultShortcut.displayString))") {
+                        stop()
+                        shortcut = defaultShortcut
+                    }
+                }
+                Button("Disable", role: .destructive) {
+                    stop()
+                    shortcut = nil
+                }
+                .disabled(shortcut == nil)
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "ellipsis.circle")
             }
-            .buttonStyle(.borderless)
-            .opacity(shortcut != nil && !isRecording ? 1 : 0)
-            .disabled(shortcut == nil || isRecording)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(isRecording)
         }
         .onDisappear(perform: stop)
     }
@@ -52,7 +70,7 @@ struct ShortcutRecorder: View {
         if isRecording {
             return "Press keys…"
         }
-        return shortcut?.displayString ?? "Record"
+        return shortcut?.displayString ?? "Not set — record"
     }
 
     private func toggle() {

@@ -77,6 +77,39 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
+    /// SF Symbol shown beside the action in Settings.
+    var icon: String {
+        switch self {
+        case .brightnessUp: "sun.max.fill"
+        case .brightnessDown: "sun.min"
+        case .contrastUp: "circle.righthalf.filled"
+        case .contrastDown: "circle.lefthalf.filled"
+        case .colorWarmer: "thermometer.sun.fill"
+        case .colorCooler: "thermometer.snowflake"
+        case .volumeUp: "speaker.wave.3.fill"
+        case .volumeDown: "speaker.wave.1.fill"
+        }
+    }
+
+    /// Suggested combo applied by "Reset to default". Shortcuts start unset (nothing is
+    /// registered by default, so nothing can clash on first launch); this just gives each
+    /// action a sensible ⌃⌥ binding to reset to. They can still conflict with another app —
+    /// the recorder shows a ⚠️ if so.
+    var defaultShortcut: GlobalShortcut {
+        let controlOption = UInt32(controlKey | optionKey)
+        let controlOptionShift = UInt32(controlKey | optionKey | shiftKey)
+        switch self {
+        case .brightnessUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: controlOption)
+        case .brightnessDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: controlOption)
+        case .contrastUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: controlOptionShift)
+        case .contrastDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: controlOptionShift)
+        case .colorWarmer: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Semicolon), carbonModifiers: controlOption)
+        case .colorCooler: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Quote), carbonModifiers: controlOption)
+        case .volumeUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Equal), carbonModifiers: controlOption)
+        case .volumeDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Minus), carbonModifiers: controlOption)
+        }
+    }
+
     /// Stable per-action id passed to `RegisterEventHotKey` (1-based; 0 is avoided).
     var hotKeyID: UInt32 {
         UInt32((Self.allCases.firstIndex(of: self) ?? 0) + 1)
