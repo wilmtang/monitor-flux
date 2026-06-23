@@ -31,6 +31,10 @@ final class AppStore: ObservableObject {
     @Published private(set) var loginItemMessage = LoginItemService.statusLabel()
     @Published private(set) var locationStatus = "Not requested"
     @Published private(set) var keyboardStatus = "Off"
+    /// Whether the app currently has Accessibility permission (needed only for the media-key
+    /// tap). Tracked live so Settings can warn when it's missing and clear the warning once
+    /// the user grants it. Re-checked when the app reactivates (e.g. after System Settings).
+    @Published private(set) var accessibilityTrusted = false
     /// Cached real backlight level (0...1) per display that supports DisplayServices.
     @Published private(set) var nativeBrightness: [CGDirectDisplayID: Double] = [:]
     /// Displays that expose an audio output (monitor speakers). Drives whether the DDC
@@ -93,11 +97,20 @@ final class AppStore: ObservableObject {
         }
 
         keyboardService.store = self
+        accessibilityTrusted = keyboardService.hasAccessibilityPermission
         if safeMode {
             keyboardStatus = "Off (safe mode)"
         } else if preferences.keyboardControlEnabled {
             keyboardStatus = keyboardService.start() ? "Active" : "Needs Accessibility permission"
         }
+
+        // Re-check Accessibility when the app comes forward, so granting it in System Settings
+        // and switching back clears the warning (and starts the tap) without a relaunch.
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                self?.refreshAccessibilityStatus()
+            }
+            .store(in: &cancellables)
 
         // Custom global shortcuts use Carbon hot keys, which (unlike the media-key tap) need
         // no Accessibility permission, so they're registered independently of that toggle.
@@ -420,12 +433,35 @@ final class AppStore: ObservableObject {
             if keyboardService.start() {
                 keyboardStatus = "Active"
             } else {
-                keyboardService.requestAccessibilityPermission()
+                requestAccessibility()
                 keyboardStatus = "Grant Accessibility, then toggle again"
             }
         } else {
             keyboardService.stop()
             keyboardStatus = "Off"
+        }
+        accessibilityTrusted = keyboardService.hasAccessibilityPermission
+    }
+
+    /// Re-read the Accessibility grant; if it just turned on and the user wants the media
+    /// keys, start the tap so it works without re-toggling.
+    func refreshAccessibilityStatus() {
+        let trusted = keyboardService.hasAccessibilityPermission
+        guard trusted != accessibilityTrusted else {
+            return
+        }
+        accessibilityTrusted = trusted
+        if trusted, preferences.keyboardControlEnabled, !safeMode {
+            keyboardStatus = keyboardService.start() ? "Active" : keyboardStatus
+        }
+    }
+
+    /// Show the system Accessibility prompt (only fires the first time per app identity) and
+    /// open the Accessibility settings pane, so the user can grant it either way.
+    func requestAccessibility() {
+        keyboardService.requestAccessibilityPermission()
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
     }
 

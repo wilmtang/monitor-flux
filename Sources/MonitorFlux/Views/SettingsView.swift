@@ -20,6 +20,9 @@ struct SettingsView: View {
             }
 
             Section("Keyboard") {
+                if !store.accessibilityTrusted {
+                    accessibilityWarning
+                }
                 Toggle("Use brightness & volume keys", isOn: Binding {
                     store.preferences.keyboardControlEnabled
                 } set: { isOn in
@@ -67,7 +70,7 @@ struct SettingsView: View {
                         preferences.gammaEnabled = isOn
                     }
                 })
-                Text("Lets MonitorFlux warm the color and dim the image via the display's color tables (\u{201C}gamma\u{201D}). Turn off to use only the monitor's own brightness/contrast (DDC) and macOS color. Live status is on the Diagnostics screen.")
+                Text("Master switch for the gamma engine — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own DDC controls and macOS color remain). On means each display follows its **own** Color and software-dimming settings on its Display screen. Same setting as \u{201C}Enable gamma\u{201D} on the Schedule screen; doesn't affect real backlight, DDC, or volume. Live status is on Diagnostics.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
@@ -84,6 +87,31 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private var accessibilityWarning: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Brightness & volume keys need Accessibility")
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                Text("MonitorFlux doesn't have Accessibility permission, so it can't intercept the media keys. Click below, then enable MonitorFlux in the list. (The custom shortcuts below work without this.)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Open Accessibility Settings…") {
+                    store.requestAccessibility()
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.yellow.opacity(0.25)))
     }
 
     private func keyHint(_ keys: String, _ action: String) -> some View {
