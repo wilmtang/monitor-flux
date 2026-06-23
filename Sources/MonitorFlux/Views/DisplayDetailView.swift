@@ -106,7 +106,7 @@ struct DisplayDetailView: View {
             DisclosureGroup(isExpanded: $advancedExpanded) {
                 gammaContent
                 Divider()
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 6)
                 scheduleContent
             } label: {
                 Label("Advanced", systemImage: "slider.horizontal.3")
@@ -117,8 +117,7 @@ struct DisplayDetailView: View {
     /// Software (gamma) dimming — separate from the real backlight above.
     @ViewBuilder
     private var gammaContent: some View {
-        sectionHeader("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)")
-            .font(.subheadline.weight(.semibold))
+        advancedSubheader("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)")
 
         Toggle("Use software dimming", isOn: displayBinding(\.gammaControlsEnabled))
             .disabled(!store.preferences.gammaEnabled)
@@ -144,8 +143,7 @@ struct DisplayDetailView: View {
     /// Automatic brightness/contrast on the day–night schedule.
     @ViewBuilder
     private var scheduleContent: some View {
-        sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
-            .font(.subheadline.weight(.semibold))
+        advancedSubheader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
 
         if display.isBuiltIn, store.canUseNativeBrightness(display) {
             // macOS already manages the built-in backlight (auto-brightness, Night Shift);
@@ -179,6 +177,19 @@ struct DisplayDetailView: View {
             Text(title)
             InfoButton(title: helpTitle, message: help)
         }
+    }
+
+    /// Left-aligned sub-header for the Advanced disclosure's two groups. The trailing Spacer keeps
+    /// it flush-left (without it the DisclosureGroup centers the row, which read as "off"), and the
+    /// top padding stops it from crowding the controls above.
+    private func advancedSubheader(_ title: String, help: String, helpTitle: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            InfoButton(title: helpTitle, message: help)
+            Spacer()
+        }
+        .padding(.top, 6)
     }
 
     private func gammaSliderRow(

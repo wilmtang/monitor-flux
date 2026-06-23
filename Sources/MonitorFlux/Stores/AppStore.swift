@@ -29,6 +29,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var colorMessage = "Color disabled"
     @Published private(set) var ddcMessage = "DDC idle"
     @Published private(set) var loginItemMessage = LoginItemService.statusLabel()
+    /// True for a dev build that LaunchServices doesn't know as installed, so the login item
+    /// can't register — drives the explanatory caption in General.
+    var loginItemNeedsInstall: Bool { LoginItemService.needsInstall() }
     @Published private(set) var locationStatus = "Not requested"
     @Published private(set) var keyboardStatus = "Off"
     /// Whether the app currently has Accessibility permission (needed only for the media-key

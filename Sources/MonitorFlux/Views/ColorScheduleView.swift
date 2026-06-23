@@ -119,16 +119,7 @@ struct ColorScheduleView: View {
                 HStack(spacing: 14) {
                     Toggle("Warmth", isOn: preferenceBinding(\.gammaEnabled))
                     InfoButton(title: "What is gamma?", message: HelpText.gamma)
-                    Toggle("Start at login", isOn: Binding {
-                        store.preferences.startAtLogin
-                    } set: { isEnabled in
-                        store.setStartAtLogin(isEnabled)
-                    })
                     Spacer()
-                    Button("Done") {
-                        NSApp.keyWindow?.close()
-                    }
-                    .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(34)
@@ -173,8 +164,12 @@ struct ColorScheduleView: View {
                     LabeledContent("Location access", value: store.locationStatus)
 
                     if store.preferences.scheduleSource == .solar {
-                        LabeledContent("Sunrise", value: solarLabel(store.solarTimes?.sunriseMinutes))
-                        LabeledContent("Sunset", value: solarLabel(store.solarTimes?.sunsetMinutes))
+                        LabeledContent("Sunrise today", value: solarLabel(store.solarTimes?.sunriseMinutes))
+                        LabeledContent("Sunset today", value: solarLabel(store.solarTimes?.sunsetMinutes))
+                        Text("Computed on-device from your coordinates and today's date (no internet), so they shift a little each day and the schedule follows the real sun.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     LabeledContent("Warmth", value: store.colorMessage)
@@ -184,8 +179,13 @@ struct ColorScheduleView: View {
                     Button {
                         store.disableColorAndRestore()
                     } label: {
-                        Label("Disable Warmth & Restore", systemImage: "arrow.uturn.backward.circle")
+                        Label("Turn off warmth & reset colors", systemImage: "arrow.uturn.backward.circle")
                     }
+                    .help("Turns warmth off on every display and restores their original color — use this if colors look wrong or you want another color app to take over.")
+                    Text("Turns warmth off everywhere and restores each display's original color tables (undoing any warming or software dimming).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .formStyle(.grouped)

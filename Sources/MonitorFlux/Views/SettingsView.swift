@@ -17,6 +17,21 @@ struct SettingsView: View {
                     store.setStartAtLogin(isOn)
                 })
                 LabeledContent("Login item", value: store.loginItemMessage)
+                if store.loginItemNeedsInstall {
+                    Text("“Start at login” uses macOS's login-items service, which only registers an **installed** app. “Not available” means you're running a development build (launched from a build folder, not /Applications) — it works once the app is moved to Applications. Accessibility is different: it's granted to the running app by its signature, so it works either way.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Toggle("Show Diagnostics", isOn: Binding {
+                    store.preferences.showDiagnostics
+                } set: { isOn in
+                    store.updateGlobalPreferences { $0.showDiagnostics = isOn }
+                })
+                Text("Adds a developer-facing Diagnostics pane (color pipeline, DDC, displays) to the sidebar. Also reachable with ⌘⇧D.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Keyboard") {
@@ -28,7 +43,6 @@ struct SettingsView: View {
                 } set: { isOn in
                     store.setKeyboardControl(isOn)
                 })
-                LabeledContent("Status", value: store.keyboardStatus)
                 VStack(alignment: .leading, spacing: 3) {
                     keyHint("Brightness keys", "brightness of the display under your pointer (DDC)")
                     keyHint("⌃ Control + brightness", "contrast")

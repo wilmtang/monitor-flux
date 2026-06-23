@@ -23,6 +23,14 @@ struct ContentView: View {
                             .tag(AppSelection.display(display.key))
                     }
                 }
+
+                // Developer-facing; hidden unless turned on in General (or reached with ⌘⇧D).
+                if store.preferences.showDiagnostics {
+                    Section {
+                        Label("Diagnostics", systemImage: "waveform.path.ecg")
+                            .tag(AppSelection.diagnostics)
+                    }
+                }
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 210, ideal: 240)
@@ -35,6 +43,7 @@ struct ContentView: View {
                         } label: {
                             Label("Refresh Displays", systemImage: "arrow.clockwise")
                         }
+                        .help("Refresh displays — re-scan connected monitors and re-read their saved brightness/contrast settings")
                     }
                 }
         }
