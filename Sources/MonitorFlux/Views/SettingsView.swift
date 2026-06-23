@@ -26,7 +26,14 @@ struct SettingsView: View {
                     store.setKeyboardControl(isOn)
                 })
                 LabeledContent("Status", value: store.keyboardStatus)
-                Text("The brightness and volume keys control the external display under your pointer over DDC. Hold Control to dim the built-in panel instead. Requires Accessibility permission (System Settings ▸ Privacy & Security ▸ Accessibility).")
+                VStack(alignment: .leading, spacing: 3) {
+                    keyHint("Brightness keys", "brightness of the display under your pointer (DDC)")
+                    keyHint("⌃ Control + brightness", "contrast")
+                    keyHint("⇧ Shift + brightness", "color temperature (warmer / cooler)")
+                    keyHint("Volume keys", "volume")
+                }
+                .padding(.vertical, 2)
+                Text("Acts on the external display under your pointer; the built-in panel's brightness is left to macOS. Requires Accessibility permission (System Settings ▸ Privacy & Security ▸ Accessibility).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -65,5 +72,16 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private func keyHint(_ keys: String, _ action: String) -> some View {
+        HStack(spacing: 6) {
+            Text(keys)
+                .font(.caption.monospaced())
+                .foregroundStyle(.primary)
+            Text("→ \(action)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

@@ -392,20 +392,12 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Media-key entry points. Without a modifier the target is the display under the
-    /// cursor (external -> DDC; built-in is left to macOS). Control targets the built-in
-    /// panel via software/gamma dimming. Returns true when handled (so the key is swallowed).
-    func adjustBrightnessUnderCursor(by delta: Int, controlBuiltIn: Bool) -> Bool {
-        if controlBuiltIn {
-            guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
-                return false
-            }
-            return adjustBuiltInBrightness(builtIn, by: delta)
-        }
-        guard let target = displayUnderCursor() else {
-            return false
-        }
-        if target.isBuiltIn {
+    /// Keyboard-control entry points, MonitorControl-style. Brightness/contrast target the
+    /// external display under the cursor over DDC; the built-in panel's brightness is left
+    /// to macOS. Color temperature is the global gamma warmth. Each returns true when
+    /// handled, so the event tap swallows the key.
+    func adjustBrightnessUnderCursor(by delta: Int) -> Bool {
+        guard let target = displayUnderCursor(), !target.isBuiltIn else {
             return false
         }
         let current = displayPreferences(for: target).hardwareBrightness
@@ -413,15 +405,25 @@ final class AppStore: ObservableObject {
         return true
     }
 
-    private func adjustBuiltInBrightness(_ display: DisplayInfo, by delta: Int) -> Bool {
-        if canUseNativeBrightness(display) {
-            setNativeBrightness(nativeBrightnessValue(for: display) + Double(delta) / 100.0, for: display)
-            return true
+    func adjustContrastUnderCursor(by delta: Int) -> Bool {
+        guard let target = displayUnderCursor(), !target.isBuiltIn else {
+            return false
         }
-        // Fallback: software gamma dimming when DisplayServices is unavailable.
-        let current = displayPreferences(for: display).gammaBrightness
-        updateDisplayPreferences(for: display) { preferences in
-            preferences.gammaBrightness = (current + delta).clamped(to: ControlRanges.gammaBrightnessPercent)
+        let current = displayPreferences(for: target).hardwareContrast
+        setHardwareContrast(current + delta, for: target)
+        return true
+    }
+
+    /// Nudge the global color temperature (200 K per step) and pin it as a manual override,
+    /// matching the Ambience slider. Positive steps cool (toward daylight), negative warm.
+    func adjustColorTemperature(bySteps steps: Int) -> Bool {
+        let current = currentTemperature
+            ?? (preferences.colorMode == .manual ? preferences.manualTemperature : preferences.dayTemperature)
+        let next = (current + steps * 200).clamped(to: ControlRanges.kelvin)
+        updateGlobalPreferences { preferences in
+            preferences.gammaEnabled = true
+            preferences.colorMode = .manual
+            preferences.manualTemperature = next
         }
         return true
     }
