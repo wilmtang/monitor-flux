@@ -4,6 +4,10 @@ A prioritized plan to make MonitorFlux more **intuitive** and **visually pleasan
 a self-contained handoff. A fresh session/agent should be able to execute from this doc plus
 [`agent.md`](../agent.md). Nothing here changes behavior unless a work item says so.
 
+> **Execution status (2026-06-23):** Items **1–5 done**, item **6 partial** (Diagnostics hidden ✅;
+> warmth motif & empty states 🟡; shortcut chips ⬜). Built clean, 80 unit tests pass, `smoke_test.sh`
+> PASS on open+reopen, and every changed surface was screenshot-verified. Per-item notes are inline below.
+
 ---
 
 ## North star
@@ -105,12 +109,24 @@ swift build && swift test          # unit tests (headless)
 > controls." This plan (and the UX recommendation behind it) **reverses** that. Re-confirm with
 > the user that they now want the de-jargon pass before renaming primary labels. The technical
 > terms must remain in the ⓘ tooltips and Advanced regardless.
+>
+> **✅ Re-confirmed 2026-06-23 — the user approved the de-jargon pass.** Item 1 is done; jargon stays
+> in tooltips/Advanced as required.
 
 ---
 
 ## Work items (priority order)
 
-### 1. Unify vocabulary to "Warmth" + de-jargon primary labels  ·  *low risk, high clarity*
+### 1. ✅ Unify vocabulary to "Warmth" + de-jargon primary labels  ·  *low risk, high clarity*
+> **✅ Done (2026-06-23).** Renamed primary labels: `QuickControlsView` "Ambience"→**Warmth**;
+> `ColorScheduleView` "Enable gamma"→**Warmth**, "Disable Gamma and Restore"→"Disable Warmth & Restore",
+> status headlines→"Warmth is off", "Gamma" status row→"Warmth"; `DisplayDetailView` "Color"/"Warm
+> color"→**Warmth**/"Warm this display", "Hardware DDC — real brightness"→**Monitor**, "Backlight — real
+> brightness"→**Brightness**, "Gamma — software dimming"→**Software dimming**, "Use gamma controls"→"Use
+> software dimming"; `SettingsView` "Warm colors & software dimming"→"Enable warmth", "Color" section→
+> **Warmth**. Jargon kept in `InfoButton`/`HelpText`; `gammaEnabled` and other identifiers untouched.
+> Verified on the popup, Schedule, Display and General surfaces.
+
 **Why:** same concept is called three things; "gamma/DDC" in primary labels reads as plumbing.
 **Change:** rename per the table above in `QuickControlsView` (the "Ambience" card),
 `ColorScheduleView`, `DisplayDetailView` (section headers + "Warm color"), `SettingsView` (the
@@ -118,9 +134,15 @@ master toggle). Keep `HelpText`/`InfoButton` carrying "gamma"/"DDC". **Do not** 
 underlying `preferences.gammaEnabled` flag or change behavior — labels only.
 **Acceptance:** no user-facing "Ambience"/"gamma"/"DDC" in primary labels; consistent "Warmth"/
 "Monitor"; ⓘ tooltips still explain the real mechanism.
-**Blocked on:** the prior-decision confirmation above.
+**Was blocked on:** the prior-decision confirmation above — ✅ resolved 2026-06-23 (user approved).
 
-### 2. Menu-bar popup: hero warmth + "more" disclosure  ·  *medium*
+### 2. ✅ Menu-bar popup: hero warmth + "more" disclosure  ·  *medium*
+> **✅ Done (2026-06-23).** Warmth card relabeled; per the resolved open-decision, the Off/Manual/Schedule
+> segmented control was **replaced with a compact mode chip** (`modeChip`) that shows "Auto · schedule" /
+> "Manual" / "Off" and opens a menu to switch. Warm/cool end affordances (flame/snowflake, blue/amber) on
+> the warmth slider and a per-display **"More"** disclosure (one Brightness by default; contrast/volume
+> behind More) are in place. Verified by popup screenshot.
+
 **Why:** the popup is where people live; today it shows every slider for every display at once.
 **Change (`QuickControlsView.swift`):**
 - Warmth card stays at top; surface the schedule as a small **"Auto · schedule"** chip when
@@ -132,13 +154,23 @@ underlying `preferences.gammaEnabled` flag or change behavior — labels only.
 **Acceptance:** default popup = warmth + one brightness per display; contrast/volume on "more".
 **Verify:** screenshot the popup (drive the status item, capture the ~312-wide window).
 
-### 3. Replace the Schedule split-circle icon  ·  *low*
+### 3. ✅ Replace the Schedule split-circle icon  ·  *low*
+> **✅ Done (2026-06-23, landed in an earlier commit).** The split-circle `ZStack` is gone; the header
+> now shows a state-mirroring SF Symbol via `statusIcon` — `sun.max.fill` by day, `moon.stars.fill` at
+> night, `moon.zzz.fill` when warmth is off. Verified on the Schedule pane.
+
 **Why:** the orange/blue split `Circle` `ZStack` at the top of `ColorScheduleView` reads as a
 meaningless logo (the user flagged it: "what is it even?").
 **Change:** swap for a clear SF Symbol — `sun.horizon.fill` — or a small day→night swatch.
 **Acceptance:** header icon communicates "day/night warmth."
 
-### 4. Per-display pane: one Brightness + "Advanced"  ·  *higher risk, biggest intuitiveness win*
+### 4. ✅ Per-display pane: one Brightness + "Advanced"  ·  *higher risk, biggest intuitiveness win*
+> **✅ Done (2026-06-23).** `DisplayDetailView` shows **Brightness** (the real control — the "Monitor"
+> DDC section for external, backlight for built-in) + **Warmth** by default; **Software dimming (gamma)**
+> and **Schedule** are collapsed under one `DisclosureGroup` labeled **Advanced** (`@State
+> advancedExpanded`). All bindings/behavior preserved — pure reorganization. `smoke_test.sh` still PASS on
+> open **and** reopen (no window-sizing regression). Verified by screenshot of an external display pane.
+
 **Why:** `DisplayDetailView` stacks three "brightness" sections (Monitor/DDC, Gamma/software,
 Schedule). Most users want one.
 **Change:** show **Brightness** (the real control: DDC for external, backlight for built-in) +
@@ -151,7 +183,16 @@ removed.
 **Verify:** screenshot built-in and an external display detail; confirm scroll still works and the
 window doesn't balloon (see sizing constraint).
 
-### 5. First-run onboarding (2 cards)  ·  *medium-high, new surface*
+### 5. ✅ First-run onboarding (2 cards)  ·  *medium-high, new surface*
+> **✅ Done (2026-06-23).** Added a `hasSeenOnboarding` pref + `OnboardingView` (new file): card 1 "Two
+> things, done well" (warm/cool gradient hero, two feature rows), card 2 the Accessibility ask framed by
+> benefit, reusing `AppStore.requestAccessibility()`. Shown once on first launch via a small AppKit window
+> (`AppStore.showOnboarding`/`completeOnboarding`); skippable; marked seen the moment it appears so it
+> never re-pops. Test hooks: `MONITORFLUX_SHOW_ONBOARDING=1`, `MONITORFLUX_ONBOARDING_PAGE`. **macOS-26
+> gotcha fixed:** primary CTAs use an explicit `.plain` accent capsule because `.borderedProminent` drops
+> its label when the window isn't key (a menu-bar app's welcome window often isn't). Both cards verified
+> by screenshot.
+
 **Why:** the app drops users into a dense technical panel with no framing.
 **Change:** add a `hasSeenOnboarding` pref; on first launch show a small sheet: (1) "MonitorFlux
 does two things — warm your screen on a schedule, and control each monitor from the menu bar";
@@ -159,26 +200,32 @@ does two things — warm your screen on a schedule, and control each monitor fro
 external monitor"). Reuse the existing `requestAccessibility()` on `AppStore`.
 **Acceptance:** shown once; skippable; permission framed by benefit.
 
-### 6. Smaller wins  ·  *low each*
-- **Hide Diagnostics from the sidebar** — it's developer-facing. Move behind a "Help ▸
-  Diagnostics" affordance or a key chord, not a top-level `ContentView` sidebar item.
-- **Warmth color motif** — apply the cool→warm tint consistently (warmth slider track ends, OSD
-  glyph tint, menu-bar icon). No gradients needed; tint + end icons.
-- **Empty states** — "No external monitors detected — connect one to control its brightness"
-  instead of an empty area.
-- **Shortcut chips** — the monospace "Not set — record" pills look techy; a cleaner key-cap chip
-  style would feel more native (`ShortcutRecorder.swift`).
+### 6. 🟡 Smaller wins  ·  *low each*  — *partially done*
+- **✅ Hide Diagnostics from the sidebar** — **Done (2026-06-23).** Removed the Diagnostics item from
+  the `ContentView` sidebar; it's now reachable via a hidden **⌘⇧D** button (and `MONITORFLUX_SELECT=
+  diagnostics` for tests).
+- **🟡 Warmth color motif** — **Partial.** Flame/snowflake + blue/amber are on the popup warmth slider,
+  and the onboarding uses cool→warm gradient heroes. **Not yet:** OSD glyph tint and menu-bar icon tint.
+- **🟡 Empty states** — **Partial.** The popup empty state was reworded ("No displays detected — connect
+  a monitor to control its brightness and color here."). **Not yet:** the external-specific "No external
+  monitors detected — connect one…" copy.
+- **⬜ Shortcut chips** — **Not done.** The monospace "Not set — record" pills in `ShortcutRecorder.swift`
+  are unchanged; a cleaner key-cap chip style is still open.
 
 ---
 
 ## Open decisions for the user
 
-1. **De-jargon at all?** (Blocks item 1.) Prior session: user kept gamma/DDC/Ambience. Confirm
-   the reversal, or keep technical terms and do only structural items (2–6).
-2. **Popup warmth control:** the **"Warmth + Auto chip"** direction (schedule surfaced as a chip)
-   vs keeping the explicit **Off / Manual / Schedule** segmented control.
-3. **How far to collapse the display pane** (item 4): single "Brightness" + Advanced, or keep the
-   three sections but visually de-emphasize software/schedule.
+> **✅ All resolved 2026-06-23:** (1) De-jargon — **yes, do it** (reverses the prior session).
+> (2) Popup — **"Warmth + Auto chip"** (the segmented control was removed). (3) Display pane —
+> **single "Brightness" + Advanced** (fully collapsed).
+
+1. ✅ **De-jargon at all?** (Blocks item 1.) Prior session: user kept gamma/DDC/Ambience. Confirm
+   the reversal, or keep technical terms and do only structural items (2–6). → **De-jargon approved.**
+2. ✅ **Popup warmth control:** the **"Warmth + Auto chip"** direction (schedule surfaced as a chip)
+   vs keeping the explicit **Off / Manual / Schedule** segmented control. → **Chip chosen.**
+3. ✅ **How far to collapse the display pane** (item 4): single "Brightness" + Advanced, or keep the
+   three sections but visually de-emphasize software/schedule. → **Single "Brightness" + Advanced.**
 
 ---
 

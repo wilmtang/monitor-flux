@@ -60,6 +60,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["MONITORFLUX_SHOW_OSD"] == "1" {
             store?.showSampleOSD()
         }
+
+        // First-run welcome: show once on a fresh install. `MONITORFLUX_SHOW_ONBOARDING=1` forces
+        // it for a screenshot run; the main-window test hook suppresses it so the smoke geometry
+        // check finds only the titled main window, not the welcome sheet.
+        let env = ProcessInfo.processInfo.environment
+        if env["MONITORFLUX_SHOW_ONBOARDING"] == "1" {
+            store?.showOnboarding()
+        } else if store?.preferences.hasSeenOnboarding == false,
+                  env["MONITORFLUX_OPEN_MAIN"] == nil {
+            store?.showOnboarding()
+        }
     }
 
     /// Used only by the `MONITORFLUX_OPEN_MAIN=reopen` smoke test. Real runloop gaps

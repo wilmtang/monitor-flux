@@ -183,6 +183,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var startAtLogin = false
     var showInDock = false
     var keyboardControlEnabled = false
+    /// Whether the first-run onboarding has been shown. False on a fresh install; set true the
+    /// first time the welcome sheet appears so it never pops again.
+    var hasSeenOnboarding = false
     var latitude = "47.6"
     var longitude = "-122.3"
     var displayPreferences: [String: DisplayPreferences] = [:]
@@ -207,6 +210,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case startAtLogin
         case showInDock
         case keyboardControlEnabled
+        case hasSeenOnboarding
         case latitude
         case longitude
         case displayPreferences
@@ -253,6 +257,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
         showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
+        hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         latitude = try container.decodeIfPresent(String.self, forKey: .latitude) ?? "47.6"
         longitude = try container.decodeIfPresent(String.self, forKey: .longitude) ?? "-122.3"
         displayPreferences = try container.decodeIfPresent(
@@ -278,6 +283,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(startAtLogin, forKey: .startAtLogin)
         try container.encode(showInDock, forKey: .showInDock)
         try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
+        try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)

@@ -23,11 +23,6 @@ struct ContentView: View {
                             .tag(AppSelection.display(display.key))
                     }
                 }
-
-                Section {
-                    Label("Diagnostics", systemImage: "waveform.path.ecg")
-                        .tag(AppSelection.diagnostics)
-                }
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 210, ideal: 240)
@@ -52,6 +47,8 @@ struct ContentView: View {
             switch ProcessInfo.processInfo.environment["MONITORFLUX_SELECT"] {
             case "general":
                 selection = .general
+            case "diagnostics":
+                selection = .diagnostics
             case "display":
                 if let display = store.displays.first(where: { !$0.isBuiltIn }) ?? store.displays.first {
                     selection = .display(display.key)
@@ -59,6 +56,13 @@ struct ContentView: View {
             default:
                 break
             }
+        }
+        .background {
+            // Diagnostics is developer-facing, so it's no longer a sidebar item; reach it
+            // with ⌘⇧D. The MONITORFLUX_SELECT=diagnostics hook also jumps here for tests.
+            Button("Show Diagnostics") { selection = .diagnostics }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .hidden()
         }
     }
 

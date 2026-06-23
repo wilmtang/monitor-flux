@@ -62,6 +62,7 @@ final class AppStore: ObservableObject {
     private let hotKeyCenter = HotKeyCenter()
     private let gammaService = GammaTemperatureService()
     private var mainWindow: MainWindow?
+    private var onboardingWindow: NSWindow?
     private var timer: Timer?
     /// Trailing (coalesced) DDC writes per control, and the last time each one actually
     /// wrote, so `scheduleDDC` can throttle a drag instead of only firing on release.
@@ -396,6 +397,48 @@ final class AppStore: ObservableObject {
         window.isRestorable = false
         window.center()
         window.setFrameAutosaveName("MonitorFluxMainWindow")
+        return window
+    }
+
+    /// Show the first-run welcome. Marked seen the moment it appears so it never pops twice —
+    /// even if the user closes it with the window's close box instead of a button. Activates the
+    /// app (unlike the test-driven window paths) because first launch is a deliberate "look here".
+    func showOnboarding() {
+        updateGlobalPreferences { preferences in
+            preferences.hasSeenOnboarding = true
+        }
+        let window = onboardingWindow ?? makeOnboardingWindow()
+        onboardingWindow = window
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    /// Dismiss the welcome window (from a button or the close box) and drop back to the normal
+    /// activation policy. The seen flag was already set in `showOnboarding`.
+    func completeOnboarding() {
+        onboardingWindow?.close()
+        onboardingWindow = nil
+        refreshActivationPolicy()
+    }
+
+    private func makeOnboardingWindow() -> NSWindow {
+        // Same NSHostingController pattern as the main window (a bare NSHostingView mis-renders),
+        // but a small, fixed, non-resizable sheet — the content is pinned to its own frame.
+        let root = OnboardingView()
+            .environmentObject(self)
+        let controller = NSHostingController(rootView: root)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "Welcome to MonitorFlux"
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.center()
         return window
     }
 

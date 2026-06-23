@@ -117,7 +117,7 @@ struct ColorScheduleView: View {
                 Divider()
 
                 HStack(spacing: 14) {
-                    Toggle("Enable gamma", isOn: preferenceBinding(\.gammaEnabled))
+                    Toggle("Warmth", isOn: preferenceBinding(\.gammaEnabled))
                     InfoButton(title: "What is gamma?", message: HelpText.gamma)
                     Toggle("Start at login", isOn: Binding {
                         store.preferences.startAtLogin
@@ -177,14 +177,14 @@ struct ColorScheduleView: View {
                         LabeledContent("Sunset", value: solarLabel(store.solarTimes?.sunsetMinutes))
                     }
 
-                    LabeledContent("Gamma", value: store.colorMessage)
+                    LabeledContent("Warmth", value: store.colorMessage)
                 }
 
                 Section {
                     Button {
                         store.disableColorAndRestore()
                     } label: {
-                        Label("Disable Gamma and Restore", systemImage: "arrow.uturn.backward.circle")
+                        Label("Disable Warmth & Restore", systemImage: "arrow.uturn.backward.circle")
                     }
                 }
             }
@@ -214,10 +214,10 @@ struct ColorScheduleView: View {
 
     private var statusHeadline: String {
         guard store.preferences.gammaEnabled else {
-            return "Gamma is off"
+            return "Warmth is off"
         }
         guard store.preferences.colorMode != .off else {
-            return "Color warming is off"
+            return "Warmth is off"
         }
         return liveTemperature >= 5200 ? "The sun is up-go outside!" : "Warming down for the night"
     }

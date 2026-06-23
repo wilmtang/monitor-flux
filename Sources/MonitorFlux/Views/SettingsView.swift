@@ -70,18 +70,18 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Warm colors & software dimming", isOn: Binding {
+                Toggle("Enable warmth", isOn: Binding {
                     store.preferences.gammaEnabled
                 } set: { isOn in
                     store.updateGlobalPreferences { preferences in
                         preferences.gammaEnabled = isOn
                     }
                 })
-                Text("Master switch for the gamma engine — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own DDC controls and macOS color remain). On means each display follows its **own** Color and software-dimming settings on its Display screen. Same setting as \u{201C}Enable gamma\u{201D} on the Schedule screen; doesn't affect real backlight, DDC, or volume. Live status is on Diagnostics.")
+                Text("Master switch for warmth — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own controls and macOS color remain). On means each display follows its **own** Warmth and software-dimming settings on its Display screen. Same setting as \u{201C}Warmth\u{201D} on the Schedule screen; doesn't affect real backlight, the monitor's own DDC controls, or volume.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Color")
+                Text("Warmth")
             }
 
             Section("Actions") {

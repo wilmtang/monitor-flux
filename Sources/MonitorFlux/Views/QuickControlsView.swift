@@ -13,12 +13,13 @@ struct QuickControlsView: View {
             ambienceCard
 
             if store.displays.isEmpty {
-                Text("No displays detected")
+                Text("No displays detected — connect a monitor to control its brightness and color here.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 ForEach(store.displays) { display in
-                    displayCard(display)
+                    DisplayCardView(display: display)
                 }
             }
 
@@ -54,39 +55,98 @@ struct QuickControlsView: View {
     private var ambienceCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Text("Ambience")
+                Text("Warmth")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                InfoButton(title: "Ambience (color temperature)", message: HelpText.gamma)
+                InfoButton(title: "Warmth (color temperature)", message: HelpText.gamma)
                 Spacer()
+                modeChip
             }
 
-            controlRow(
-                icon: "thermometer.sun",
+            warmthRow
+        }
+        .padding(12)
+        .background(popupCardBackground())
+    }
+
+    /// Compact mode control that replaces the old Off/Manual/Schedule segmented picker: a chip
+    /// showing the current state ("Auto · schedule" on a schedule, else "Manual"/"Off") that opens
+    /// a menu to switch. Keeps the popup calm — the warmth slider stays the hero and the mode is a
+    /// quiet status you can tap.
+    private var modeChip: some View {
+        Menu {
+            Picker("Mode", selection: modeBinding) {
+                ForEach(ColorMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: modeChipAppearance.icon)
+                    .font(.system(size: 9, weight: .bold))
+                Text(modeChipAppearance.label)
+                    .font(.caption.weight(.medium))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(modeChipAppearance.tint.opacity(0.16)))
+            .foregroundStyle(modeChipAppearance.tint)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    /// The mode the chip reflects: Off when the warmth master is disabled, else the color mode.
+    private var currentMode: ColorMode {
+        store.preferences.gammaEnabled ? store.preferences.colorMode : .off
+    }
+
+    private var modeChipAppearance: (icon: String, label: String, tint: Color) {
+        switch currentMode {
+        case .off:
+            return ("power", "Off", Color.secondary)
+        case .manual:
+            return ("hand.point.up.left.fill", "Manual", Color.orange)
+        case .clock:
+            return ("clock.fill", "Auto · schedule", Color.blue)
+        }
+    }
+
+    /// The global warmth (color-temperature) slider, flanked by warm/cool end affordances: a
+    /// flame at the low-Kelvin (warm) end and a snowflake at the high-Kelvin (cool) end, so the
+    /// blue↔amber motif reads at a glance. Dragging is an immediate "set it now" override → Manual.
+    private var warmthRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+                .help("Warmer (lower color temperature)")
+            MonitorSlider(
+                systemImage: "thermometer.sun",
                 value: Double(ambienceTemperature),
-                range: ControlRanges.kelvin,
-                enabled: ambienceEnabled,
-                readout: "\(ambienceTemperature) K"
+                range: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound),
+                isEnabled: ambienceEnabled
             ) { newValue in
                 let rounded = Int((newValue / 100.0).rounded()) * 100
-                // Dragging warmth here is an immediate "set it now" override -> Manual.
                 store.updateGlobalPreferences { preferences in
                     preferences.gammaEnabled = true
                     preferences.colorMode = .manual
                     preferences.manualTemperature = rounded
                 }
             }
-
-            Picker("Mode", selection: modeBinding) {
-                ForEach(ColorMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            Image(systemName: "snowflake")
+                .font(.system(size: 11))
+                .foregroundStyle(.blue)
+                .help("Cooler (higher color temperature)")
+            Text("\(ambienceTemperature) K")
+                .font(.callout)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 52, alignment: .trailing)
         }
-        .padding(12)
-        .background(cardBackground)
     }
 
     private var ambienceEnabled: Bool {
@@ -112,13 +172,19 @@ struct QuickControlsView: View {
             }
         }
     }
+}
 
-    // MARK: - Per-display cards
+// MARK: - Per-display card
 
-    @ViewBuilder
-    private func displayCard(_ display: DisplayInfo) -> some View {
+/// One display's controls in the popup. Brightness shows by default; contrast and volume
+/// (external displays) tuck behind a per-card "More" disclosure so the popup stays calm.
+private struct DisplayCardView: View {
+    @EnvironmentObject private var store: AppStore
+    let display: DisplayInfo
+    @State private var expanded = false
+
+    var body: some View {
         let preferences = store.displayPreferences(for: display)
-
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
@@ -126,83 +192,114 @@ struct QuickControlsView: View {
                 Text(display.name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
+                Spacer()
+                if !display.isBuiltIn {
+                    moreButton
+                }
             }
 
             if display.isBuiltIn {
-                if store.canUseNativeBrightness(display) {
-                    // Real backlight via DisplayServices.
-                    let level = store.nativeBrightnessValue(for: display)
-                    controlRow(
-                        icon: "sun.max",
-                        value: level * 100,
-                        range: ControlRanges.hardwarePercent,
-                        enabled: true,
-                        readout: "\(Int((level * 100).rounded()))%"
-                    ) { newValue in
-                        store.setNativeBrightness(newValue / 100.0, for: display)
-                    }
-                } else {
-                    // No backlight API; fall back to software (gamma) dimming.
-                    controlRow(
-                        icon: "sun.max",
-                        value: Double(preferences.gammaBrightness),
-                        range: ControlRanges.gammaBrightnessPercent,
-                        enabled: store.preferences.gammaEnabled,
-                        readout: "\(preferences.gammaBrightness)%"
-                    ) { newValue in
-                        store.updateDisplayPreferences(for: display) { displayPreferences in
-                            displayPreferences.gammaBrightness = Int(newValue.rounded())
-                                .clamped(to: ControlRanges.gammaBrightnessPercent)
-                        }
-                    }
-                    Text("Software dimming (built-in panel has no DDC)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+                builtInControls(preferences)
             } else {
-                controlRow(
-                    icon: "sun.max",
-                    value: Double(preferences.hardwareBrightness),
-                    range: ControlRanges.hardwarePercent,
-                    enabled: true,
-                    readout: "\(preferences.hardwareBrightness)%"
-                ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
-
-                controlRow(
-                    icon: "circle.lefthalf.filled",
-                    value: Double(preferences.hardwareContrast),
-                    range: ControlRanges.hardwarePercent,
-                    enabled: true,
-                    readout: "\(preferences.hardwareContrast)%"
-                ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
-
-                // Volume is only shown when the monitor actually has speakers (or the user
-                // forced it on) — a speakerless display gets no useless volume slider.
-                if store.shouldShowVolumeControl(for: display) {
-                    controlRow(
-                        icon: "speaker.wave.2.fill",
-                        value: Double(preferences.hardwareVolume),
-                        range: ControlRanges.hardwarePercent,
-                        enabled: true,
-                        readout: "\(preferences.hardwareVolume)%"
-                    ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
-                }
+                externalControls(preferences)
             }
         }
         .padding(12)
-        .background(cardBackground)
+        .background(popupCardBackground())
     }
 
-    // MARK: - Building blocks
+    private var moreButton: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.18)) { expanded.toggle() }
+        } label: {
+            HStack(spacing: 3) {
+                Text(expanded ? "Less" : "More")
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(expanded ? "Hide contrast and volume" : "Show contrast and volume")
+    }
 
-    private func controlRow(
-        icon: String,
-        value: Double,
-        range: ClosedRange<Int>,
-        enabled: Bool,
-        readout: String,
-        onChange: @escaping (Double) -> Void
-    ) -> some View {
+    @ViewBuilder
+    private func builtInControls(_ preferences: DisplayPreferences) -> some View {
+        if store.canUseNativeBrightness(display) {
+            // Real backlight via DisplayServices.
+            let level = store.nativeBrightnessValue(for: display)
+            ControlRow(
+                icon: "sun.max",
+                value: level * 100,
+                range: ControlRanges.hardwarePercent,
+                readout: "\(Int((level * 100).rounded()))%"
+            ) { newValue in
+                store.setNativeBrightness(newValue / 100.0, for: display)
+            }
+        } else {
+            // No backlight API; fall back to software (gamma) dimming.
+            ControlRow(
+                icon: "sun.max",
+                value: Double(preferences.gammaBrightness),
+                range: ControlRanges.gammaBrightnessPercent,
+                enabled: store.preferences.gammaEnabled,
+                readout: "\(preferences.gammaBrightness)%"
+            ) { newValue in
+                store.updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = Int(newValue.rounded())
+                        .clamped(to: ControlRanges.gammaBrightnessPercent)
+                }
+            }
+            Text("Software dimming (built-in panel has no DDC)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func externalControls(_ preferences: DisplayPreferences) -> some View {
+        ControlRow(
+            icon: "sun.max",
+            value: Double(preferences.hardwareBrightness),
+            range: ControlRanges.hardwarePercent,
+            readout: "\(preferences.hardwareBrightness)%"
+        ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
+
+        if expanded {
+            ControlRow(
+                icon: "circle.lefthalf.filled",
+                value: Double(preferences.hardwareContrast),
+                range: ControlRanges.hardwarePercent,
+                readout: "\(preferences.hardwareContrast)%"
+            ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
+
+            // Volume only when the monitor actually has speakers (or the user forced it on)
+            // — a speakerless display gets no useless volume slider.
+            if store.shouldShowVolumeControl(for: display) {
+                ControlRow(
+                    icon: "speaker.wave.2.fill",
+                    value: Double(preferences.hardwareVolume),
+                    range: ControlRanges.hardwarePercent,
+                    readout: "\(preferences.hardwareVolume)%"
+                ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
+            }
+        }
+    }
+}
+
+// MARK: - Building blocks
+
+/// A labeled MonitorControl-style slider row: the slider plus a fixed-width readout.
+private struct ControlRow: View {
+    let icon: String
+    let value: Double
+    let range: ClosedRange<Int>
+    var enabled = true
+    let readout: String
+    let onChange: (Double) -> Void
+
+    var body: some View {
         HStack(spacing: 10) {
             MonitorSlider(
                 systemImage: icon,
@@ -218,12 +315,12 @@ struct QuickControlsView: View {
                 .frame(width: 52, alignment: .trailing)
         }
     }
+}
 
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 10)
-            .fill(Color.primary.opacity(0.06))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
-    }
+private func popupCardBackground() -> some View {
+    RoundedRectangle(cornerRadius: 10)
+        .fill(Color.primary.opacity(0.06))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
 }
 
 /// Collapse the `MenuBarExtra(.window)` dropdown the way clicking a real `NSMenu` item does.

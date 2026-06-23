@@ -3,6 +3,7 @@ import SwiftUI
 struct DisplayDetailView: View {
     @EnvironmentObject private var store: AppStore
     let display: DisplayInfo
+    @State private var advancedExpanded = false
 
     private var displayPreferences: DisplayPreferences {
         store.displayPreferences(for: display)
@@ -16,11 +17,10 @@ struct DisplayDetailView: View {
         Form {
             displaySection
             colorSection
-            // Brightness/contrast, ordered most-real first: the monitor's own controls,
-            // then software (gamma) dimming, then the day/night schedule.
+            // Brightness/contrast, ordered most-real first: the monitor's own controls stay
+            // up top; software (gamma) dimming and the day/night schedule tuck under Advanced.
             realControlsSection
-            gammaSection
-            scheduleSection
+            advancedSection
         }
         .formStyle(.grouped)
         .padding()
@@ -36,8 +36,8 @@ struct DisplayDetailView: View {
     }
 
     private var colorSection: some View {
-        Section("Color") {
-            Toggle("Warm color", isOn: displayBinding(\.colorEnabled))
+        Section("Warmth") {
+            Toggle("Warm this display", isOn: displayBinding(\.colorEnabled))
                 .disabled(!store.preferences.gammaEnabled)
             LabeledContent("Current", value: store.currentTemperature.map { "\($0) K" } ?? "Off")
         }
@@ -62,7 +62,7 @@ struct DisplayDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                sectionHeader("Backlight — real brightness", help: HelpText.backlight, helpTitle: "Backlight")
+                sectionHeader("Brightness", help: HelpText.backlight, helpTitle: "Backlight")
             }
         } else {
             Section {
@@ -94,73 +94,83 @@ struct DisplayDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
-                sectionHeader("Hardware DDC — real brightness", help: HelpText.ddc, helpTitle: "Hardware (DDC/CI) controls")
+                sectionHeader("Monitor", help: HelpText.ddc, helpTitle: "Monitor controls (DDC/CI)")
+            }
+        }
+    }
+
+    /// Software dimming + scheduling, collapsed by default so the everyday real brightness /
+    /// contrast above stays the focus. Nothing is removed — just tucked behind one disclosure.
+    private var advancedSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $advancedExpanded) {
+                gammaContent
+                Divider()
+                    .padding(.vertical, 2)
+                scheduleContent
+            } label: {
+                Label("Advanced", systemImage: "slider.horizontal.3")
             }
         }
     }
 
     /// Software (gamma) dimming — separate from the real backlight above.
-    private var gammaSection: some View {
-        Section {
-            Toggle("Use gamma controls", isOn: displayBinding(\.gammaControlsEnabled))
-                .disabled(!store.preferences.gammaEnabled)
+    @ViewBuilder
+    private var gammaContent: some View {
+        sectionHeader("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)")
+            .font(.subheadline.weight(.semibold))
 
-            gammaSliderRow(title: "Software brightness", keyPath: \.gammaBrightness, range: ControlRanges.gammaBrightnessPercent)
-            gammaSliderRow(title: "Software contrast", keyPath: \.gammaContrast, range: ControlRanges.gammaContrastPercent)
+        Toggle("Use software dimming", isOn: displayBinding(\.gammaControlsEnabled))
+            .disabled(!store.preferences.gammaEnabled)
 
-            if !store.preferences.gammaEnabled {
-                Text("Enable gamma on the Schedule screen to use these.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if !displayPreferences.gammaControlsEnabled {
-                Text("Turn on “Use gamma controls” to adjust software brightness and contrast.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            sectionHeader("Gamma — software dimming", help: HelpText.gamma, helpTitle: "Software (gamma) controls")
+        gammaSliderRow(title: "Software brightness", keyPath: \.gammaBrightness, range: ControlRanges.gammaBrightnessPercent)
+        gammaSliderRow(title: "Software contrast", keyPath: \.gammaContrast, range: ControlRanges.gammaContrastPercent)
+
+        if !store.preferences.gammaEnabled {
+            Text("Turn on Warmth on the Schedule screen to use these.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if !displayPreferences.gammaControlsEnabled {
+            Text("Turn on “Use software dimming” to adjust software brightness and contrast.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
     /// Automatic brightness/contrast on the day–night schedule.
     @ViewBuilder
-    private var scheduleSection: some View {
+    private var scheduleContent: some View {
+        sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
+            .font(.subheadline.weight(.semibold))
+
         if display.isBuiltIn, store.canUseNativeBrightness(display) {
             // macOS already manages the built-in backlight (auto-brightness, Night Shift);
             // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
-            Section {
-                Text("The built-in display's brightness follows macOS (auto-brightness, Night Shift), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } header: {
-                sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
-            }
+            Text("The built-in display's brightness follows macOS (auto-brightness, Night Shift), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         } else {
-            Section {
-                Toggle("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
-                if displayPreferences.scheduleBrightness {
-                    scheduleTargetRow(title: "Daytime", keyPath: \.dayBrightness)
-                    scheduleTargetRow(title: "Night", keyPath: \.nightBrightness)
-                }
-
-                if !display.isBuiltIn {
-                    Toggle("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
-                    if displayPreferences.scheduleContrast {
-                        scheduleTargetRow(title: "Daytime", keyPath: \.dayContrast)
-                        scheduleTargetRow(title: "Night", keyPath: \.nightContrast)
-                    }
-                }
-
-                Text("Automatically eases the real brightness/contrast from a daytime to a night target. A manual change holds until the next phase.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } header: {
-                sectionHeader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
+            Toggle("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
+            if displayPreferences.scheduleBrightness {
+                scheduleTargetRow(title: "Daytime", keyPath: \.dayBrightness)
+                scheduleTargetRow(title: "Night", keyPath: \.nightBrightness)
             }
+
+            if !display.isBuiltIn {
+                Toggle("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
+                if displayPreferences.scheduleContrast {
+                    scheduleTargetRow(title: "Daytime", keyPath: \.dayContrast)
+                    scheduleTargetRow(title: "Night", keyPath: \.nightContrast)
+                }
+            }
+
+            Text("Automatically eases the real brightness/contrast from a daytime to a night target. A manual change holds until the next phase.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
