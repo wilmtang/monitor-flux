@@ -1,53 +1,107 @@
 import Carbon.HIToolbox
 import Foundation
 
-/// Registers the user's custom global shortcuts with Carbon's `RegisterEventHotKey` and
-/// routes presses to `onAction`. Carbon hot keys fire system-wide without intercepting every
-/// keystroke (unlike an event tap), so they're the safe way to add user-assignable shortcuts
-/// on top of the media-key tap. Carbon delivers presses on the main event target, so this is
-/// `@MainActor`.
+/// An opaque handle to a registered hot key, returned by a registrar so the center can
+/// unregister it later. Carbon tokens carry the `EventHotKeyRef`; fakes carry nil.
+final class HotKeyToken {
+    let carbonRef: EventHotKeyRef?
+    init(carbonRef: EventHotKeyRef?) {
+        self.carbonRef = carbonRef
+    }
+}
+
+/// Abstracts global hot-key registration so the center's conflict bookkeeping is testable
+/// without Carbon — tests inject a fake that can simulate "this combo is already taken".
+@MainActor
+protocol HotKeyRegistering: AnyObject {
+    /// Invoked with a pressed hot key's action id.
+    var onPress: ((UInt32) -> Void)? { get set }
+    /// Register a hot key, or return nil if it couldn't be registered (e.g. a conflict).
+    func register(keyCode: UInt32, modifiers: UInt32, actionID: UInt32) -> HotKeyToken?
+    func unregister(_ token: HotKeyToken)
+}
+
+/// Registers the user's custom global shortcuts and routes presses to `onAction`, tracking
+/// which ones failed to register (because another app already owns the combo). Carbon hot
+/// keys fire system-wide without intercepting every keystroke and need no Accessibility
+/// permission. Carbon delivers presses on the main event target, so this is `@MainActor`.
 @MainActor
 final class HotKeyCenter {
-    /// Invoked on the main thread when a registered shortcut is pressed.
     var onAction: ((HotKeyAction) -> Void)?
+    /// Actions whose shortcut couldn't be registered (already taken by another app).
+    private(set) var conflictedActions: Set<HotKeyAction> = []
 
-    private var hotKeyRefs: [EventHotKeyRef] = []
-    private var actionsByID: [UInt32: HotKeyAction] = [:]
+    private let registrar: HotKeyRegistering
+    private var tokens: [HotKeyAction: HotKeyToken] = [:]
+
+    init(registrar: HotKeyRegistering = CarbonHotKeyRegistrar()) {
+        self.registrar = registrar
+        registrar.onPress = { [weak self] actionID in
+            guard let self,
+                  let action = HotKeyAction.allCases.first(where: { $0.hotKeyID == actionID })
+            else {
+                return
+            }
+            self.onAction?(action)
+        }
+    }
+
+    /// Replace all registrations with `shortcuts`; returns the actions that failed to
+    /// register (conflicts), and stores them on `conflictedActions`.
+    @discardableResult
+    func update(_ shortcuts: [HotKeyAction: GlobalShortcut]) -> Set<HotKeyAction> {
+        for token in tokens.values {
+            registrar.unregister(token)
+        }
+        tokens.removeAll()
+
+        var conflicts: Set<HotKeyAction> = []
+        for (action, shortcut) in shortcuts where shortcut.keyCode != 0 {
+            if let token = registrar.register(
+                keyCode: shortcut.keyCode,
+                modifiers: shortcut.carbonModifiers,
+                actionID: action.hotKeyID
+            ) {
+                tokens[action] = token
+            } else {
+                conflicts.insert(action)
+            }
+        }
+        conflictedActions = conflicts
+        return conflicts
+    }
+}
+
+/// Carbon-backed registrar: `RegisterEventHotKey` plus one `kEventHotKeyPressed` handler.
+@MainActor
+final class CarbonHotKeyRegistrar: HotKeyRegistering {
+    var onPress: ((UInt32) -> Void)?
     private var eventHandler: EventHandlerRef?
     // 'MFlx' — a four-char signature so our hot-key ids don't collide with other apps'.
     private let signature: OSType = 0x4D_46_6C_78
 
-    /// Replace all registrations with the given shortcuts. Skips empty/zero-key entries.
-    func update(_ shortcuts: [HotKeyAction: GlobalShortcut]) {
-        unregisterAll()
-        guard !shortcuts.isEmpty else {
-            return
-        }
+    func register(keyCode: UInt32, modifiers: UInt32, actionID: UInt32) -> HotKeyToken? {
         installHandlerIfNeeded()
-        for (action, shortcut) in shortcuts where shortcut.keyCode != 0 {
-            var ref: EventHotKeyRef?
-            let id = EventHotKeyID(signature: signature, id: action.hotKeyID)
-            let status = RegisterEventHotKey(
-                shortcut.keyCode,
-                shortcut.carbonModifiers,
-                id,
-                GetEventDispatcherTarget(),
-                0,
-                &ref
-            )
-            if status == noErr, let ref {
-                hotKeyRefs.append(ref)
-                actionsByID[action.hotKeyID] = action
-            }
+        var ref: EventHotKeyRef?
+        let id = EventHotKeyID(signature: signature, id: actionID)
+        let status = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            id,
+            GetEventDispatcherTarget(),
+            0,
+            &ref
+        )
+        guard status == noErr, let ref else {
+            return nil
         }
+        return HotKeyToken(carbonRef: ref)
     }
 
-    func unregisterAll() {
-        for ref in hotKeyRefs {
+    func unregister(_ token: HotKeyToken) {
+        if let ref = token.carbonRef {
             UnregisterEventHotKey(ref)
         }
-        hotKeyRefs.removeAll()
-        actionsByID.removeAll()
     }
 
     private func installHandlerIfNeeded() {
@@ -79,13 +133,10 @@ final class HotKeyCenter {
                     return noErr
                 }
                 let id = hotKeyID.id
-                // Carbon delivers hot-key events on the main event target, i.e. the main
-                // thread, so it's safe to touch the @MainActor center directly.
+                // Carbon delivers hot-key events on the main event target (main thread).
                 MainActor.assumeIsolated {
-                    let center = Unmanaged<HotKeyCenter>.fromOpaque(userData).takeUnretainedValue()
-                    if let action = center.actionsByID[id] {
-                        center.onAction?(action)
-                    }
+                    let registrar = Unmanaged<CarbonHotKeyRegistrar>.fromOpaque(userData).takeUnretainedValue()
+                    registrar.onPress?(id)
                 }
                 return noErr
             },

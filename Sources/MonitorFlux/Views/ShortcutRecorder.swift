@@ -6,6 +6,7 @@ import SwiftUI
 /// clears it. Captures via a local key monitor while the Settings window is focused.
 struct ShortcutRecorder: View {
     let label: String
+    var hasConflict = false
     @Binding var shortcut: GlobalShortcut?
 
     @State private var isRecording = false
@@ -15,6 +16,11 @@ struct ShortcutRecorder: View {
         HStack(spacing: 8) {
             Text(label)
             Spacer()
+            if hasConflict, !isRecording {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                    .help("This shortcut is already used by another app — pick a different combination.")
+            }
             Button(action: toggle) {
                 Text(buttonTitle)
                     .font(.callout.monospaced())

@@ -36,6 +36,9 @@ final class AppStore: ObservableObject {
     /// Displays that expose an audio output (monitor speakers). Drives whether the DDC
     /// volume slider is shown — a speakerless monitor gets no volume control.
     @Published private(set) var displaysWithAudio: Set<CGDirectDisplayID> = []
+    /// Custom-shortcut actions whose combo another app already owns, so they couldn't be
+    /// registered. Surfaced as a warning next to the recorder.
+    @Published private(set) var hotkeyConflicts: Set<HotKeyAction> = []
 
     /// Set by `MONITORFLUX_SAFE_MODE=1`. Skips every gamma/DDC/backlight hardware write so
     /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
@@ -97,9 +100,7 @@ final class AppStore: ObservableObject {
         hotKeyCenter.onAction = { [weak self] action in
             self?.performHotKeyAction(action)
         }
-        if !safeMode {
-            refreshHotKeys()
-        }
+        refreshHotKeys()
 
         CGDisplayRegisterReconfigurationCallback(
             displayReconfigurationCallback,
@@ -484,13 +485,17 @@ final class AppStore: ObservableObject {
     }
 
     private func refreshHotKeys() {
+        guard !safeMode else {
+            hotkeyConflicts = []
+            return
+        }
         var map: [HotKeyAction: GlobalShortcut] = [:]
         for (key, shortcut) in preferences.hotkeys {
             if let action = HotKeyAction(rawValue: key) {
                 map[action] = shortcut
             }
         }
-        hotKeyCenter.update(map)
+        hotkeyConflicts = hotKeyCenter.update(map)
     }
 
     private func performHotKeyAction(_ action: HotKeyAction) {
