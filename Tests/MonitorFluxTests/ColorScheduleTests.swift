@@ -17,6 +17,32 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertNil(ColorSchedule.targetTemperature(preferences: preferences))
     }
 
+    func testTemperatureQuantizationRoundsToStep() {
+        // Reduces gamma rewrites (and screen flicker) during a fade by snapping to 100 K.
+        XCTAssertEqual(ColorSchedule.quantizedTemperature(3247), 3200)
+        XCTAssertEqual(ColorSchedule.quantizedTemperature(3250), 3300) // .5 rounds up
+        XCTAssertEqual(ColorSchedule.quantizedTemperature(2780), 2800)
+        XCTAssertEqual(ColorSchedule.quantizedTemperature(6500), 6500) // already on a boundary
+    }
+
+    func testClockTemperatureIsQuantized() {
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .clock
+        preferences.scheduleSource = .manualTimes
+        // Mid-fade the raw schedule produces odd values; the applied target snaps to 100 K.
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 6
+        components.day = 22
+        components.hour = 20
+        components.minute = 17 // 17 min into the 8 PM sunset fade
+        let date = Calendar.current.date(from: components)!
+
+        let temperature = ColorSchedule.targetTemperature(preferences: preferences, date: date)
+        XCTAssertNotNil(temperature)
+        XCTAssertEqual(temperature! % 100, 0)
+    }
+
     func testScheduledHardwareLevelHoldsDayThenNight() {
         var preferences = AppPreferences.defaults
         preferences.coolStartMinutes = 7 * 60     // wake / daytime begins

@@ -15,11 +15,21 @@ enum ColorSchedule {
             let effective = solarAdjustedPreferences(preferences, date: date, calendar: calendar)
             let minute = calendar.component(.hour, from: date) * 60
                 + calendar.component(.minute, from: date)
-            return scheduledTemperature(
-                preferences: effective,
-                minuteOfDay: minute
-            )
+            // Quantize the continuously-fading clock temperature so the gamma tables are
+            // only rewritten when the color crosses a step boundary (~7 times across a
+            // 45-min fade instead of every minute). Each gamma write flashes the screen, so
+            // fewer writes = far less flicker. The curve preview uses the raw value, so it
+            // stays smooth.
+            return quantizedTemperature(scheduledTemperature(preferences: effective, minuteOfDay: minute))
         }
+    }
+
+    /// Round a temperature to the nearest `step` Kelvin (default 100). Pure + unit-tested.
+    static func quantizedTemperature(_ temperature: Int, step: Int = 100) -> Int {
+        guard step > 1 else {
+            return temperature
+        }
+        return Int((Double(temperature) / Double(step)).rounded()) * step
     }
 
     /// When the schedule is location-driven, replace the daytime (sunrise) and sunset
