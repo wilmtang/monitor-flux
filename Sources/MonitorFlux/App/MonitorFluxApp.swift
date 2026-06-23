@@ -56,6 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             break
         }
+
+        if ProcessInfo.processInfo.environment["MONITORFLUX_SHOW_OSD"] == "1" {
+            store?.showSampleOSD()
+        }
     }
 
     /// Used only by the `MONITORFLUX_OPEN_MAIN=reopen` smoke test. Real runloop gaps

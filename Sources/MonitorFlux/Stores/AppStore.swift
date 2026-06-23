@@ -47,6 +47,7 @@ final class AppStore: ObservableObject {
     private let ddcBackend = HardwareDDCBackend()
     private let nativeBrightnessBackend = NativeBrightnessBackend()
     private let audioCapabilityService = AudioCapabilityService()
+    private let osd = OSDController()
     private let gammaService = GammaTemperatureService()
     private var mainWindow: MainWindow?
     private var timer: Timer?
@@ -401,7 +402,9 @@ final class AppStore: ObservableObject {
             return false
         }
         let current = displayPreferences(for: target).hardwareBrightness
-        setHardwareBrightness(current + delta, for: target)
+        let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
+        setHardwareBrightness(next, for: target)
+        osd.show(.brightness, fraction: percentFraction(next), onDisplay: target.id)
         return true
     }
 
@@ -410,7 +413,9 @@ final class AppStore: ObservableObject {
             return false
         }
         let current = displayPreferences(for: target).hardwareContrast
-        setHardwareContrast(current + delta, for: target)
+        let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
+        setHardwareContrast(next, for: target)
+        osd.show(.contrast, fraction: percentFraction(next), onDisplay: target.id)
         return true
     }
 
@@ -425,6 +430,9 @@ final class AppStore: ObservableObject {
             preferences.colorMode = .manual
             preferences.manualTemperature = next
         }
+        let span = Double(ControlRanges.kelvin.upperBound - ControlRanges.kelvin.lowerBound)
+        let fraction = Double(next - ControlRanges.kelvin.lowerBound) / span
+        osd.show(.color, fraction: fraction, onDisplay: displayUnderCursor()?.id)
         return true
     }
 
@@ -433,8 +441,20 @@ final class AppStore: ObservableObject {
             return false
         }
         let current = displayPreferences(for: target).hardwareVolume
-        setHardwareVolume(current + delta, for: target)
+        let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
+        setHardwareVolume(next, for: target)
+        osd.show(.volume, fraction: percentFraction(next), onDisplay: target.id)
         return true
+    }
+
+    private func percentFraction(_ percent: Int) -> Double {
+        let range = ControlRanges.hardwarePercent
+        return Double(percent - range.lowerBound) / Double(range.upperBound - range.lowerBound)
+    }
+
+    /// Flash a sample OSD — used only by `MONITORFLUX_SHOW_OSD=1` to screenshot the overlay.
+    func showSampleOSD() {
+        osd.show(.brightness, fraction: 0.7, onDisplay: displays.first?.id)
     }
 
     private func displayUnderCursor() -> DisplayInfo? {
