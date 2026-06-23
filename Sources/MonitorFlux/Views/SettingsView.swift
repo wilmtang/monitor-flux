@@ -41,25 +41,32 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section {
-                ForEach(HotKeyAction.allCases) { action in
-                    ShortcutRecorder(
-                        label: action.label,
-                        icon: action.icon,
-                        defaultShortcut: action.defaultShortcut,
-                        hasConflict: store.hotkeyConflicts.contains(action),
-                        shortcut: Binding {
-                            store.hotkey(for: action)
-                        } set: { newValue in
-                            store.setHotkey(newValue, for: action)
-                        }
-                    )
+            ForEach(Array(HotKeyGroup.allCases.enumerated()), id: \.element) { index, group in
+                Section {
+                    ForEach(HotKeyAction.allCases.filter { $0.group == group }) { action in
+                        ShortcutRecorder(
+                            label: action.label,
+                            icon: action.icon,
+                            defaultShortcut: action.defaultShortcut,
+                            hasConflict: store.hotkeyConflicts.contains(action),
+                            shortcut: Binding {
+                                store.hotkey(for: action)
+                            } set: { newValue in
+                                store.setHotkey(newValue, for: action)
+                            }
+                        )
+                    }
+                    Text(group.footnote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if index == 0 {
+                        Text("Global shortcuts — they work anywhere and need no Accessibility permission. Press a combo with at least one modifier (⌘⌥⌃⇧).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text(index == 0 ? "Custom Shortcuts · \(group.label)" : group.label)
                 }
-                Text("Optional global shortcuts for each control, in addition to the keys above. These work anywhere and don't need Accessibility permission. Use at least one modifier (⌘⌥⌃⇧).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } header: {
-                Text("Custom Shortcuts")
             }
 
             Section {

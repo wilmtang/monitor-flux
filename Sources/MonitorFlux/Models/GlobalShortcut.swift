@@ -50,6 +50,29 @@ struct GlobalShortcut: Codable, Equatable, Sendable {
     ]
 }
 
+/// The two shortcut sets: one acting on the display under the pointer, one always on the
+/// built-in panel. (If the pointer is on the built-in, both act on it — that's fine.)
+enum HotKeyGroup: CaseIterable {
+    case underPointer
+    case builtIn
+
+    var label: String {
+        switch self {
+        case .underPointer: "Display under pointer"
+        case .builtIn: "Built-in display"
+        }
+    }
+
+    var footnote: String {
+        switch self {
+        case .underPointer:
+            "Brightness/contrast/volume act on the external monitor under your pointer; color is global. Brightness also drives the built-in when the pointer is on it."
+        case .builtIn:
+            "Always act on the built-in panel: brightness is its real backlight; contrast is software (needs the gamma master switch on)."
+        }
+    }
+}
+
 /// The controls a custom hotkey can drive. Each carries a fixed Carbon hot-key id so a press
 /// can be routed back to the right action.
 enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -61,15 +84,31 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     case colorCooler
     case volumeUp
     case volumeDown
+    // Built-in-display set (brightness + contrast only). Appended so the other actions keep
+    // their `hotKeyID`s, and thus their saved shortcuts.
+    case builtInBrightnessUp
+    case builtInBrightnessDown
+    case builtInContrastUp
+    case builtInContrastDown
 
     var id: String { rawValue }
 
+    /// Which set this action belongs to — drives the Settings grouping and the target it acts on.
+    var group: HotKeyGroup {
+        switch self {
+        case .builtInBrightnessUp, .builtInBrightnessDown, .builtInContrastUp, .builtInContrastDown:
+            .builtIn
+        default:
+            .underPointer
+        }
+    }
+
     var label: String {
         switch self {
-        case .brightnessUp: "Brightness up"
-        case .brightnessDown: "Brightness down"
-        case .contrastUp: "Contrast up"
-        case .contrastDown: "Contrast down"
+        case .brightnessUp, .builtInBrightnessUp: "Brightness up"
+        case .brightnessDown, .builtInBrightnessDown: "Brightness down"
+        case .contrastUp, .builtInContrastUp: "Contrast up"
+        case .contrastDown, .builtInContrastDown: "Contrast down"
         case .colorWarmer: "Color warmer"
         case .colorCooler: "Color cooler"
         case .volumeUp: "Volume up"
@@ -80,10 +119,10 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     /// SF Symbol shown beside the action in Settings.
     var icon: String {
         switch self {
-        case .brightnessUp: "sun.max.fill"
-        case .brightnessDown: "sun.min"
-        case .contrastUp: "circle.righthalf.filled"
-        case .contrastDown: "circle.lefthalf.filled"
+        case .brightnessUp, .builtInBrightnessUp: "sun.max.fill"
+        case .brightnessDown, .builtInBrightnessDown: "sun.min"
+        case .contrastUp, .builtInContrastUp: "circle.righthalf.filled"
+        case .contrastDown, .builtInContrastDown: "circle.lefthalf.filled"
         case .colorWarmer: "thermometer.sun.fill"
         case .colorCooler: "thermometer.snowflake"
         case .volumeUp: "speaker.wave.3.fill"
@@ -96,8 +135,12 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     /// action a sensible ⌃⌥ binding to reset to. They can still conflict with another app —
     /// the recorder shows a ⚠️ if so.
     var defaultShortcut: GlobalShortcut {
+        // Under-pointer set is ⌃⌥-based; built-in set is ⌘⌥-based — same keys, distinct base,
+        // so resetting both to default never collides.
         let controlOption = UInt32(controlKey | optionKey)
         let controlOptionShift = UInt32(controlKey | optionKey | shiftKey)
+        let commandOption = UInt32(cmdKey | optionKey)
+        let commandOptionShift = UInt32(cmdKey | optionKey | shiftKey)
         switch self {
         case .brightnessUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: controlOption)
         case .brightnessDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: controlOption)
@@ -107,6 +150,10 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .colorCooler: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Quote), carbonModifiers: controlOption)
         case .volumeUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Equal), carbonModifiers: controlOption)
         case .volumeDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Minus), carbonModifiers: controlOption)
+        case .builtInBrightnessUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: commandOption)
+        case .builtInBrightnessDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: commandOption)
+        case .builtInContrastUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: commandOptionShift)
+        case .builtInContrastDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: commandOptionShift)
         }
     }
 

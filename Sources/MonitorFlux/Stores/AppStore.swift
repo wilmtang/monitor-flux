@@ -591,7 +591,48 @@ final class AppStore: ObservableObject {
             _ = adjustVolumeUnderCursor(by: step)
         case .volumeDown:
             _ = adjustVolumeUnderCursor(by: -step)
+        case .builtInBrightnessUp:
+            _ = adjustBuiltInBrightness(by: step)
+        case .builtInBrightnessDown:
+            _ = adjustBuiltInBrightness(by: -step)
+        case .builtInContrastUp:
+            _ = adjustBuiltInContrast(by: step)
+        case .builtInContrastDown:
+            _ = adjustBuiltInContrast(by: -step)
         }
+    }
+
+    /// Built-in-set brightness: the real backlight (or software gamma if no backlight API).
+    @discardableResult
+    func adjustBuiltInBrightness(by delta: Int) -> Bool {
+        guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
+            return false
+        }
+        if canUseNativeBrightness(builtIn) {
+            let next = (nativeBrightnessValue(for: builtIn) + Double(delta) / 100.0).clamped(to: 0...1)
+            setNativeBrightness(next, for: builtIn)
+            osd.show(.brightness, fraction: next, onDisplay: builtIn.id)
+        } else {
+            let next = (displayPreferences(for: builtIn).gammaBrightness + delta)
+                .clamped(to: ControlRanges.gammaBrightnessPercent)
+            updateDisplayPreferences(for: builtIn) { $0.gammaBrightness = next }
+            osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: builtIn.id)
+        }
+        return true
+    }
+
+    /// Built-in-set contrast: software (gamma) contrast — takes effect when the gamma master
+    /// switch is on.
+    @discardableResult
+    func adjustBuiltInContrast(by delta: Int) -> Bool {
+        guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
+            return false
+        }
+        let next = (displayPreferences(for: builtIn).gammaContrast + delta)
+            .clamped(to: ControlRanges.gammaContrastPercent)
+        updateDisplayPreferences(for: builtIn) { $0.gammaContrast = next }
+        osd.show(.contrast, fraction: Double(next) / 200.0, onDisplay: builtIn.id)
+        return true
     }
 
     private func displayUnderCursor() -> DisplayInfo? {
