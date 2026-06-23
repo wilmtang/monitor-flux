@@ -4,9 +4,9 @@ A prioritized plan to make MonitorFlux more **intuitive** and **visually pleasan
 a self-contained handoff. A fresh session/agent should be able to execute from this doc plus
 [`agent.md`](../agent.md). Nothing here changes behavior unless a work item says so.
 
-> **Execution status (2026-06-23):** Items **1–5 done**, item **6 partial** (Diagnostics hidden ✅;
-> warmth motif & empty states 🟡; shortcut chips ⬜). Built clean, 80 unit tests pass, `smoke_test.sh`
-> PASS on open+reopen, and every changed surface was screenshot-verified. Per-item notes are inline below.
+> **Execution status (2026-06-23):** **All items 1–6 done.** Built clean, 80 unit tests pass,
+> `smoke_test.sh` PASS on open+reopen, and every changed surface was screenshot-verified (including the
+> warmth-tinted OSD and the new key-cap shortcut chips). Per-item notes are inline below.
 
 ---
 
@@ -200,17 +200,23 @@ does two things — warm your screen on a schedule, and control each monitor fro
 external monitor"). Reuse the existing `requestAccessibility()` on `AppStore`.
 **Acceptance:** shown once; skippable; permission framed by benefit.
 
-### 6. 🟡 Smaller wins  ·  *low each*  — *partially done*
+### 6. ✅ Smaller wins  ·  *low each*  — *all done*
 - **✅ Hide Diagnostics from the sidebar** — **Done (2026-06-23).** Removed the Diagnostics item from
   the `ContentView` sidebar; it's now reachable via a hidden **⌘⇧D** button (and `MONITORFLUX_SELECT=
   diagnostics` for tests).
-- **🟡 Warmth color motif** — **Partial.** Flame/snowflake + blue/amber are on the popup warmth slider,
-  and the onboarding uses cool→warm gradient heroes. **Not yet:** OSD glyph tint and menu-bar icon tint.
-- **🟡 Empty states** — **Partial.** The popup empty state was reworded ("No displays detected — connect
-  a monitor to control its brightness and color here."). **Not yet:** the external-specific "No external
-  monitors detected — connect one…" copy.
-- **⬜ Shortcut chips** — **Not done.** The monospace "Not set — record" pills in `ShortcutRecorder.swift`
-  are unchanged; a cleaner key-cap chip style is still open.
+- **✅ Warmth color motif** — **Done (2026-06-23).** Added a shared `Color.warmth(for:)` / `warmth(kelvin:)`
+  cool-blue↔warm-amber helper in `Components.swift`. The **OSD** color overlay now tints its glyph and
+  level bar by warmth (`OSDController`); the **menu-bar icon** picks up an amber tint while the screen is
+  actually warmed and stays neutral in cool daylight / when off (`MonitorFluxApp.menuBarTint`). Joins the
+  existing popup flame/snowflake ends and the onboarding gradient heroes. Verified by screenshotting the
+  warm-end color OSD (new `MONITORFLUX_SHOW_OSD=color` + `MONITORFLUX_OSD_HOLD=1` hooks).
+- **✅ Empty states** — **Done (2026-06-23).** Popup now shows a card-styled hint **"No external monitors
+  detected — connect one to control its brightness, contrast, and volume here."** when only the built-in
+  panel is present (`QuickControlsView.emptyHint`), plus the existing no-displays copy.
+- **✅ Shortcut chips** — **Done (2026-06-23).** Replaced the monospace "⌘⌥B" / "Not set — record" bordered
+  button with System-Settings-style **key-caps** (each modifier/key as its own rounded tile via
+  `GlobalShortcut.displayTokens`) and a dashed **"⊕ Record"** slot when empty (`ShortcutRecorder.swift`).
+  Verified by screenshot.
 
 ---
 

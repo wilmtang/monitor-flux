@@ -15,12 +15,26 @@ struct MonitorFluxApp: App {
             // it's where we wire the delegate and apply the launch activation policy.
             // thermometer.sun.fill = color temperature, distinct from MonitorControl's sun.
             Image(systemName: "thermometer.sun.fill")
+                .foregroundStyle(menuBarTint)
                 .onAppear {
                     appDelegate.store = store
                     store.refreshActivationPolicy()
                 }
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// Warmth motif on the status icon: it picks up an amber tint while the screen is actually
+    /// warmed (the warm side of the range), and stays neutral in cool daylight or when warmth is
+    /// off — a glanceable "your screen is warm right now" without a permanently-colored menu-bar icon.
+    private var menuBarTint: Color {
+        guard store.preferences.gammaEnabled,
+              store.preferences.colorMode != .off,
+              let temperature = store.currentTemperature,
+              temperature < 4600 else {
+            return .primary
+        }
+        return .warmAmber
     }
 }
 
@@ -57,8 +71,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
-        if ProcessInfo.processInfo.environment["MONITORFLUX_SHOW_OSD"] == "1" {
+        switch ProcessInfo.processInfo.environment["MONITORFLUX_SHOW_OSD"] {
+        case "1", "brightness":
             store?.showSampleOSD()
+        case "color":
+            // Warm end of the range, so the warmth-tinted glyph/bar is visible in a screenshot.
+            store?.showSampleOSD(.color, fraction: 0.12)
+        default:
+            break
         }
 
         // First-run welcome: show once on a fresh install. `MONITORFLUX_SHOW_ONBOARDING=1` forces

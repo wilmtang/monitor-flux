@@ -18,6 +18,18 @@ struct GlobalShortcut: Codable, Equatable, Sendable {
         return result
     }
 
+    /// The shortcut split into display tokens — each modifier glyph, then the key — for rendering
+    /// as individual key-caps (e.g. ⌃⌥B → ["⌃", "⌥", "B"]). Same order as `displayString`.
+    var displayTokens: [String] {
+        var tokens: [String] = []
+        if carbonModifiers & UInt32(controlKey) != 0 { tokens.append("⌃") }
+        if carbonModifiers & UInt32(optionKey) != 0 { tokens.append("⌥") }
+        if carbonModifiers & UInt32(shiftKey) != 0 { tokens.append("⇧") }
+        if carbonModifiers & UInt32(cmdKey) != 0 { tokens.append("⌘") }
+        tokens.append(Self.keyName(for: keyCode))
+        return tokens
+    }
+
     static func keyName(for keyCode: UInt32) -> String {
         if let named = specialKeyNames[Int(keyCode)] {
             return named

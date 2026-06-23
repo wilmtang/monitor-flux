@@ -10,6 +10,36 @@ extension Color {
     static let phaseBedtime = Color.indigo
 }
 
+/// The warmth motif's two poles, shared by the OSD glyph, the menu-bar icon, and the popup's
+/// warm/cool slider ends so "warm" and "cool" look the same everywhere.
+extension Color {
+    static let warmAmber = Color(red: 1.0, green: 0.58, blue: 0.18)
+    static let coolBlue = Color(red: 0.42, green: 0.64, blue: 1.0)
+
+    /// Cool-blue ↔ warm-amber tint for a position on the warmth axis. `fraction` is 0 at the warm
+    /// (low-Kelvin) end and 1 at the cool (high-Kelvin) end — the same convention the OSD/schedule use.
+    static func warmth(for fraction: Double) -> Color {
+        blend(warmAmber, coolBlue, fraction.clamped(to: 0...1))
+    }
+
+    /// Warm/cool tint for a specific color temperature within `range`.
+    static func warmth(kelvin: Int, in range: ClosedRange<Int> = ControlRanges.kelvin) -> Color {
+        let span = Double(range.upperBound - range.lowerBound)
+        let fraction = span > 0 ? Double(kelvin - range.lowerBound) / span : 0.5
+        return warmth(for: fraction)
+    }
+
+    private static func blend(_ a: Color, _ b: Color, _ t: Double) -> Color {
+        guard let na = NSColor(a).usingColorSpace(.sRGB),
+              let nb = NSColor(b).usingColorSpace(.sRGB) else { return a }
+        return Color(
+            red: Double(na.redComponent) + (Double(nb.redComponent) - Double(na.redComponent)) * t,
+            green: Double(na.greenComponent) + (Double(nb.greenComponent) - Double(na.greenComponent)) * t,
+            blue: Double(na.blueComponent) + (Double(nb.blueComponent) - Double(na.blueComponent)) * t
+        )
+    }
+}
+
 /// Plain-language explanations of the two control paths, surfaced via `InfoButton`.
 enum HelpText {
     static let gamma = """

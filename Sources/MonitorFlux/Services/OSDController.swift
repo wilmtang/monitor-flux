@@ -32,7 +32,10 @@ final class OSDController {
         let panel = panel ?? makePanel()
         self.panel = panel
 
-        let view = OSDView(systemImage: kind.systemImage, fraction: fraction.clamped(to: 0...1))
+        // Warmth motif: the color (temperature) OSD picks up the cool→warm tint by position; the
+        // other kinds stay white like the system overlay.
+        let tint: Color = kind == .color ? .warmth(for: fraction) : .white
+        let view = OSDView(systemImage: kind.systemImage, fraction: fraction.clamped(to: 0...1), tint: tint)
         (panel.contentView as? NSHostingView<OSDView>)?.rootView = view
 
         let screen = displayID.flatMap(Self.screen(for:)) ?? NSScreen.main
@@ -52,7 +55,7 @@ final class OSDController {
             self?.fadeOut()
         }
         hideWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3, execute: item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (ProcessInfo.processInfo.environment["MONITORFLUX_OSD_HOLD"] == "1" ? 60 : 1.3), execute: item)
     }
 
     private func fadeOut() {
@@ -97,6 +100,7 @@ final class OSDController {
 private struct OSDView: View {
     let systemImage: String
     let fraction: Double
+    var tint: Color = .white
 
     private let segments = 16
 
@@ -104,13 +108,13 @@ private struct OSDView: View {
         VStack(spacing: 22) {
             Image(systemName: systemImage)
                 .font(.system(size: 58))
-                .foregroundStyle(.white)
+                .foregroundStyle(tint)
                 .frame(height: 66)
 
             HStack(spacing: 3) {
                 ForEach(0..<segments, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 1.5)
-                        .fill(.white.opacity(Double(index) / Double(segments) < fraction ? 1 : 0.25))
+                        .fill(tint.opacity(Double(index) / Double(segments) < fraction ? 1 : 0.25))
                         .frame(height: 8)
                 }
             }

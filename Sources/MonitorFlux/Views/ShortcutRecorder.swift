@@ -35,12 +35,11 @@ struct ShortcutRecorder: View {
             Button {
                 toggle()
             } label: {
-                Text(buttonTitle)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(shortcut == nil && !isRecording ? .secondary : .primary)
-                    .frame(minWidth: 104)
+                shortcutLabel
+                    .frame(minWidth: 104, alignment: .trailing)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
             .help(isRecording ? "Press a shortcut, or Escape to cancel" : "Click to record a shortcut")
 
             Menu {
@@ -66,11 +65,55 @@ struct ShortcutRecorder: View {
         .onDisappear(perform: stop)
     }
 
-    private var buttonTitle: String {
+    /// The recorder's trailing affordance: a pill while arming, the shortcut as individual
+    /// key-caps once set, and a dashed "Record" slot when empty — cleaner and more native than
+    /// the old monospace "⌘⌥B" / "Not set — record" run.
+    @ViewBuilder
+    private var shortcutLabel: some View {
         if isRecording {
-            return "Press keys…"
+            Text("Press keys…")
+                .font(.callout)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.accentColor))
+        } else if let shortcut {
+            HStack(spacing: 3) {
+                ForEach(Array(shortcut.displayTokens.enumerated()), id: \.offset) { _, token in
+                    keyCap(token)
+                }
+            }
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "plus.circle")
+                Text("Record")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().strokeBorder(
+                    Color.primary.opacity(0.18),
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                )
+            )
         }
-        return shortcut?.displayString ?? "Not set — record"
+    }
+
+    /// One keyboard key-cap: a rounded, slightly raised tile like the shortcut chips in
+    /// System Settings.
+    private func keyCap(_ token: String) -> some View {
+        Text(token)
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .frame(minWidth: 18)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.primary.opacity(0.08))
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.primary.opacity(0.14)))
+            )
     }
 
     private func toggle() {

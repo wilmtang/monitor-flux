@@ -580,9 +580,9 @@ final class AppStore: ObservableObject {
         return Double(percent - range.lowerBound) / Double(range.upperBound - range.lowerBound)
     }
 
-    /// Flash a sample OSD — used only by `MONITORFLUX_SHOW_OSD=1` to screenshot the overlay.
-    func showSampleOSD() {
-        osd.show(.brightness, fraction: 0.7, onDisplay: displays.first?.id)
+    /// Flash a sample OSD — used only by `MONITORFLUX_SHOW_OSD` to screenshot the overlay.
+    func showSampleOSD(_ kind: OSDController.Kind = .brightness, fraction: Double = 0.7) {
+        osd.show(kind, fraction: fraction, onDisplay: displays.first?.id)
     }
 
     // MARK: - Custom global hotkeys
