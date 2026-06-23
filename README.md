@@ -22,6 +22,27 @@ MonitorFlux has two separate control paths:
 Gamma can be disabled globally. When disabled, MonitorFlux restores system color
 tables and stops writing gamma. Hardware DDC controls can still be used.
 
+## What the brightness percentages mean
+
+A brightness slider's `0%`/`100%` is **not** a percentage of the panel's physical light
+output (nits). One "Brightness" label sits over three different mechanisms, so the numbers
+mean different things depending on the display:
+
+| Path | `0%` means | `100%` means |
+|---|---|---|
+| **External monitor (DDC)** | the monitor's **minimum** brightness — dim but still **lit**, not black | the monitor's max for its current **SDR** picture mode — **not** its HDR/peak capability |
+| **Built-in, real backlight** (DisplayServices) | the dimmest backlight (still lit) | the panel's **true** maximum |
+| **Built-in, software dimming** (gamma, when no backlight API) | a software-darkened, near-black image | **neutral — no change**; it can't exceed the backlight (the slider even allows up to 150%, a clipped fake-boost) |
+
+For an external monitor the slider sends DDC/CI VCP code `0x10` ("luminance") straight to
+the panel — the exact control the monitor's own brightness buttons use. So:
+
+- **`0%` is not black.** Monitors keep the backlight lit at a deliberate floor; "0
+  brightness" never means pixels-off. To go black, sleep the display.
+- **`100%` is not the panel's peak.** DDC only moves the SDR brightness, so on an HDR/OLED
+  monitor `100%` sits well below its HDR highlight nits — same as holding the monitor's
+  brightness-up button to the top.
+
 ## UI
 
 - The **menu bar popup** (`QuickControlsView`, `.menuBarExtraStyle(.window)`) is
