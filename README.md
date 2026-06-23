@@ -119,8 +119,18 @@ testing doesn't flicker your screen or conflict with f.lux/MonitorControl. Use t
 
 Builds an optimized release bundle and a compressed disk image with a drag-to-Applications
 layout. The app is ad-hoc signed, so the first launch needs a right-click ▸ Open to clear
-Gatekeeper; double-click-to-open requires a Developer ID signature + notarization (paid
-Apple Developer account).
+Gatekeeper.
+
+For a friction-free, double-click-to-open download, sign + notarize:
+
+```sh
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+NOTARY_PROFILE="MonitorFlux" ./script/make_dmg.sh
+```
+
+This app needs **no special entitlements** to notarize — its private APIs work under the
+hardened runtime. Full setup (Developer ID cert, `notarytool` credentials, verification) is
+in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 ## Test
 
