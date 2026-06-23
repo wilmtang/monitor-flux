@@ -70,9 +70,17 @@ ${ICON_PLIST_ENTRY}  <key>NSPrincipalClass</key>
 </plist>
 PLIST
 
-# Ad-hoc sign so CoreLocation/TCC has a stable identity. No hardened runtime, so the
-# private IOAVService / @_silgen_name symbols used for Apple Silicon DDC keep resolving.
-codesign --force --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+# Sign so TCC can identify the app. A stable "MonitorFlux Dev" certificate (created by
+# script/make_dev_cert.sh) keeps the code identity constant across rebuilds, so the
+# Accessibility grant — needed for the media-key keyboard control — survives. Without it we
+# fall back to ad-hoc, whose hash changes every build, so macOS re-prompts each rebuild.
+# No hardened runtime, so the private IOAVService/@_silgen_name + DisplayServices dlopen keep
+# resolving. SIGN_IDENTITY overrides.
+SIGN_ID="${SIGN_IDENTITY:-}"
+if [ -z "$SIGN_ID" ] && security find-identity -p codesigning 2>/dev/null | grep -q "MonitorFlux Dev"; then
+  SIGN_ID="MonitorFlux Dev"
+fi
+codesign --force --sign "${SIGN_ID:--}" "$APP_BUNDLE" >/dev/null 2>&1 || true
 
 # In safe mode the app drives its UI but performs no gamma/DDC/backlight writes, so it
 # doesn't fight f.lux/MonitorControl or flicker the screen. Used for verify/smoke runs.

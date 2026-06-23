@@ -11,6 +11,7 @@ commands to hardware.
 - Run tests: `swift test`
 - Smoke-test the detailed window opens (not blank / not duplicated): `./script/smoke_test.sh`
 - Run without touching hardware: `./script/build_and_run.sh --safe`
+- Make Accessibility (media keys) survive rebuilds: `./script/make_dev_cert.sh` (once)
 
 **Safe mode** (`MONITORFLUX_SAFE_MODE=1`, set by `--safe`, `--verify`, and `smoke_test.sh`)
 drives the full UI but performs **no gamma/DDC/backlight writes** — so testing doesn't
@@ -93,15 +94,17 @@ pkill -x MonitorFlux || true
 - Gamma is a single-owner resource: surface the `GammaConflictBanner` so users disable
   Night Shift / other color apps. Explain gamma vs DDC with `InfoButton` (assume the
   reader doesn't know the jargon).
-- The media-key tap (`KeyboardControlService`) needs Accessibility permission; ad-hoc
-  dev builds re-prompt after each rebuild because the code signature changes (set
-  `SIGN_IDENTITY` to a stable cert to keep the grant). Custom hotkeys (`HotKeyCenter`,
-  Carbon) need no Accessibility — prefer them for testing.
-- **The built-in panel's real backlight belongs to macOS.** Do NOT drive it from the
-  keyboard path or the schedule — macOS already manages it (auto-brightness, Night Shift),
-  and forcing a level fights macOS and jumps brightness on launch. The built-in is only
-  changed via its manual native-backlight slider (user-initiated). Keyboard brightness and
-  scheduled brightness apply to **external** displays (DDC); the built-in is skipped.
+- The media-key tap (`KeyboardControlService`) needs Accessibility permission. Ad-hoc dev
+  builds drop the grant after each rebuild because the code hash changes; run
+  `./script/make_dev_cert.sh` once to create a stable "MonitorFlux Dev" cert (build_and_run.sh
+  then signs with it, or with `SIGN_IDENTITY` if set) so the grant persists. Custom hotkeys
+  (`HotKeyCenter`, Carbon) need no Accessibility — prefer them for testing.
+- **Never drive the built-in panel's real backlight automatically.** macOS manages it
+  (auto-brightness, Night Shift); the *schedule* and the *media keys* must leave it alone —
+  forcing a level fights macOS and jumps brightness on launch. Only *user-initiated* actions
+  touch it: the manual native-backlight slider, and custom hotkeys (which pass
+  `allowBuiltIn: true` to `adjustBrightnessUnderCursor`, since a custom combo has no macOS
+  fallback). External-display brightness/contrast always go through DDC.
 - Saved DDC brightness/contrast is re-applied to **external** displays on launch/reconnect
   (`restoreHardwareSettings`); never re-apply to the built-in.
 - New behavior should get focused tests unless it directly touches real display

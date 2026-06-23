@@ -433,9 +433,22 @@ final class AppStore: ObservableObject {
     /// external display under the cursor over DDC; the built-in panel's brightness is left
     /// to macOS. Color temperature is the global gamma warmth. Each returns true when
     /// handled, so the event tap swallows the key.
-    func adjustBrightnessUnderCursor(by delta: Int) -> Bool {
-        guard let target = displayUnderCursor(), !target.isBuiltIn else {
+    /// - Parameter allowBuiltIn: when true, also drive the built-in panel's real backlight.
+    ///   Media keys leave it false (macOS's own brightness keys handle the built-in); custom
+    ///   hotkeys pass true, since there's no macOS fallback for a custom combo and the press
+    ///   is user-initiated (so it's fine to override macOS, unlike the automatic schedule).
+    func adjustBrightnessUnderCursor(by delta: Int, allowBuiltIn: Bool = false) -> Bool {
+        guard let target = displayUnderCursor() else {
             return false
+        }
+        if target.isBuiltIn {
+            guard allowBuiltIn, canUseNativeBrightness(target) else {
+                return false
+            }
+            let next = (nativeBrightnessValue(for: target) + Double(delta) / 100.0).clamped(to: 0...1)
+            setNativeBrightness(next, for: target)
+            osd.show(.brightness, fraction: next, onDisplay: target.id)
+            return true
         }
         let current = displayPreferences(for: target).hardwareBrightness
         let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
@@ -527,9 +540,9 @@ final class AppStore: ObservableObject {
         let step = Self.keyboardStep
         switch action {
         case .brightnessUp:
-            _ = adjustBrightnessUnderCursor(by: step)
+            _ = adjustBrightnessUnderCursor(by: step, allowBuiltIn: true)
         case .brightnessDown:
-            _ = adjustBrightnessUnderCursor(by: -step)
+            _ = adjustBrightnessUnderCursor(by: -step, allowBuiltIn: true)
         case .contrastUp:
             _ = adjustContrastUnderCursor(by: step)
         case .contrastDown:
