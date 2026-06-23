@@ -228,14 +228,17 @@ struct QuickControlsView: View {
 
 /// Collapse the `MenuBarExtra(.window)` dropdown the way clicking a real `NSMenu` item does.
 /// SwiftUI doesn't expose a dismiss for it, so close the popup window directly: it's the
-/// visible, non-titled, mouse-accepting panel — distinct from the titled main window and the
-/// non-interactive OSD panel (which ignores mouse events).
+/// visible, non-titled, mouse-accepting panel. The width gate is what keeps us from also
+/// closing the tiny (~31pt) status-item windows that back the menu-bar icon itself — closing
+/// those makes the icon vanish while macOS keeps its slot. The titled main window and the
+/// mouse-ignoring OSD panel are excluded too.
 @MainActor
 func dismissMenuBarPopup() {
     for window in NSApp.windows
     where window.isVisible
         && !window.styleMask.contains(.titled)
-        && !window.ignoresMouseEvents {
+        && !window.ignoresMouseEvents
+        && window.frame.width >= 120 {
         window.close()
     }
 }
