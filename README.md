@@ -111,6 +111,17 @@ testing doesn't flicker your screen or conflict with f.lux/MonitorControl. Use t
 `run` (no flag) when you actually want MonitorFlux to control your displays. See
 [docs/SAFE_MODE.md](docs/SAFE_MODE.md) for the full breakdown of what it disables.
 
+## Package a .dmg
+
+```sh
+./script/make_dmg.sh      # -> dist/MonitorFlux-<version>.dmg
+```
+
+Builds an optimized release bundle and a compressed disk image with a drag-to-Applications
+layout. The app is ad-hoc signed, so the first launch needs a right-click ▸ Open to clear
+Gatekeeper; double-click-to-open requires a Developer ID signature + notarization (paid
+Apple Developer account).
+
 ## Test
 
 ```sh

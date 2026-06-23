@@ -19,8 +19,10 @@ ICON_SOURCE="$ROOT_DIR/Assets/AppIcon.icns"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-swift build
-BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+# BUILD_CONFIG=release produces an optimized binary (used by make_dmg.sh); defaults to debug.
+BUILD_CONFIG="${BUILD_CONFIG:-debug}"
+swift build -c "$BUILD_CONFIG"
+BUILD_BINARY="$(swift build -c "$BUILD_CONFIG" --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
@@ -92,6 +94,10 @@ case "$MODE" in
   run)
     open_app
     ;;
+  --bundle|bundle)
+    # Build + sign the .app only; don't launch. Used by make_dmg.sh.
+    echo "Built $APP_BUNDLE"
+    ;;
   --safe|safe)
     SAFE_MODE=1
     open_app
@@ -115,7 +121,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--safe|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--safe|--bundle|--debug|--logs|--telemetry|--verify]" >&2
     echo "  --safe: run without any gamma/DDC/backlight writes (no screen flicker, no f.lux conflict)" >&2
     exit 2
     ;;
