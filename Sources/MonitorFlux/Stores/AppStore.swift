@@ -176,6 +176,27 @@ final class AppStore: ObservableObject {
             reconcileColor()
         }
         applyScheduledHardware()
+        restoreHardwareSettings()
+    }
+
+    /// Re-send each external display's saved brightness/contrast over DDC on launch and on
+    /// reconnect, so the monitor returns to your last manual setting. The slider already
+    /// shows the saved value, but DDC is otherwise only written when you move it — so without
+    /// this, a relaunch leaves the monitor at whatever it last had. Schedule-driven controls
+    /// are left to the schedule, and volume is left alone to avoid surprise audio changes.
+    private func restoreHardwareSettings() {
+        guard !safeMode else {
+            return
+        }
+        for display in displays where !display.isBuiltIn {
+            let displayPreferences = displayPreferences(for: display)
+            if !displayPreferences.scheduleBrightness {
+                applyBrightness(for: display)
+            }
+            if !displayPreferences.scheduleContrast {
+                applyContrast(for: display)
+            }
+        }
     }
 
     private func refreshAudioCapability() {
