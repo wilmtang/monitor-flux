@@ -42,12 +42,16 @@ CONF
 
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -keyout "$TMP/key.pem" -out "$TMP/cert.pem" -config "$TMP/cert.conf" >/dev/null 2>&1
-openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
-  -out "$TMP/cert.p12" -passout pass: -name "$CERT_NAME" >/dev/null 2>&1
 
-# Import the certificate + private key; -T lets codesign use the key without re-prompting
-# beyond the first "Always Allow".
-security import "$TMP/cert.p12" -k "$KEYCHAIN" -P "" -T /usr/bin/codesign
+# Bundle into a PKCS#12 for `security import`. `-legacy -macalg SHA1` and a real (transient)
+# password are required: OpenSSL 3.x's default PKCS#12 MAC (SHA-256) and empty-password
+# handling make macOS's `security import` fail with "MAC verification failed".
+P12_PASS="monitorflux-dev-import"
+openssl pkcs12 -export -legacy -macalg SHA1 -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
+  -out "$TMP/cert.p12" -passout "pass:$P12_PASS" -name "$CERT_NAME" >/dev/null 2>&1
+
+# Import the certificate + private key; -T lets codesign use the key.
+security import "$TMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASS" -T /usr/bin/codesign
 
 echo "✓ Created '$CERT_NAME' in your login keychain."
 echo
