@@ -50,18 +50,26 @@ enum Arm64DDCError: LocalizedError, Sendable {
 private final class Arm64DDCServiceCache: @unchecked Sendable {
     static let shared = Arm64DDCServiceCache()
     private let lock = NSLock()
-    private var services: [CGDirectDisplayID: CFTypeRef] = [:]
 
-    /// Resolve (and cache) the service for `id`, choosing the best candidate that isn't
-    /// already assigned to a *different* display. Two identical monitors (same model, no
-    /// distinct serial) score equally against every candidate, so without this they'd both
-    /// pick candidate[0] and DDC writes for the second would hit the first. `resolveRanked`
-    /// returns candidates best-first; we skip any already handed to another display.
-    func service(for id: CGDirectDisplayID, resolveRanked: () -> [CFTypeRef]) -> CFTypeRef? {
+    private struct Assignment {
+        let candidateIndex: Int
+        let service: CFTypeRef
+    }
+    private var services: [CGDirectDisplayID: Assignment] = [:]
+
+    /// Resolve (and cache) the service for `id`, choosing the best candidate whose stable
+    /// discovery index isn't already assigned to a *different* display. Two identical
+    /// monitors (same model, no distinct serial) score equally against every candidate, so
+    /// without this they'd both pick candidate 0 and DDC writes for the second would hit the
+    /// first. We dedupe on the candidate *index* rather than the `CFTypeRef`: every
+    /// `resolveRanked()` call mints fresh service objects (so `===` across displays never
+    /// matches), but `discoverCandidates()` walks the IORegistry in a stable order, so index
+    /// N refers to the same physical service each time (the cache is cleared on hot-plug).
+    func service(for id: CGDirectDisplayID, resolveRanked: () -> [(index: Int, service: CFTypeRef)]) -> CFTypeRef? {
         lock.lock()
         if let cached = services[id] {
             lock.unlock()
-            return cached
+            return cached.service
         }
         lock.unlock()
 
@@ -74,14 +82,16 @@ private final class Arm64DDCServiceCache: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if let cached = services[id] {
-            return cached
+            return cached.service
         }
-        let assigned = services.values
-        let chosen = ranked.first { candidate in
-            !assigned.contains { ($0 as AnyObject) === (candidate as AnyObject) }
-        } ?? ranked[0]
-        services[id] = chosen
-        return chosen
+        let takenIndices = Set(services.values.map(\.candidateIndex))
+        let chosenIndex = Arm64DDCBackend.chooseCandidateIndex(
+            rankedIndices: ranked.map(\.index),
+            taken: takenIndices
+        )
+        let chosen = ranked.first { $0.index == chosenIndex } ?? ranked[0]
+        services[id] = Assignment(candidateIndex: chosen.index, service: chosen.service)
+        return chosen.service
     }
 
     /// Drop one display's cached service (e.g. after a failed write to it), leaving other
@@ -136,6 +146,15 @@ struct Arm64DDCBackend: Sendable {
             Arm64DDCServiceCache.shared.invalidate(displayID: display.id)
             throw Arm64DDCError.writeFailed
         }
+    }
+
+    // MARK: - Candidate selection (pure, unit-tested)
+
+    /// Pick the best-ranked candidate index (rankedIndices is best-first) that no other
+    /// display has already taken, so identical monitors get distinct services. Falls back to
+    /// the best-ranked index when all are taken (fewer services than displays).
+    static func chooseCandidateIndex(rankedIndices: [Int], taken: Set<Int>) -> Int? {
+        rankedIndices.first { !taken.contains($0) } ?? rankedIndices.first
     }
 
     // MARK: - Packet construction (pure, unit-tested)
@@ -193,9 +212,10 @@ struct Arm64DDCBackend: Sendable {
     /// Walk the IORegistry pairing each framebuffer (`AppleCLCD2` / `IOMobileFramebufferShim`)
     /// with the external `DCPAVServiceProxy` that follows it, then rank the resulting services
     /// for `displayID` by EDID product/serial match (via public CoreGraphics APIs), best
-    /// first. Ties keep IORegistry discovery order; the cache uses the ranking to give two
-    /// identical monitors distinct services instead of both taking candidate[0].
-    private static func avServicesRanked(for displayID: CGDirectDisplayID) -> [CFTypeRef] {
+    /// first. Each entry keeps its stable discovery `index`; ties keep IORegistry order. The
+    /// cache dedupes on that index so two identical monitors get distinct services instead of
+    /// both taking candidate 0.
+    private static func avServicesRanked(for displayID: CGDirectDisplayID) -> [(index: Int, service: CFTypeRef)] {
         let candidates = discoverCandidates()
         guard !candidates.isEmpty else {
             return []
@@ -219,7 +239,7 @@ struct Arm64DDCBackend: Sendable {
             .sorted { first, second in
                 first.score != second.score ? first.score > second.score : first.index < second.index
             }
-            .map(\.service)
+            .map { (index: $0.index, service: $0.service) }
     }
 
     private static func discoverCandidates() -> [Candidate] {

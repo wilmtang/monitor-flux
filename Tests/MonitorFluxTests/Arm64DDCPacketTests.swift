@@ -34,4 +34,33 @@ final class Arm64DDCPacketTests: XCTestCase {
 
         XCTAssertEqual(packet.last, expected)
     }
+
+    // MARK: - Identical-monitor service de-duplication
+
+    func testFirstDisplayTakesBestRankedCandidate() {
+        // Nothing taken yet -> the best-ranked (first) candidate index is chosen.
+        XCTAssertEqual(Arm64DDCBackend.chooseCandidateIndex(rankedIndices: [0, 1], taken: []), 0)
+    }
+
+    func testSecondIdenticalMonitorSkipsTheTakenCandidate() {
+        // Two identical monitors rank candidates the same ([0, 1]); once the first display
+        // has taken index 0, the second must get index 1 — not 0 again (the bug).
+        XCTAssertEqual(Arm64DDCBackend.chooseCandidateIndex(rankedIndices: [0, 1], taken: [0]), 1)
+    }
+
+    func testHigherRankedCandidateWinsWhenFree() {
+        // Ranking order is honored: index 2 is best-ranked here and is free, so it's chosen
+        // even though lower indices exist.
+        XCTAssertEqual(Arm64DDCBackend.chooseCandidateIndex(rankedIndices: [2, 0, 1], taken: [0]), 2)
+    }
+
+    func testFallsBackToBestRankedWhenAllTaken() {
+        // Fewer services than displays: every candidate is taken, so fall back to best-ranked
+        // rather than returning nil (a write is better than no write).
+        XCTAssertEqual(Arm64DDCBackend.chooseCandidateIndex(rankedIndices: [1, 0], taken: [0, 1]), 1)
+    }
+
+    func testNoCandidatesYieldsNil() {
+        XCTAssertNil(Arm64DDCBackend.chooseCandidateIndex(rankedIndices: [], taken: [0]))
+    }
 }
