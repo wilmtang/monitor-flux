@@ -110,8 +110,8 @@ struct ColorScheduleView: View {
                         .foregroundStyle(.orange.opacity(0.9))
                 }
 
-                if store.preferences.gammaEnabled {
-                    GammaConflictBanner()
+                if store.showsGammaConflictBanner {
+                    GammaConflictBanner(onClose: { store.dismissGammaConflictBanner() })
                 }
 
                 Divider()

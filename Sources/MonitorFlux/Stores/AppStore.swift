@@ -39,6 +39,10 @@ final class AppStore: ObservableObject {
     /// Custom-shortcut actions whose combo another app already owns, so they couldn't be
     /// registered. Surfaced as a warning next to the recorder.
     @Published private(set) var hotkeyConflicts: Set<HotKeyAction> = []
+    /// True when another app is also editing gamma (detected by reading the LUT back).
+    @Published private(set) var gammaConflictDetected = false
+    /// The user closed the conflict banner; it reappears only when a fresh conflict is seen.
+    @Published private(set) var gammaConflictBannerDismissed = false
 
     /// Set by `MONITORFLUX_SAFE_MODE=1`. Skips every gamma/DDC/backlight hardware write so
     /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
@@ -690,11 +694,32 @@ final class AppStore: ObservableObject {
             colorMessage = "Safe mode — gamma not applied"
             return
         }
+        // Read the LUT back (before re-applying) to notice another gamma app fighting us.
+        // A freshly-detected conflict un-dismisses the banner so it reappears.
+        if preferences.gammaEnabled {
+            let detected = gammaService.detectsForeignGammaChange(displays: displays)
+            if detected, !gammaConflictDetected {
+                gammaConflictBannerDismissed = false
+            }
+            gammaConflictDetected = detected
+        } else {
+            gammaConflictDetected = false
+        }
         let summary = gammaService.apply(
             displays: displays,
             preferences: preferences
         )
         colorMessage = summary.message
+    }
+
+    /// Hide the gamma-conflict banner until another foreign gamma change is detected.
+    func dismissGammaConflictBanner() {
+        gammaConflictBannerDismissed = true
+    }
+
+    /// The banner shows only when a conflict is currently detected and not dismissed.
+    var showsGammaConflictBanner: Bool {
+        gammaConflictDetected && !gammaConflictBannerDismissed
     }
 
     private func startTimer() {

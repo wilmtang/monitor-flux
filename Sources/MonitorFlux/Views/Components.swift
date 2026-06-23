@@ -126,15 +126,18 @@ struct MonitorSlider: View {
 /// Warns that gamma is a shared, single-owner resource: Night Shift and other color apps
 /// will fight MonitorFlux. Links straight to the Displays settings pane.
 struct GammaConflictBanner: View {
+    /// Called when the user closes the banner. It won't reappear until a fresh conflict.
+    var onClose: (() -> Void)?
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 5) {
-                Text("Only one app should warm your screen")
+                Text("Another app is also warming your screen")
                     .font(.callout)
                     .fontWeight(.semibold)
-                Text("MonitorFlux warms the display by editing its gamma tables. macOS Night Shift and apps like f.lux do the same thing and will fight MonitorFlux — colors can flicker or look wrong. Turn off Night Shift and quit other color tools for correct results.")
+                Text("MonitorFlux warms the display by editing its gamma tables, and something else (macOS Night Shift, f.lux, or a similar tool) is editing them too — so colors can flicker or look wrong. Turn off Night Shift and quit other color tools for correct results.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -147,6 +150,14 @@ struct GammaConflictBanner: View {
                 .font(.caption)
             }
             Spacer(minLength: 0)
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Dismiss. Reappears only if another app warms the screen again.")
+            }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))

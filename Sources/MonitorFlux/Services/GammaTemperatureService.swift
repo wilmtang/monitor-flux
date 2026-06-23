@@ -34,6 +34,9 @@ final class GammaTemperatureService {
 
     private var baselines: [CGDirectDisplayID: GammaTables] = [:]
     private var appliedAdjustments: [CGDirectDisplayID: GammaAdjustment] = [:]
+    /// The exact tables we last wrote per display, so we can read the LUT back and notice
+    /// when another gamma app (Night Shift, f.lux…) has overwritten it.
+    private var lastSetTables: [CGDirectDisplayID: GammaTables] = [:]
     private var didStartSession = false
     private let tableSize = 256
 
@@ -117,6 +120,44 @@ final class GammaTemperatureService {
         CGDisplayRestoreColorSyncSettings()
         baselines.removeAll()
         appliedAdjustments.removeAll()
+        lastSetTables.removeAll()
+    }
+
+    /// True when the current LUT for any display we've warmed no longer matches what we last
+    /// wrote — i.e. another app is also editing gamma and the two are fighting. Reading the
+    /// table is cheap and causes no flash. Returns false until we've written at least once.
+    func detectsForeignGammaChange(displays: [DisplayInfo]) -> Bool {
+        for display in displays {
+            guard let lastSet = lastSetTables[display.id],
+                  let current = readTables(for: display.id)
+            else {
+                continue
+            }
+            if Self.channelsDiffer(current.red, lastSet.red)
+                || Self.channelsDiffer(current.green, lastSet.green)
+                || Self.channelsDiffer(current.blue, lastSet.blue) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Whether two gamma channels differ beyond `tolerance` anywhere (pure, unit-tested).
+    /// The tolerance absorbs the LUT's own quantization of a table we wrote, while a real
+    /// foreign warm shifts values far more.
+    static func channelsDiffer(
+        _ a: [CGGammaValue],
+        _ b: [CGGammaValue],
+        tolerance: CGGammaValue = 0.02
+    ) -> Bool {
+        let count = min(a.count, b.count)
+        guard count > 0 else {
+            return false
+        }
+        for index in 0..<count where abs(a[index] - b[index]) > tolerance {
+            return true
+        }
+        return false
     }
 
     /// On the first gamma write of a session, clear any color tables left behind by
@@ -145,6 +186,7 @@ final class GammaTemperatureService {
             }
             baselines[id] = nil
             appliedAdjustments[id] = nil
+            lastSetTables[id] = nil
         }
     }
 
@@ -222,6 +264,7 @@ final class GammaTemperatureService {
         guard error == .success else {
             throw GammaTemperatureError.coreGraphicsFailure(error.rawValue)
         }
+        lastSetTables[displayID] = tables
     }
 
     private func scaledTables(from baseline: GammaTables, adjustment: GammaAdjustment) -> GammaTables {
