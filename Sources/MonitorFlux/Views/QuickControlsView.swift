@@ -194,12 +194,11 @@ struct QuickControlsView: View {
 
 // MARK: - Per-display card
 
-/// One display's controls in the popup. Brightness shows by default; contrast and volume
-/// (external displays) tuck behind a per-card "More" disclosure so the popup stays calm.
+/// One display's controls in the popup. Keep sliders visible so opening the menu is enough
+/// to inspect and adjust the monitor without a second disclosure click.
 private struct DisplayCardView: View {
     @EnvironmentObject private var store: AppStore
     let display: DisplayInfo
-    @State private var expanded = false
 
     var body: some View {
         let preferences = store.displayPreferences(for: display)
@@ -211,9 +210,6 @@ private struct DisplayCardView: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Spacer()
-                if !display.isBuiltIn {
-                    moreButton
-                }
             }
 
             if display.isBuiltIn {
@@ -224,22 +220,6 @@ private struct DisplayCardView: View {
         }
         .padding(12)
         .background(popupCardBackground())
-    }
-
-    private var moreButton: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.18)) { expanded.toggle() }
-        } label: {
-            HStack(spacing: 3) {
-                Text(expanded ? "Less" : "More")
-                Image(systemName: "chevron.down")
-                    .rotationEffect(.degrees(expanded ? 180 : 0))
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help(expanded ? "Hide contrast and volume" : "Show contrast and volume")
     }
 
     @ViewBuilder
@@ -284,24 +264,22 @@ private struct DisplayCardView: View {
             readout: "\(preferences.hardwareBrightness)%"
         ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
 
-        if expanded {
-            ControlRow(
-                icon: "circle.lefthalf.filled",
-                value: Double(preferences.hardwareContrast),
-                range: ControlRanges.hardwarePercent,
-                readout: "\(preferences.hardwareContrast)%"
-            ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
+        ControlRow(
+            icon: "circle.lefthalf.filled",
+            value: Double(preferences.hardwareContrast),
+            range: ControlRanges.hardwarePercent,
+            readout: "\(preferences.hardwareContrast)%"
+        ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
 
-            // Volume only when the monitor actually has speakers (or the user forced it on)
-            // — a speakerless display gets no useless volume slider.
-            if store.shouldShowVolumeControl(for: display) {
-                ControlRow(
-                    icon: "speaker.wave.2.fill",
-                    value: Double(preferences.hardwareVolume),
-                    range: ControlRanges.hardwarePercent,
-                    readout: "\(preferences.hardwareVolume)%"
-                ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
-            }
+        // Volume only when the monitor actually has speakers (or the user forced it on)
+        // — a speakerless display gets no useless volume slider.
+        if store.shouldShowVolumeControl(for: display) {
+            ControlRow(
+                icon: "speaker.wave.2.fill",
+                value: Double(preferences.hardwareVolume),
+                range: ControlRanges.hardwarePercent,
+                readout: "\(preferences.hardwareVolume)%"
+            ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
         }
     }
 }

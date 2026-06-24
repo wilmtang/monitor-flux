@@ -88,108 +88,157 @@ struct DisplayDetailView: View {
     /// contrast above stays the focus. Nothing is removed — just tucked behind one disclosure.
     private var advancedSection: some View {
         Section {
-            DisclosureGroup(isExpanded: $advancedExpanded) {
-                if !display.isBuiltIn {
-                    monitorAdvancedContent
-                    advancedDivider
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    withAnimation(.snappy(duration: 0.16)) {
+                        advancedExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .rotationEffect(.degrees(advancedExpanded ? 90 : 0))
+                        Image(systemName: "slider.horizontal.3")
+                        Text("Advanced")
+                            .font(.headline)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 6)
                 }
-                gammaContent
-                advancedDivider
-                scheduleContent
-            } label: {
-                Label("Advanced", systemImage: "slider.horizontal.3")
+                .buttonStyle(.plain)
+                .accessibilityLabel(advancedExpanded ? "Collapse Advanced" : "Expand Advanced")
+
+                if advancedExpanded {
+                    advancedContent
+                }
             }
         }
+    }
+
+    private var advancedContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if !display.isBuiltIn {
+                monitorAdvancedContent
+                advancedDivider
+            }
+            gammaContent
+            advancedDivider
+            scheduleContent
+        }
+        .padding(.top, 12)
+        .padding(.bottom, 4)
     }
 
     /// External monitor controls that matter, but not often enough to crowd the default pane.
-    @ViewBuilder
     private var monitorAdvancedContent: some View {
-        advancedSubheader("Monitor extras", help: HelpText.ddc, helpTitle: "Monitor controls (DDC/CI)")
-
-        if store.ddcStatus.toolPath != nil {
-            Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
-                LabeledContent("ddcctl display index", value: "\(displayPreferences.ddcDisplayIndex)")
+        advancedGroup("Monitor extras", help: HelpText.ddc, helpTitle: "Monitor controls (DDC/CI)") {
+            if store.ddcStatus.toolPath != nil {
+                Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
+                    LabeledContent("ddcctl display index", value: "\(displayPreferences.ddcDisplayIndex)")
+                }
+                .font(.body)
             }
-        }
 
-        hardwareSliderRow(title: "Contrast", icon: "circle.lefthalf.filled", value: displayPreferences.hardwareContrast) {
-            store.setHardwareContrast($0, for: display)
-        }
-
-        if store.shouldShowVolumeControl(for: display) {
-            hardwareSliderRow(title: "Volume", icon: "speaker.wave.2.fill", value: displayPreferences.hardwareVolume) {
-                store.setHardwareVolume($0, for: display)
+            advancedSliderRow(
+                title: "Contrast",
+                icon: "circle.lefthalf.filled",
+                value: displayPreferences.hardwareContrast,
+                range: ControlRanges.hardwarePercent,
+                isEnabled: store.canUseDDC(for: display)
+            ) {
+                store.setHardwareContrast($0, for: display)
             }
-        }
 
-        if !store.displayHasDetectedAudio(display) {
-            Toggle("Show volume control", isOn: displayBinding(\.forceVolumeControl))
-            Text("No speakers were detected on this monitor. Enable this only if it has built-in speakers controlled over DDC.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
+            if store.shouldShowVolumeControl(for: display) {
+                advancedSliderRow(
+                    title: "Volume",
+                    icon: "speaker.wave.2.fill",
+                    value: displayPreferences.hardwareVolume,
+                    range: ControlRanges.hardwarePercent,
+                    isEnabled: store.canUseDDC(for: display)
+                ) {
+                    store.setHardwareVolume($0, for: display)
+                }
+            }
 
-        Text("Contrast and volume are also monitor-native controls. They send live as you drag.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            if !store.displayHasDetectedAudio(display) {
+                advancedToggleRow("Show volume control", isOn: displayBinding(\.forceVolumeControl))
+                advancedCaption("No speakers were detected on this monitor. Enable this only if it has built-in speakers controlled over DDC.")
+            }
+
+            advancedCaption("Contrast and volume are also monitor-native controls. They send live as you drag.")
+        }
     }
 
     /// Software (gamma) dimming — separate from the real backlight above.
-    @ViewBuilder
     private var gammaContent: some View {
-        advancedSubheader("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)")
+        advancedGroup("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)") {
+            advancedToggleRow(
+                "Use software dimming",
+                isOn: displayBinding(\.gammaControlsEnabled),
+                isEnabled: store.preferences.gammaEnabled
+            )
 
-        Toggle("Use software dimming", isOn: displayBinding(\.gammaControlsEnabled))
-            .disabled(!store.preferences.gammaEnabled)
+            advancedSliderRow(
+                title: "Software brightness",
+                icon: "sun.max",
+                value: displayPreferences.gammaBrightness,
+                range: ControlRanges.gammaBrightnessPercent,
+                isEnabled: gammaSlidersEnabled
+            ) { newValue in
+                store.updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = newValue
+                }
+            }
 
-        gammaSliderRow(title: "Software brightness", keyPath: \.gammaBrightness, range: ControlRanges.gammaBrightnessPercent)
-        gammaSliderRow(title: "Software contrast", keyPath: \.gammaContrast, range: ControlRanges.gammaContrastPercent)
+            advancedSliderRow(
+                title: "Software contrast",
+                icon: "circle.lefthalf.filled",
+                value: displayPreferences.gammaContrast,
+                range: ControlRanges.gammaContrastPercent,
+                isEnabled: gammaSlidersEnabled
+            ) { newValue in
+                store.updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaContrast = newValue
+                }
+            }
 
-        if !store.preferences.gammaEnabled {
-            Text("Turn on Warmth on the Schedule screen to use these.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else if !displayPreferences.gammaControlsEnabled {
-            Text("Turn on “Use software dimming” to adjust software brightness and contrast.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            Text("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if !store.preferences.gammaEnabled {
+                advancedCaption("Turn on Warmth on the Schedule screen to use these.")
+            } else if !displayPreferences.gammaControlsEnabled {
+                advancedCaption("Turn on “Use software dimming” to adjust software brightness and contrast.")
+            } else {
+                advancedCaption("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding.")
+            }
         }
     }
 
     /// Automatic brightness/contrast on the day–night schedule.
-    @ViewBuilder
     private var scheduleContent: some View {
-        advancedSubheader("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast")
-
-        if display.isBuiltIn, store.canUseNativeBrightness(display) {
-            // macOS already manages the built-in backlight (auto-brightness, Night Shift);
-            // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
-            Text("The built-in display's brightness follows macOS (auto-brightness, Night Shift), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            Toggle("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
-            if displayPreferences.scheduleBrightness {
-                scheduleTargetRow(title: "Daytime", keyPath: \.dayBrightness)
-                scheduleTargetRow(title: "Night", keyPath: \.nightBrightness)
-            }
-
-            if !display.isBuiltIn {
-                Toggle("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
-                if displayPreferences.scheduleContrast {
-                    scheduleTargetRow(title: "Daytime", keyPath: \.dayContrast)
-                    scheduleTargetRow(title: "Night", keyPath: \.nightContrast)
+        advancedGroup("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast") {
+            if display.isBuiltIn, store.canUseNativeBrightness(display) {
+                // macOS already manages the built-in backlight (auto-brightness, Night Shift);
+                // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
+                advancedCaption("The built-in display's brightness follows macOS (auto-brightness, Night Shift), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
+            } else {
+                advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
+                if displayPreferences.scheduleBrightness {
+                    scheduleSliderRow(title: "Daytime brightness", keyPath: \.dayBrightness)
+                    scheduleSliderRow(title: "Night brightness", keyPath: \.nightBrightness)
                 }
-            }
 
-            Text("Automatically eases the real brightness/contrast from a daytime to a night target. A manual change holds until the next phase.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                if !display.isBuiltIn {
+                    advancedToggleRow("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
+                    if displayPreferences.scheduleContrast {
+                        scheduleSliderRow(title: "Daytime contrast", keyPath: \.dayContrast)
+                        scheduleSliderRow(title: "Night contrast", keyPath: \.nightContrast)
+                    }
+                }
+
+                advancedCaption("Automatically eases the real brightness/contrast from a daytime to a night target. A manual change holds until the next phase.")
+            }
         }
     }
 
@@ -200,43 +249,118 @@ struct DisplayDetailView: View {
         }
     }
 
-    /// Left-aligned sub-header for the Advanced disclosure's two groups. The trailing Spacer keeps
-    /// it flush-left (without it the DisclosureGroup centers the row, which read as "off"), and the
-    /// top padding stops it from crowding the controls above.
-    private func advancedSubheader(_ title: String, help: String, helpTitle: String) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            InfoButton(title: helpTitle, message: help)
-            Spacer()
+    private func advancedGroup<Content: View>(
+        _ title: String,
+        help: String,
+        helpTitle: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.headline)
+                InfoButton(title: helpTitle, message: help)
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
         }
-        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var advancedDivider: some View {
         Divider()
-            .padding(.vertical, 6)
+            .padding(.vertical, 2)
     }
 
-    private func gammaSliderRow(
-        title: String,
-        keyPath: WritableKeyPath<DisplayPreferences, Int>,
-        range: ClosedRange<Int>
+    private func advancedToggleRow(
+        _ title: String,
+        isOn: Binding<Bool>,
+        isEnabled: Bool = true
     ) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            Color.clear
+                .frame(width: 18)
+                .accessibilityHidden(true)
             Text(title)
+                .font(.body.weight(.medium))
+            Spacer(minLength: 16)
+            Toggle(title, isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .accessibilityLabel(title)
+        }
+        .disabled(!isEnabled)
+        .padding(.vertical, 3)
+    }
+
+    private func advancedSliderRow(
+        title: String,
+        icon: String?,
+        value: Int,
+        range: ClosedRange<Int>,
+        isEnabled: Bool = true,
+        setter: @escaping (Int) -> Void
+    ) -> some View {
+        HStack(spacing: 12) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 18)
+                    .foregroundStyle(.secondary)
+            } else {
+                Color.clear
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+            }
+            Text(title)
+                .font(.body)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: 108, alignment: .leading)
+                .minimumScaleFactor(0.85)
+                .frame(width: 168, alignment: .leading)
             Slider(
-                value: displaySliderBinding(keyPath, range: range),
+                value: Binding {
+                    Double(value)
+                } set: { newValue in
+                    setter(Int(newValue.rounded()).clamped(to: range))
+                },
                 in: Double(range.lowerBound)...Double(range.upperBound)
             )
-            .disabled(!gammaSlidersEnabled)
-            Text("\(displayPreferences[keyPath: keyPath])%")
-                .monospacedDigit()
+            .disabled(!isEnabled)
+            .layoutPriority(1)
+            Text("\(value)%")
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
+        .padding(.vertical, 4)
+    }
+
+    private func scheduleSliderRow(
+        title: String,
+        keyPath: WritableKeyPath<DisplayPreferences, Int>
+    ) -> some View {
+        advancedSliderRow(
+            title: title,
+            icon: nil,
+            value: displayPreferences[keyPath: keyPath],
+            range: ControlRanges.hardwarePercent
+        ) { newValue in
+            store.updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences[keyPath: keyPath] = newValue
+            }
+            store.reapplySchedule(for: display)
+        }
+    }
+
+    private func advancedCaption(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 30)
     }
 
     private var nativeBacklightRow: some View {
@@ -285,34 +409,6 @@ struct DisplayDetailView: View {
         }
     }
 
-    /// A target slider (0–100%) for a scheduled day/night value. Editing it re-applies the
-    /// schedule immediately so the change previews when that phase is currently active.
-    private func scheduleTargetRow(
-        title: String,
-        keyPath: WritableKeyPath<DisplayPreferences, Int>
-    ) -> some View {
-        HStack(spacing: 10) {
-            Text(title)
-                .frame(width: 74, alignment: .leading)
-                .foregroundStyle(.secondary)
-            Slider(
-                value: Binding {
-                    Double(displayPreferences[keyPath: keyPath])
-                } set: { newValue in
-                    store.updateDisplayPreferences(for: display) { displayPreferences in
-                        displayPreferences[keyPath: keyPath] = Int(newValue.rounded())
-                            .clamped(to: ControlRanges.hardwarePercent)
-                    }
-                    store.reapplySchedule(for: display)
-                },
-                in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound)
-            )
-            Text("\(displayPreferences[keyPath: keyPath])%")
-                .monospacedDigit()
-                .frame(width: 52, alignment: .trailing)
-        }
-    }
-
     /// Like `displayBinding`, but re-applies the schedule after the change so toggling it on
     /// (or editing a target) takes effect now instead of at the next minute tick.
     private func scheduleBinding<Value>(
@@ -340,16 +436,4 @@ struct DisplayDetailView: View {
         }
     }
 
-    private func displaySliderBinding(
-        _ keyPath: WritableKeyPath<DisplayPreferences, Int>,
-        range: ClosedRange<Int> = ControlRanges.hardwarePercent
-    ) -> Binding<Double> {
-        Binding {
-            Double(displayPreferences[keyPath: keyPath])
-        } set: { newValue in
-            store.updateDisplayPreferences(for: display) { displayPreferences in
-                displayPreferences[keyPath: keyPath] = Int(newValue.rounded()).clamped(to: range)
-            }
-        }
-    }
 }

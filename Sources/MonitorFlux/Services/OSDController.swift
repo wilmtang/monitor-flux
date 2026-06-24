@@ -16,11 +16,15 @@ final class OSDController {
         case volume
         case color
 
-        var systemImage: String {
+        func systemImage(fraction: Double) -> String {
             switch self {
-            case .brightness: "sun.max.fill"
+            case .brightness: "sun.max"
             case .contrast: "circle.lefthalf.filled"
-            case .volume: "speaker.wave.2.fill"
+            case .volume:
+                if fraction <= 0 { "speaker.slash.fill" }
+                else if fraction < 0.34 { "speaker.wave.1.fill" }
+                else if fraction < 0.67 { "speaker.wave.2.fill" }
+                else { "speaker.wave.3.fill" }
             case .color: "thermometer.sun.fill"
             }
         }
@@ -32,10 +36,11 @@ final class OSDController {
         let panel = panel ?? makePanel()
         self.panel = panel
 
-        // Warmth motif: the color (temperature) OSD picks up the cool→warm tint by position; the
-        // other kinds stay white like the system overlay.
-        let tint: Color = kind == .color ? .warmth(for: fraction) : .white
-        let view = OSDView(systemImage: kind.systemImage, fraction: fraction.clamped(to: 0...1), tint: tint)
+        let clampedFraction = fraction.clamped(to: 0...1)
+        // Warmth keeps the app's cool→warm tint; brightness/contrast/volume stay white like
+        // macOS's native overlays.
+        let tint: Color = kind == .color ? .warmth(for: clampedFraction) : .white
+        let view = OSDView(systemImage: kind.systemImage(fraction: clampedFraction), fraction: clampedFraction, tint: tint)
         (panel.contentView as? NSHostingView<OSDView>)?.rootView = view
 
         let screen = displayID.flatMap(Self.screen(for:)) ?? NSScreen.main
@@ -65,8 +70,10 @@ final class OSDController {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.35
             panel.animator().alphaValue = 0
-        } completionHandler: { [weak panel] in
-            panel?.orderOut(nil)
+        } completionHandler: {
+            Task { @MainActor [weak panel] in
+                panel?.orderOut(nil)
+            }
         }
     }
 
@@ -103,25 +110,30 @@ private struct OSDView: View {
     var tint: Color = .white
 
     private let segments = 16
+    private var filledSegments: Int {
+        guard fraction > 0 else { return 0 }
+        return min(segments, max(1, Int((fraction * Double(segments)).rounded(.up))))
+    }
 
     var body: some View {
         VStack(spacing: 22) {
             Image(systemName: systemImage)
-                .font(.system(size: 58))
-                .foregroundStyle(tint)
+                .font(.system(size: 58, weight: .regular))
+                .foregroundStyle(tint.opacity(0.78))
                 .frame(height: 66)
 
             HStack(spacing: 3) {
                 ForEach(0..<segments, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(tint.opacity(Double(index) / Double(segments) < fraction ? 1 : 0.25))
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(index < filledSegments ? tint.opacity(0.78) : Color.black.opacity(0.18))
                         .frame(height: 8)
                 }
             }
+            .frame(width: 160)
         }
         .padding(26)
         .frame(width: 200, height: 200)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.12)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.12)))
     }
 }

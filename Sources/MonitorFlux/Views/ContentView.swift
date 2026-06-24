@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var selection: AppSelection? = .color
+    @State private var selection: AppSelection? = .general
 
     var body: some View {
         NavigationSplitView {
@@ -49,7 +49,7 @@ struct ContentView: View {
         }
         .onAppear {
             if selection == nil {
-                selection = .color
+                selection = .general
             }
             // Test hook: jump straight to a pane so a smoke/screenshot run can verify it
             // without scripting the sidebar.
