@@ -46,6 +46,11 @@ final class AppStore: ObservableObject {
     /// Custom-shortcut actions whose combo another app already owns, so they couldn't be
     /// registered. Surfaced as a warning next to the recorder.
     @Published private(set) var hotkeyConflicts: Set<HotKeyAction> = []
+    /// True when any action has a `.media(...)` binding but `keyboardControlEnabled` is off.
+    var hasInactiveMediaBindings: Bool {
+        !preferences.keyboardControlEnabled
+            && preferences.hotkeys.values.contains(where: { $0.asMedia != nil })
+    }
     /// True when another app is also editing gamma (detected by reading the LUT back).
     @Published private(set) var gammaConflictDetected = false
     /// The user closed the conflict banner; it reappears only when a fresh conflict is seen.
@@ -119,6 +124,10 @@ final class AppStore: ObservableObject {
         // Custom global shortcuts use Carbon hot keys, which (unlike the media-key tap) need
         // no Accessibility permission, so they're registered independently of that toggle.
         hotKeyCenter.onAction = { [weak self] action in
+            self?.performHotKeyAction(action)
+        }
+        // Media-key user bindings route through the same handler.
+        keyboardService.onAction = { [weak self] action in
             self?.performHotKeyAction(action)
         }
         refreshHotKeys()
@@ -592,12 +601,12 @@ final class AppStore: ObservableObject {
 
     private static let keyboardStep = 6
 
-    func hotkey(for action: HotKeyAction) -> GlobalShortcut? {
+    func hotkey(for action: HotKeyAction) -> ShortcutBinding? {
         preferences.hotkeys[action.rawValue]
     }
 
-    /// Assign (or clear, with nil) a custom global shortcut for an action and re-register.
-    func setHotkey(_ shortcut: GlobalShortcut?, for action: HotKeyAction) {
+    /// Assign (or clear, with nil) a custom shortcut binding for an action and re-register.
+    func setHotkey(_ shortcut: ShortcutBinding?, for action: HotKeyAction) {
         updateGlobalPreferences { preferences in
             preferences.hotkeys[action.rawValue] = shortcut
         }
@@ -607,15 +616,23 @@ final class AppStore: ObservableObject {
     private func refreshHotKeys() {
         guard !safeMode else {
             hotkeyConflicts = []
+            keyboardService.mediaBindings = [:]
             return
         }
-        var map: [HotKeyAction: GlobalShortcut] = [:]
-        for (key, shortcut) in preferences.hotkeys {
-            if let action = HotKeyAction(rawValue: key) {
-                map[action] = shortcut
+        // Split bindings by type: keyboard → Carbon, media → event tap.
+        var carbonMap: [HotKeyAction: GlobalShortcut] = [:]
+        var mediaMap: [MediaKeyShortcut: HotKeyAction] = [:]
+        for (key, binding) in preferences.hotkeys {
+            guard let action = HotKeyAction(rawValue: key) else { continue }
+            switch binding {
+            case .keyboard(let shortcut):
+                carbonMap[action] = shortcut
+            case .media(let shortcut):
+                mediaMap[shortcut] = action
             }
         }
-        hotkeyConflicts = hotKeyCenter.update(map)
+        hotkeyConflicts = hotKeyCenter.update(carbonMap)
+        keyboardService.mediaBindings = mediaMap
     }
 
     private func performHotKeyAction(_ action: HotKeyAction) {

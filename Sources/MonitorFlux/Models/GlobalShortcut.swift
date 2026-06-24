@@ -65,7 +65,7 @@ struct GlobalShortcut: Codable, Equatable, Sendable {
 /// A built-in media-key binding handled by `KeyboardControlService`, not Carbon.
 /// These are shown in the custom-shortcut list when no user override exists, so an
 /// existing keyboard path doesn't look like an unconfigured "Record" slot.
-struct MediaKeyShortcut: Equatable, Sendable {
+struct MediaKeyShortcut: Codable, Hashable, Sendable {
     var keyCode: Int
     var control = false
     var shift = false
@@ -91,6 +91,31 @@ struct MediaKeyShortcut: Equatable, Sendable {
 
     func matches(keyCode: Int, control: Bool, shift: Bool) -> Bool {
         self.keyCode == keyCode && self.control == control && self.shift == shift
+    }
+}
+
+/// A user-assigned shortcut binding: either a normal Carbon keyboard combo or a media-key
+/// combo routed through the `CGEventTap`. Persisted in `AppPreferences.hotkeys`.
+enum ShortcutBinding: Codable, Equatable, Sendable {
+    case keyboard(GlobalShortcut)
+    case media(MediaKeyShortcut)
+
+    var asKeyboard: GlobalShortcut? {
+        if case .keyboard(let shortcut) = self { return shortcut }
+        return nil
+    }
+
+    var asMedia: MediaKeyShortcut? {
+        if case .media(let shortcut) = self { return shortcut }
+        return nil
+    }
+
+    /// Display tokens for rendering as key-caps, delegating to the wrapped variant.
+    var displayTokens: [String] {
+        switch self {
+        case .keyboard(let shortcut): shortcut.displayTokens
+        case .media(let shortcut): shortcut.displayTokens
+        }
     }
 }
 

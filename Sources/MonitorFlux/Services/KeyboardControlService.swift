@@ -30,6 +30,15 @@ final class KeyboardControlService {
     /// its key-up swallowed anyway, handing the system an unbalanced down-without-up.
     private var ownedKeys: Set<Int> = []
 
+    /// User-assigned media-key bindings. When a media key matches an entry here, the
+    /// corresponding `HotKeyAction` fires via `onAction` instead of the built-in mapping.
+    /// Populated by `AppStore.refreshHotKeys()` whenever preferences change.
+    var mediaBindings: [MediaKeyShortcut: HotKeyAction] = [:]
+
+    /// Fired when a user-assigned media-key binding matches. Wired to
+    /// `AppStore.performHotKeyAction` — the same handler as Carbon hot keys.
+    var onAction: ((HotKeyAction) -> Void)?
+
     var hasAccessibilityPermission: Bool {
         AXIsProcessTrusted()
     }
@@ -106,6 +115,14 @@ final class KeyboardControlService {
 
     /// Returns true when MonitorFlux handled the key (so the tap swallows the event).
     func handle(keyCode: Int, control: Bool, shift: Bool) -> Bool {
+        // Check user-assigned media bindings first.
+        let incoming = MediaKeyShortcut(keyCode: keyCode, control: control, shift: shift)
+        if let action = mediaBindings[incoming] {
+            onAction?(action)
+            return true
+        }
+
+        // Fall back to the built-in mapping.
         guard let store,
               let command = Self.command(keyCode: keyCode, control: control, shift: shift, step: step)
         else {
@@ -199,6 +216,14 @@ private func mediaKeyTapCallback(
     let modifierFlags = nsEvent.modifierFlags
     let controlHeld = event.flags.contains(.maskControl) || modifierFlags.contains(.control)
     let shiftHeld = event.flags.contains(.maskShift) || modifierFlags.contains(.shift)
+    let optionHeld = event.flags.contains(.maskAlternate) || modifierFlags.contains(.option)
+    let commandHeld = event.flags.contains(.maskCommand) || modifierFlags.contains(.command)
+
+    // Pass through to macOS when Option or Command is held. Option + Brightness opens
+    // Display preferences; swallowing it would break macOS behavior.
+    guard !optionHeld, !commandHeld else {
+        return Unmanaged.passUnretained(event)
+    }
 
     // Act on key-down; swallow the matching key-up only if we owned the down, so a key we
     // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.

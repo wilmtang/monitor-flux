@@ -105,4 +105,38 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.coolStartMinutes, ControlRanges.minuteOfDay.lowerBound)
         XCTAssertEqual(preferences.transitionMinutes, ControlRanges.transitionMinutes.upperBound)
     }
+
+    func testLegacyGlobalShortcutHotkeysDecodeAsKeyboardBindings() throws {
+        // Old format: hotkeys are bare GlobalShortcut values (keyCode + carbonModifiers).
+        let json = """
+        {
+          "hotkeys": {
+            "brightnessUp": {"keyCode": 30, "carbonModifiers": 4352}
+          }
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: json)
+
+        let binding = preferences.hotkeys["brightnessUp"]
+        XCTAssertNotNil(binding)
+        if case .keyboard(let shortcut) = binding {
+            XCTAssertEqual(shortcut.keyCode, 30)
+            XCTAssertEqual(shortcut.carbonModifiers, 4352)
+        } else {
+            XCTFail("Expected .keyboard binding, got \(String(describing: binding))")
+        }
+    }
+
+    func testNewShortcutBindingHotkeysRoundTrip() throws {
+        var prefs = AppPreferences()
+        prefs.hotkeys["volumeUp"] = .media(MediaKeyShortcut(keyCode: MediaKey.soundUp))
+        prefs.hotkeys["brightnessUp"] = .keyboard(GlobalShortcut(keyCode: 30, carbonModifiers: 4352))
+
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
+
+        XCTAssertEqual(decoded.hotkeys["volumeUp"], .media(MediaKeyShortcut(keyCode: MediaKey.soundUp)))
+        XCTAssertEqual(decoded.hotkeys["brightnessUp"], .keyboard(GlobalShortcut(keyCode: 30, carbonModifiers: 4352)))
+    }
 }

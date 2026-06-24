@@ -75,9 +75,12 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if index == 0 {
-                        Text("Global shortcuts — they work anywhere and need no Accessibility permission. Press a combo with at least one modifier (⌘⌥⌃⇧).")
+                        Text("Keyboard shortcuts (⌘⌥⌃⇧ combos) work anywhere and need no Accessibility permission. Media-key shortcuts (brightness/volume keys) require the keyboard control toggle and Accessibility.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if store.hasInactiveMediaBindings {
+                            mediaBindingWarning
+                        }
                     }
                 } header: {
                     Text(index == 0 ? "Custom Shortcuts · \(group.label)" : group.label)
@@ -131,6 +134,31 @@ struct SettingsView: View {
                     } else {
                         store.setKeyboardControl(true)
                     }
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.yellow.opacity(0.25)))
+    }
+
+    private var mediaBindingWarning: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Media-key shortcuts won't fire")
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                Text("You have shortcuts assigned to brightness or volume keys, but keyboard control is turned off. Enable it above so the media-key tap can intercept those keys.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Enable Keyboard Control…") {
+                    store.setKeyboardControl(true)
                 }
                 .buttonStyle(.link)
                 .font(.caption)

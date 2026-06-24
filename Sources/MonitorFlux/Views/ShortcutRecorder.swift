@@ -15,7 +15,7 @@ struct ShortcutRecorder: View {
     var defaultShortcut: GlobalShortcut?
     var mediaShortcut: MediaKeyShortcut?
     var hasConflict = false
-    @Binding var shortcut: GlobalShortcut?
+    @Binding var shortcut: ShortcutBinding?
 
     @State private var isRecording = false
     @State private var monitor: Any?
@@ -48,7 +48,7 @@ struct ShortcutRecorder: View {
                 if let defaultShortcut {
                     Button("Reset to default (\(defaultShortcut.displayString))") {
                         stop()
-                        shortcut = defaultShortcut
+                        shortcut = .keyboard(defaultShortcut)
                     }
                 }
                 Button("Disable", role: .destructive) {
@@ -151,6 +151,10 @@ struct ShortcutRecorder: View {
                     // empty so the built-in binding remains visible and active.
                     shortcut = nil
                     stop()
+                } else {
+                    // User is assigning a different media key to this action.
+                    shortcut = .media(media)
+                    stop()
                 }
                 // Swallow managed media keys while recording so testing a binding doesn't
                 // also change brightness or volume underneath the recorder.
@@ -170,7 +174,7 @@ struct ShortcutRecorder: View {
             ) else {
                 return event
             }
-            shortcut = recorded
+            shortcut = .keyboard(recorded)
             stop()
             return nil
         }
@@ -215,6 +219,11 @@ struct ShortcutRecorder: View {
     }
 
     nonisolated static func mediaShortcut(data1: Int, modifierFlags: NSEvent.ModifierFlags) -> MediaKeyShortcut? {
+        // Option/Command held on a media key belongs to macOS (e.g. ⌥+Brightness opens
+        // Display preferences). Don't capture those combos.
+        guard !modifierFlags.contains(.option), !modifierFlags.contains(.command) else {
+            return nil
+        }
         let keyCode = Int((data1 & 0xFFFF_0000) >> 16)
         guard MediaKey.managed.contains(keyCode) else {
             return nil

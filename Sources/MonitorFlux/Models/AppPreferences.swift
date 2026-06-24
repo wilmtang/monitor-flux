@@ -194,7 +194,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var displayPreferences: [String: DisplayPreferences] = [:]
     /// User-assigned global shortcuts, keyed by `HotKeyAction.rawValue`. Empty by default —
     /// the media keys cover brightness/contrast/color/volume out of the box.
-    var hotkeys: [String: GlobalShortcut] = [:]
+    var hotkeys: [String: ShortcutBinding] = [:]
 
     static let defaults = AppPreferences()
 
@@ -269,7 +269,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
             [String: DisplayPreferences].self,
             forKey: .displayPreferences
         )?.mapValues { $0.normalized() } ?? [:]
-        hotkeys = try container.decodeIfPresent([String: GlobalShortcut].self, forKey: .hotkeys) ?? [:]
+        hotkeys = try Self.decodeHotkeys(from: container) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -294,6 +294,28 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)
         try container.encode(hotkeys, forKey: .hotkeys)
+    }
+
+    /// Try the new `ShortcutBinding` format; fall back to legacy `GlobalShortcut` values
+    /// and wrap them as `.keyboard(...)`. Returns nil when the key is absent.
+    private static func decodeHotkeys(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> [String: ShortcutBinding]? {
+        // New format: each value is a ShortcutBinding (tagged enum).
+        if let bindings = try? container.decodeIfPresent(
+            [String: ShortcutBinding].self,
+            forKey: .hotkeys
+        ) {
+            return bindings
+        }
+        // Legacy format: each value is a bare GlobalShortcut. Wrap as .keyboard.
+        guard let legacy = try container.decodeIfPresent(
+            [String: GlobalShortcut].self,
+            forKey: .hotkeys
+        ) else {
+            return nil
+        }
+        return legacy.mapValues { .keyboard($0) }
     }
 }
 

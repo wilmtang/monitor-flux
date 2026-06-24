@@ -66,6 +66,43 @@ final class GlobalShortcutTests: XCTestCase {
         XCTAssertNil(ShortcutRecorder.recordedShortcut(keyCode: UInt16(kVK_ANSI_P), modifierFlags: []))
     }
 
+    func testMediaShortcutCodableRoundTrip() throws {
+        let original = MediaKeyShortcut(keyCode: MediaKey.brightnessDown, control: true, shift: false)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(MediaKeyShortcut.self, from: data)
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testShortcutBindingKeyboardCodableRoundTrip() throws {
+        let binding = ShortcutBinding.keyboard(
+            GlobalShortcut(keyCode: UInt32(kVK_ANSI_B), carbonModifiers: UInt32(cmdKey | optionKey))
+        )
+        let data = try JSONEncoder().encode(binding)
+        let decoded = try JSONDecoder().decode(ShortcutBinding.self, from: data)
+        XCTAssertEqual(decoded, binding)
+    }
+
+    func testShortcutBindingMediaCodableRoundTrip() throws {
+        let binding = ShortcutBinding.media(
+            MediaKeyShortcut(keyCode: MediaKey.soundUp, control: false, shift: true)
+        )
+        let data = try JSONEncoder().encode(binding)
+        let decoded = try JSONDecoder().decode(ShortcutBinding.self, from: data)
+        XCTAssertEqual(decoded, binding)
+    }
+
+    func testShortcutBindingDisplayTokensDelegates() {
+        let kb = ShortcutBinding.keyboard(
+            GlobalShortcut(keyCode: UInt32(kVK_ANSI_B), carbonModifiers: UInt32(cmdKey))
+        )
+        XCTAssertEqual(kb.displayTokens, ["⌘", "B"])
+
+        let media = ShortcutBinding.media(
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true)
+        )
+        XCTAssertEqual(media.displayTokens, ["⌃", "Brightness", "↑"])
+    }
+
     private func mediaKeyData1(keyCode: Int, keyState: Int) -> Int {
         (keyCode << 16) | (keyState << 8)
     }
