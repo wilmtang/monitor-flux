@@ -102,8 +102,9 @@ final class OSDController {
     }
 }
 
-/// The OSD's content: a large glyph over a 16-segment level bar on a frosted panel, echoing
-/// the system brightness/volume overlay.
+/// The OSD's content: a large glyph over a 16-segment level bar on a dark HUD panel, matching
+/// the macOS brightness/volume overlay — always-dark vibrancy, bright white glyph, and
+/// translucent-white empty notches (so the bar reads on the dark blur, as the system's does).
 private struct OSDView: View {
     let systemImage: String
     let fraction: Double
@@ -116,24 +117,46 @@ private struct OSDView: View {
     }
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 20) {
             Image(systemName: systemImage)
-                .font(.system(size: 58, weight: .regular))
-                .foregroundStyle(tint.opacity(0.78))
-                .frame(height: 66)
+                .font(.system(size: 56, weight: .regular))
+                .foregroundStyle(tint.opacity(0.9))
+                .frame(height: 64)
 
             HStack(spacing: 3) {
                 ForEach(0..<segments, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(index < filledSegments ? tint.opacity(0.78) : Color.black.opacity(0.18))
-                        .frame(height: 8)
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(index < filledSegments ? tint.opacity(0.9) : Color.white.opacity(0.2))
+                        .frame(height: 7)
                 }
             }
-            .frame(width: 160)
+            .frame(width: 150)
         }
-        .padding(26)
+        .padding(24)
         .frame(width: 200, height: 200)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.12)))
+        .background(
+            OSDVisualEffectBackground()
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.white.opacity(0.1))
+        )
+        .environment(\.colorScheme, .dark)
     }
+}
+
+/// The system OSD's frosted backing: an always-dark HUD vibrancy view, so the overlay looks the
+/// same as macOS's own regardless of the user's light/dark appearance.
+private struct OSDVisualEffectBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.appearance = NSAppearance(named: .darkAqua)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
