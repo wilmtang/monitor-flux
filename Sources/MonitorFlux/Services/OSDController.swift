@@ -100,6 +100,14 @@ final class OSDController {
             return (screen.deviceDescription[key] as? NSNumber)?.uint32Value == displayID
         }
     }
+
+    /// 0...1 fill for segment `index` of a `segments`-segment level bar showing `fraction`:
+    /// whole segments below the level read 1, the segment straddling the level fills
+    /// proportionally, the rest read 0. Pulled out (and `nonisolated`) so the partial-fill
+    /// behavior — every sub-segment step moves the bar — is unit-testable.
+    nonisolated static func segmentFill(fraction: Double, index: Int, segments: Int) -> Double {
+        (fraction * Double(segments) - Double(index)).clamped(to: 0...1)
+    }
 }
 
 /// The OSD's content: a large glyph over a 16-segment level bar on a dark HUD panel, matching
@@ -111,9 +119,19 @@ private struct OSDView: View {
     var tint: Color = .white
 
     private let segments = 16
-    private var filledSegments: Int {
-        guard fraction > 0 else { return 0 }
-        return min(segments, max(1, Int((fraction * Double(segments)).rounded(.up))))
+    private let barWidth: CGFloat = 150
+    private let segmentSpacing: CGFloat = 3
+    private var segmentWidth: CGFloat {
+        (barWidth - segmentSpacing * CGFloat(segments - 1)) / CGFloat(segments)
+    }
+
+    /// 0...1 fill for the segment at `index`: whole segments below the level read 1, the one
+    /// segment straddling the level fills proportionally, the rest read 0. That partial
+    /// boundary segment is what makes a sub-segment step — warmth's 200 K is ~0.6 of a
+    /// segment — visibly nudge the bar on every keypress, instead of stalling between ticks
+    /// the way integer (rounded) segment counts did.
+    private func fillAmount(at index: Int) -> Double {
+        OSDController.segmentFill(fraction: fraction, index: index, segments: segments)
     }
 
     var body: some View {
@@ -123,14 +141,20 @@ private struct OSDView: View {
                 .foregroundStyle(tint.opacity(0.9))
                 .frame(height: 64)
 
-            HStack(spacing: 3) {
+            HStack(spacing: segmentSpacing) {
                 ForEach(0..<segments, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(index < filledSegments ? tint.opacity(0.9) : Color.white.opacity(0.2))
-                        .frame(height: 7)
+                    ZStack(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.2))
+                        Rectangle()
+                            .fill(tint.opacity(0.9))
+                            .frame(width: segmentWidth * fillAmount(at: index))
+                    }
+                    .frame(width: segmentWidth, height: 7)
+                    .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
                 }
             }
-            .frame(width: 150)
+            .frame(width: barWidth)
         }
         .padding(24)
         .frame(width: 200, height: 200)
