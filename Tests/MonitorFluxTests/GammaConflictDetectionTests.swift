@@ -31,4 +31,22 @@ final class GammaConflictDetectionTests: XCTestCase {
         XCTAssertFalse(GammaTemperatureService.channelsDiffer(a, [0.52], tolerance: 0.02)) // == tolerance, not >
         XCTAssertTrue(GammaTemperatureService.channelsDiffer(a, [0.531], tolerance: 0.02))  // > tolerance
     }
+
+    func testNamesMatchesKnownGammaAppsCaseInsensitively() {
+        let names = GammaConflictApp.names(forRunningBundleIDs: [
+            "com.apple.finder", "ORG.HERF.Flux", "fyi.lunar.Lunar",
+        ])
+        XCTAssertEqual(names, ["f.lux", "Lunar"]) // de-duplicated, in known order
+    }
+
+    func testNamesDeduplicatesAppWithMultipleBundleIDs() {
+        let names = GammaConflictApp.names(forRunningBundleIDs: [
+            "me.guillaumeb.MonitorControl", "app.monitorcontrol.MonitorControl",
+        ])
+        XCTAssertEqual(names, ["MonitorControl"]) // both legacy + current id → one name
+    }
+
+    func testNamesEmptyWhenNoKnownGammaAppRunning() {
+        XCTAssertTrue(GammaConflictApp.names(forRunningBundleIDs: ["com.apple.Safari"]).isEmpty)
+    }
 }

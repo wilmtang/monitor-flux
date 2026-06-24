@@ -111,7 +111,10 @@ struct ColorScheduleView: View {
                 }
 
                 if store.showsGammaConflictBanner {
-                    GammaConflictBanner(onClose: { store.dismissGammaConflictBanner() })
+                    GammaConflictBanner(
+                        appNames: store.gammaConflictApps,
+                        onClose: { store.dismissGammaConflictBanner() }
+                    )
                 }
 
                 Divider()

@@ -156,18 +156,45 @@ struct MonitorSlider: View {
 /// Warns that gamma is a shared, single-owner resource: Night Shift and other color apps
 /// will fight MonitorFlux. Links straight to the Displays settings pane.
 struct GammaConflictBanner: View {
+    /// Known gamma apps detected running — named as the likely cause. Empty falls back to the
+    /// generic wording, since macOS keeps no record of which process actually wrote the table.
+    var appNames: [String] = []
     /// Called when the user closes the banner. It won't reappear until a fresh conflict.
     var onClose: (() -> Void)?
+
+    private var title: String {
+        appNames.isEmpty
+            ? "Another app is also warming your screen"
+            : "\(Self.joined(appNames)) \(appNames.count == 1 ? "is" : "are") also adjusting your screen colors"
+    }
+
+    private var detail: String {
+        guard !appNames.isEmpty else {
+            return "MonitorFlux warms the display by editing its gamma tables, and something else (macOS Night Shift, f.lux, or a similar tool) is editing them too — so colors can flicker or look wrong. Turn off Night Shift and quit other color tools for correct results."
+        }
+        let them = appNames.count == 1 ? "it" : "them"
+        return "\(Self.joined(appNames)) is editing the display's color (gamma) tables at the same time as MonitorFlux, so colors can flicker or look wrong. Quitting \(them) — or turning off macOS Night Shift if it's on — restores correct color."
+    }
+
+    /// Grammatical join: "f.lux", "f.lux and Lunar", "f.lux, Lunar, and MonitorControl".
+    static func joined(_ names: [String]) -> String {
+        switch names.count {
+        case 0: return ""
+        case 1: return names[0]
+        case 2: return "\(names[0]) and \(names[1])"
+        default: return names.dropLast().joined(separator: ", ") + ", and " + (names.last ?? "")
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 5) {
-                Text("Another app is also warming your screen")
+                Text(title)
                     .font(.callout)
                     .fontWeight(.semibold)
-                Text("MonitorFlux warms the display by editing its gamma tables, and something else (macOS Night Shift, f.lux, or a similar tool) is editing them too — so colors can flicker or look wrong. Turn off Night Shift and quit other color tools for correct results.")
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

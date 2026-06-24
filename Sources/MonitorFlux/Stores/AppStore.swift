@@ -53,6 +53,9 @@ final class AppStore: ObservableObject {
     }
     /// True when another app is also editing gamma (detected by reading the LUT back).
     @Published private(set) var gammaConflictDetected = false
+    /// Known gamma apps running when the conflict was seen — the likely cause, named in the
+    /// banner. Empty when none of the known apps is running (e.g. Night Shift, or an unknown app).
+    @Published private(set) var gammaConflictApps: [String] = []
     /// The user closed the conflict banner; it reappears only when a fresh conflict is seen.
     @Published private(set) var gammaConflictBannerDismissed = false
 
@@ -898,8 +901,12 @@ final class AppStore: ObservableObject {
                 gammaConflictBannerDismissed = false
             }
             gammaConflictDetected = detected
+            // We can't ask the OS which process wrote the gamma table, so name any known gamma
+            // app that's running as the likely cause.
+            gammaConflictApps = detected ? GammaConflictApp.runningConflictingAppNames() : []
         } else {
             gammaConflictDetected = false
+            gammaConflictApps = []
         }
         let summary = gammaService.apply(
             displays: displays,
