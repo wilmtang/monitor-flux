@@ -130,6 +130,20 @@ struct Arm64DDCBackend: Sendable {
         Arm64DDCServiceCache.shared.invalidate()
     }
 
+    /// Non-destructive DDC capability probe: whether macOS exposes an `IOAVService` for this
+    /// display (an external `DCPAVServiceProxy`). True means DDC writes have a service to target;
+    /// false means none exists — built-in HDMI, DisplayLink, and some docks/KVMs don't expose
+    /// one. This only walks the IORegistry (the same resolution a write would do, so it also
+    /// warms the cache); it sends nothing to the monitor.
+    func hasService(for display: DisplayInfo) -> Bool {
+        guard !display.isBuiltIn else {
+            return false
+        }
+        return Arm64DDCServiceCache.shared.service(for: display.id, resolveRanked: {
+            Self.avServicesRanked(for: display.id)
+        }) != nil
+    }
+
     func setVCPFeature(_ feature: UInt8, value: Int, display: DisplayInfo) throws {
         guard !display.isBuiltIn else {
             throw Arm64DDCError.builtInDisplay

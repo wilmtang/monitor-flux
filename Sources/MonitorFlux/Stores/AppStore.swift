@@ -43,6 +43,10 @@ final class AppStore: ObservableObject {
     /// Displays that expose an audio output (monitor speakers). Drives whether the DDC
     /// volume slider is shown — a speakerless monitor gets no volume control.
     @Published private(set) var displaysWithAudio: Set<CGDirectDisplayID> = []
+    /// Real per-external-display DDC support, probed non-destructively on connect (whether an
+    /// IOAVService resolves). Drives canUseDDC so the software-dimming default and popup fallback
+    /// reflect actual capability instead of assuming every external speaks DDC.
+    @Published private(set) var ddcCapableByID: [CGDirectDisplayID: Bool] = [:]
     /// Custom-shortcut actions whose combo another app already owns, so they couldn't be
     /// registered. Surfaced as a warning next to the recorder.
     @Published private(set) var hotkeyConflicts: Set<HotKeyAction> = []
@@ -204,6 +208,7 @@ final class AppStore: ObservableObject {
         displays = displayService.listDisplays()
         refreshNativeBrightness()
         refreshAudioCapability()
+        refreshDDCCapability()
         if !seedMissingDisplayPreferences() {
             reconcileColor()
         }
@@ -240,6 +245,17 @@ final class AppStore: ObservableObject {
             }
         }
         displaysWithAudio = withAudio
+    }
+
+    /// Probe each external display's DDC capability non-destructively (does an IOAVService
+    /// resolve?) and cache it. Runs on every refresh — i.e. on launch and on display-config
+    /// changes — so a monitor moved to a port that can't carry DDC is re-evaluated.
+    private func refreshDDCCapability() {
+        var capable: [CGDirectDisplayID: Bool] = [:]
+        for display in displays where !display.isBuiltIn {
+            capable[display.id] = ddcBackend.supportsDDC(display)
+        }
+        ddcCapableByID = capable
     }
 
     /// Whether an audio output (monitor speakers) was detected for this display.
@@ -766,20 +782,23 @@ final class AppStore: ObservableObject {
     }
 
     func canUseDDC(for display: DisplayInfo) -> Bool {
-        !display.isBuiltIn
+        guard !display.isBuiltIn else {
+            return false
+        }
+        // Use the per-display probe (set on connect); assume capable until the first refresh.
+        return ddcCapableByID[display.id] ?? true
     }
 
     /// Whether the display can dim its *real* backlight: the built-in panel through the native
-    /// brightness API, or an external monitor through DDC (when a DDC backend is available).
-    /// When false, software (gamma) dimming is the fallback rather than an optional extra — so
-    /// this drives both the default for `gammaControlsEnabled` and which brightness slider the
-    /// popup shows. Note: macOS exposes no per-monitor DDC probe, so an external display is
-    /// assumed DDC-capable whenever a backend exists.
+    /// brightness API, or an external monitor through DDC (probed per-display on connect). When
+    /// false, software (gamma) dimming is the fallback rather than an optional extra — so this
+    /// drives both the default for `gammaControlsEnabled` and which brightness slider the popup
+    /// shows.
     func canUseHardwareBrightness(_ display: DisplayInfo) -> Bool {
         if display.isBuiltIn {
             return canUseNativeBrightness(display)
         }
-        return ddcStatus.isAvailable
+        return canUseDDC(for: display)
     }
 
     func applyBrightness(for display: DisplayInfo) {

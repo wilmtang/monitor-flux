@@ -53,6 +53,20 @@ struct HardwareDDCBackend: Sendable {
         #endif
     }
 
+    /// Whether this display can do DDC at all — a non-destructive capability check (no monitor
+    /// round-trip). On Apple Silicon it's whether an `IOAVService` resolves; on Intel there's no
+    /// equally cheap probe wired up, so assume capable (the prior, optimistic behavior).
+    func supportsDDC(_ display: DisplayInfo) -> Bool {
+        guard !display.isBuiltIn else {
+            return false
+        }
+        #if arch(arm64)
+        return arm64.hasService(for: display)
+        #else
+        return true
+        #endif
+    }
+
     func setBrightness(_ value: Int, display: DisplayInfo, fallbackIndex: Int) throws {
         try perform(
             primary: { try primarySetBrightness(value, display: display) },
