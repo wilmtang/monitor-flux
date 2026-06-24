@@ -103,9 +103,12 @@ struct DisplayDetailView: View {
                             .font(.headline)
                         Spacer(minLength: 0)
                     }
+                    // Order matters: pad and stretch to full width *first*, then take the
+                    // content shape last so the entire row — padding and the empty space out
+                    // to the trailing edge — is the tap target, not just the label glyphs.
+                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(advancedExpanded ? "Collapse Advanced" : "Expand Advanced")
