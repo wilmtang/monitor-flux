@@ -62,6 +62,38 @@ struct GlobalShortcut: Codable, Equatable, Sendable {
     ]
 }
 
+/// A built-in media-key binding handled by `KeyboardControlService`, not Carbon.
+/// These are shown in the custom-shortcut list when no user override exists, so an
+/// existing keyboard path doesn't look like an unconfigured "Record" slot.
+struct MediaKeyShortcut: Equatable, Sendable {
+    var keyCode: Int
+    var control = false
+    var shift = false
+
+    var displayTokens: [String] {
+        var tokens: [String] = []
+        if control { tokens.append("⌃") }
+        if shift { tokens.append("⇧") }
+        switch keyCode {
+        case MediaKey.brightnessUp:
+            tokens.append(contentsOf: ["Brightness", "↑"])
+        case MediaKey.brightnessDown:
+            tokens.append(contentsOf: ["Brightness", "↓"])
+        case MediaKey.soundUp:
+            tokens.append(contentsOf: ["Volume", "↑"])
+        case MediaKey.soundDown:
+            tokens.append(contentsOf: ["Volume", "↓"])
+        default:
+            tokens.append("Media key")
+        }
+        return tokens
+    }
+
+    func matches(keyCode: Int, control: Bool, shift: Bool) -> Bool {
+        self.keyCode == keyCode && self.control == control && self.shift == shift
+    }
+}
+
 /// The two shortcut sets: one acting on the display under the pointer, one always on the
 /// built-in panel. (If the pointer is on the built-in, both act on it — that's fine.)
 enum HotKeyGroup: CaseIterable {
@@ -166,6 +198,32 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .builtInBrightnessDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: commandOption)
         case .builtInContrastUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: commandOptionShift)
         case .builtInContrastDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: commandOptionShift)
+        }
+    }
+
+    /// Built-in media-key path, when one already exists for this action. This is separate
+    /// from the optional custom Carbon shortcut: media keys are `NSSystemDefined` events,
+    /// not globally registered Carbon key combos.
+    var mediaShortcut: MediaKeyShortcut? {
+        switch self {
+        case .brightnessUp:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp)
+        case .brightnessDown:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown)
+        case .contrastUp:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true)
+        case .contrastDown:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown, control: true)
+        case .colorWarmer:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown, shift: true)
+        case .colorCooler:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true)
+        case .volumeUp:
+            MediaKeyShortcut(keyCode: MediaKey.soundUp)
+        case .volumeDown:
+            MediaKeyShortcut(keyCode: MediaKey.soundDown)
+        case .builtInBrightnessUp, .builtInBrightnessDown, .builtInContrastUp, .builtInContrastDown:
+            nil
         }
     }
 

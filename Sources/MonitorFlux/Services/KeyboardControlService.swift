@@ -196,8 +196,9 @@ private func mediaKeyTapCallback(
 
     let keyFlags = data1 & 0x0000_FFFF
     let isKeyDown = ((keyFlags & 0xFF00) >> 8) == 0x0A
-    let controlHeld = event.flags.contains(.maskControl)
-    let shiftHeld = event.flags.contains(.maskShift)
+    let modifierFlags = nsEvent.modifierFlags
+    let controlHeld = event.flags.contains(.maskControl) || modifierFlags.contains(.control)
+    let shiftHeld = event.flags.contains(.maskShift) || modifierFlags.contains(.shift)
 
     // Act on key-down; swallow the matching key-up only if we owned the down, so a key we
     // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.

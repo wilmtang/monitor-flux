@@ -40,6 +40,11 @@ struct DisplayDetailView: View {
             Toggle("Warm this display", isOn: displayBinding(\.colorEnabled))
                 .disabled(!store.preferences.gammaEnabled)
             LabeledContent("Current", value: store.currentTemperature.map { "\($0) K" } ?? "Off")
+            Text(store.preferences.gammaEnabled
+                ? "Opt this display into the global warmth schedule and manual warmth changes."
+                : "Enable Warmth on the Schedule screen to warm individual displays.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -51,7 +56,7 @@ struct DisplayDetailView: View {
             Section {
                 if store.canUseNativeBrightness(display) {
                     nativeBacklightRow
-                    Text("The **real** backlight — the same level the brightness keys change. This is the everyday control; the software and scheduled options below are extras.")
+                    Text("The real backlight, matching macOS's brightness level. Software dimming stays under Advanced.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -66,35 +71,15 @@ struct DisplayDetailView: View {
             }
         } else {
             Section {
-                if store.ddcStatus.toolPath != nil {
-                    Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
-                        LabeledContent("ddcctl display index", value: "\(displayPreferences.ddcDisplayIndex)")
-                    }
-                }
-
                 hardwareSliderRow(title: "Brightness", icon: "sun.max", value: displayPreferences.hardwareBrightness) {
                     store.setHardwareBrightness($0, for: display)
                 }
-                hardwareSliderRow(title: "Contrast", icon: "circle.lefthalf.filled", value: displayPreferences.hardwareContrast) {
-                    store.setHardwareContrast($0, for: display)
-                }
-                if store.shouldShowVolumeControl(for: display) {
-                    hardwareSliderRow(title: "Volume", icon: "speaker.wave.2.fill", value: displayPreferences.hardwareVolume) {
-                        store.setHardwareVolume($0, for: display)
-                    }
-                }
-                if !store.displayHasDetectedAudio(display) {
-                    Toggle("Show volume control", isOn: displayBinding(\.forceVolumeControl))
-                    Text("No speakers were detected on this monitor, so the volume slider is hidden. Enable this only if it has built-in speakers you control over DDC.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
 
-                Text("The monitor's **own** controls, sent over DDC — the real backlight, contrast, and volume, like its physical buttons. This is the everyday control; they send live as you drag.")
+                Text("The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
-                sectionHeader("Monitor", help: HelpText.ddc, helpTitle: "Monitor controls (DDC/CI)")
+                sectionHeader("Brightness", help: HelpText.ddc, helpTitle: "Monitor brightness (DDC/CI)")
             }
         }
     }
@@ -104,14 +89,50 @@ struct DisplayDetailView: View {
     private var advancedSection: some View {
         Section {
             DisclosureGroup(isExpanded: $advancedExpanded) {
+                if !display.isBuiltIn {
+                    monitorAdvancedContent
+                    advancedDivider
+                }
                 gammaContent
-                Divider()
-                    .padding(.vertical, 6)
+                advancedDivider
                 scheduleContent
             } label: {
                 Label("Advanced", systemImage: "slider.horizontal.3")
             }
         }
+    }
+
+    /// External monitor controls that matter, but not often enough to crowd the default pane.
+    @ViewBuilder
+    private var monitorAdvancedContent: some View {
+        advancedSubheader("Monitor extras", help: HelpText.ddc, helpTitle: "Monitor controls (DDC/CI)")
+
+        if store.ddcStatus.toolPath != nil {
+            Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
+                LabeledContent("ddcctl display index", value: "\(displayPreferences.ddcDisplayIndex)")
+            }
+        }
+
+        hardwareSliderRow(title: "Contrast", icon: "circle.lefthalf.filled", value: displayPreferences.hardwareContrast) {
+            store.setHardwareContrast($0, for: display)
+        }
+
+        if store.shouldShowVolumeControl(for: display) {
+            hardwareSliderRow(title: "Volume", icon: "speaker.wave.2.fill", value: displayPreferences.hardwareVolume) {
+                store.setHardwareVolume($0, for: display)
+            }
+        }
+
+        if !store.displayHasDetectedAudio(display) {
+            Toggle("Show volume control", isOn: displayBinding(\.forceVolumeControl))
+            Text("No speakers were detected on this monitor. Enable this only if it has built-in speakers controlled over DDC.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Text("Contrast and volume are also monitor-native controls. They send live as you drag.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     /// Software (gamma) dimming — separate from the real backlight above.
@@ -190,6 +211,11 @@ struct DisplayDetailView: View {
             Spacer()
         }
         .padding(.top, 6)
+    }
+
+    private var advancedDivider: some View {
+        Divider()
+            .padding(.vertical, 6)
     }
 
     private func gammaSliderRow(

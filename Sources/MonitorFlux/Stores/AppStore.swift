@@ -480,7 +480,7 @@ final class AppStore: ObservableObject {
                 keyboardStatus = "Active"
             } else {
                 requestAccessibility()
-                keyboardStatus = "Grant Accessibility, then toggle again"
+                keyboardStatus = "Grant Accessibility; MonitorFlux will start when you return"
             }
         } else {
             keyboardService.stop()

@@ -38,7 +38,7 @@ struct SettingsView: View {
                 if !store.accessibilityTrusted {
                     accessibilityWarning
                 }
-                Toggle("Use brightness & volume keys", isOn: Binding {
+                Toggle("Use keyboard brightness & volume keys", isOn: Binding {
                     store.preferences.keyboardControlEnabled
                 } set: { isOn in
                     store.setKeyboardControl(isOn)
@@ -46,11 +46,11 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     keyHint("Brightness keys", "brightness of the display under your pointer (DDC)")
                     keyHint("⌃ Control + brightness", "contrast")
-                    keyHint("⇧ Shift + brightness", "color temperature (warmer / cooler)")
+                    keyHint("⇧ Shift + brightness down/up", "warmth warmer / cooler")
                     keyHint("Volume keys", "volume")
                 }
                 .padding(.vertical, 2)
-                Text("Acts on the external display under your pointer; the built-in panel's brightness is left to macOS. Requires Accessibility permission (System Settings ▸ Privacy & Security ▸ Accessibility).")
+                Text("Works when this toggle is on and Accessibility is granted. Brightness/contrast/volume act on the external display under your pointer; warmth is global and applies to every display with “Warm this display” enabled.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -62,6 +62,7 @@ struct SettingsView: View {
                             label: action.label,
                             icon: action.icon,
                             defaultShortcut: action.defaultShortcut,
+                            mediaShortcut: action.mediaShortcut,
                             hasConflict: store.hotkeyConflicts.contains(action),
                             shortcut: Binding {
                                 store.hotkey(for: action)
@@ -118,12 +119,18 @@ struct SettingsView: View {
                 Text("Brightness & volume keys need Accessibility")
                     .font(.callout)
                     .fontWeight(.semibold)
-                Text("MonitorFlux doesn't have Accessibility permission, so it can't intercept the media keys. Click below, then enable MonitorFlux in the list. (The custom shortcuts below work without this.)")
+                Text(store.preferences.keyboardControlEnabled
+                    ? "MonitorFlux doesn't have Accessibility permission, so it can't intercept the media keys. Grant it in System Settings; the keyboard controls will start when you return. (The custom shortcuts below work without this.)"
+                    : "Turn on keyboard control, then grant Accessibility so MonitorFlux can intercept the media keys. (The custom shortcuts below work without this.)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Open Accessibility Settings…") {
-                    store.requestAccessibility()
+                Button(store.preferences.keyboardControlEnabled ? "Open Accessibility Settings…" : "Enable Keyboard Control…") {
+                    if store.preferences.keyboardControlEnabled {
+                        store.requestAccessibility()
+                    } else {
+                        store.setKeyboardControl(true)
+                    }
                 }
                 .buttonStyle(.link)
                 .font(.caption)

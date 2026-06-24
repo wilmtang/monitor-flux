@@ -102,7 +102,7 @@ struct OnboardingView: View {
                 secondaryButton("Back") { withAnimation(.snappy(duration: 0.2)) { page = 0 } }
                 secondaryButton("Not now") { store.completeOnboarding() }
                 primaryButton("Enable…") {
-                    store.requestAccessibility()
+                    store.setKeyboardControl(true)
                     store.completeOnboarding()
                 }
             }

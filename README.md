@@ -96,12 +96,13 @@ for warmth.
 When enabled (Settings ▸ Keyboard), MonitorFlux taps the keyboard's brightness and
 volume media keys and routes them to the external display **under your pointer** over
 DDC — so the same keys that dim the built-in panel now drive whichever monitor you're
-pointing at. Hold **Control** to dim the **built-in panel's real backlight** instead
-(via the private DisplayServices framework — `NativeBrightnessBackend`; falls back to
-gamma if unavailable). This needs Accessibility permission (System Settings ▸ Privacy &
+pointing at. Hold **Control** with the brightness keys to change contrast, or **Shift**
+with the brightness keys to make global warmth warmer/cooler. This media-key path must
+be enabled in Settings and needs Accessibility permission (System Settings ▸ Privacy &
 Security ▸ Accessibility), since swallowing HID key events is privileged. Implemented
 with a `CGEventTap` in `KeyboardControlService`. The built-in display's brightness
-slider in the popup and detail window also drives the real backlight.
+slider in the popup and detail window drives the real backlight; custom shortcuts also
+include built-in-only brightness/contrast actions.
 
 ## Avoiding color conflicts
 

@@ -342,13 +342,29 @@ private func popupCardBackground() -> some View {
 }
 
 /// Collapse the `MenuBarExtra(.window)` dropdown the way clicking a real `NSMenu` item does.
-/// SwiftUI doesn't expose a dismiss for it, so close the popup window directly: it's the
-/// visible, non-titled, mouse-accepting panel. The width gate is what keeps us from also
-/// closing the tiny (~31pt) status-item windows that back the menu-bar icon itself — closing
-/// those makes the icon vanish while macOS keeps its slot. The titled main window and the
-/// mouse-ignoring OSD panel are excluded too.
+/// SwiftUI doesn't expose a dismiss for it, so first try to toggle the status item itself.
+/// If SwiftUI's status button isn't discoverable, close only the visible popup panel: the
+/// width gate keeps us from also closing the tiny status-item windows that back the icon.
 @MainActor
 func dismissMenuBarPopup() {
+    if let button = menuBarStatusButton() {
+        // Let the status item perform its normal toggle first. Closing the panel directly
+        // bypasses SwiftUI's MenuBarExtra state and can leave the menu-bar icon highlighted.
+        button.performClick(nil)
+        Task { @MainActor in
+            await Task.yield()
+            closeMenuBarPopupWindows()
+            button.highlight(false)
+        }
+        return
+    }
+
+    closeMenuBarPopupWindows()
+    clearMenuBarHighlight()
+}
+
+@MainActor
+private func closeMenuBarPopupWindows() {
     for window in NSApp.windows
     where window.isVisible
         && !window.styleMask.contains(.titled)
@@ -356,20 +372,33 @@ func dismissMenuBarPopup() {
         && window.frame.width >= 120 {
         window.close()
     }
-    // Closing the popup window ourselves leaves the MenuBarExtra's status-item button stuck in
-    // its highlighted (pressed) state — SwiftUI never learns the panel went away. Clear the
-    // highlight directly on the NSStatusBarButton so the menu-bar icon returns to normal.
-    clearMenuBarHighlight()
+}
+
+@MainActor
+private func menuBarStatusButton() -> NSStatusBarButton? {
+    for window in NSApp.windows {
+        if let button = statusBarButton(in: window.contentView) {
+            return button
+        }
+        if let button = statusBarButton(in: window.contentView?.superview) {
+            return button
+        }
+    }
+    return nil
 }
 
 @MainActor
 private func clearMenuBarHighlight() {
+    // Closing the popup window ourselves leaves the MenuBarExtra's status-item button stuck in
+    // its highlighted (pressed) state — SwiftUI never learns the panel went away. Clear the
+    // highlight directly on the NSStatusBarButton so the menu-bar icon returns to normal.
     // Clear on this tick and again on the next: the synchronous clear handles the common case,
     // and the deferred one wins if SwiftUI re-asserts the highlight while reconciling the
     // window we closed out from under it.
     func clear() {
         for window in NSApp.windows {
             statusBarButton(in: window.contentView)?.highlight(false)
+            statusBarButton(in: window.contentView?.superview)?.highlight(false)
         }
     }
     clear()

@@ -1,3 +1,5 @@
+import AppKit
+import Carbon.HIToolbox
 import XCTest
 @testable import MonitorFlux
 
@@ -25,5 +27,46 @@ final class GlobalShortcutTests: XCTestCase {
         // the under-pointer set is ⌃⌥-based and the built-in set is ⌘⌥-based.
         let keys = HotKeyAction.allCases.map { "\($0.defaultShortcut.keyCode)-\($0.defaultShortcut.carbonModifiers)" }
         XCTAssertEqual(Set(keys).count, keys.count)
+    }
+
+    func testMediaShortcutsRepresentBuiltInKeyboardPath() {
+        XCTAssertEqual(HotKeyAction.brightnessUp.mediaShortcut?.displayTokens, ["Brightness", "↑"])
+        XCTAssertEqual(HotKeyAction.contrastDown.mediaShortcut?.displayTokens, ["⌃", "Brightness", "↓"])
+        XCTAssertEqual(HotKeyAction.colorWarmer.mediaShortcut?.displayTokens, ["⇧", "Brightness", "↓"])
+        XCTAssertEqual(HotKeyAction.volumeUp.mediaShortcut?.displayTokens, ["Volume", "↑"])
+        XCTAssertNil(HotKeyAction.builtInBrightnessUp.mediaShortcut)
+    }
+
+    func testMediaShortcutParserReadsManagedKeyDownEvents() {
+        let data1 = mediaKeyData1(keyCode: MediaKey.brightnessDown, keyState: 0x0A)
+        let shortcut = ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.shift])
+
+        XCTAssertEqual(shortcut, MediaKeyShortcut(keyCode: MediaKey.brightnessDown, shift: true))
+    }
+
+    func testMediaShortcutParserIgnoresKeyUpAndUnknownKeys() {
+        XCTAssertNil(ShortcutRecorder.mediaShortcut(
+            data1: mediaKeyData1(keyCode: MediaKey.brightnessUp, keyState: 0x0B),
+            modifierFlags: []
+        ))
+        XCTAssertNil(ShortcutRecorder.mediaShortcut(
+            data1: mediaKeyData1(keyCode: 99, keyState: 0x0A),
+            modifierFlags: []
+        ))
+    }
+
+    func testRecorderBuildsCustomShortcutOnlyWhenModifierIsHeld() {
+        let shortcut = ShortcutRecorder.recordedShortcut(
+            keyCode: UInt16(kVK_ANSI_P),
+            modifierFlags: [.control, .option]
+        )
+
+        XCTAssertEqual(shortcut?.keyCode, UInt32(kVK_ANSI_P))
+        XCTAssertEqual(shortcut?.carbonModifiers, UInt32(controlKey | optionKey))
+        XCTAssertNil(ShortcutRecorder.recordedShortcut(keyCode: UInt16(kVK_ANSI_P), modifierFlags: []))
+    }
+
+    private func mediaKeyData1(keyCode: Int, keyState: Int) -> Int {
+        (keyCode << 16) | (keyState << 8)
     }
 }

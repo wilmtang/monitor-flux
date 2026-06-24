@@ -1,4 +1,5 @@
 import Carbon.HIToolbox
+import AppKit
 import SwiftUI
 
 /// Records a global keyboard shortcut: click to arm, then press a combo (with at least one
@@ -12,6 +13,7 @@ struct ShortcutRecorder: View {
     let label: String
     var icon: String?
     var defaultShortcut: GlobalShortcut?
+    var mediaShortcut: MediaKeyShortcut?
     var hasConflict = false
     @Binding var shortcut: GlobalShortcut?
 
@@ -77,9 +79,9 @@ struct ShortcutRecorder: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(Capsule().fill(Color.accentColor))
-        } else if let shortcut {
+        } else if let tokens = displayedTokens {
             HStack(spacing: 3) {
-                ForEach(Array(shortcut.displayTokens.enumerated()), id: \.offset) { _, token in
+                ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
                     keyCap(token)
                 }
             }
@@ -99,6 +101,16 @@ struct ShortcutRecorder: View {
                 )
             )
         }
+    }
+
+    private var displayedTokens: [String]? {
+        if let shortcut {
+            return shortcut.displayTokens
+        }
+        if let mediaShortcut {
+            return mediaShortcut.displayTokens
+        }
+        return nil
     }
 
     /// One keyboard key-cap: a rounded, slightly raised tile like the shortcut chips in
@@ -125,19 +137,40 @@ struct ShortcutRecorder: View {
     }
 
     private func start() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.keyWindow?.makeKey()
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .systemDefined]) { event in
+            if let media = Self.mediaShortcut(from: event) {
+                if mediaShortcut?.matches(
+                    keyCode: media.keyCode,
+                    control: media.control,
+                    shift: media.shift
+                ) == true {
+                    // This action already uses that media key path; leave the custom override
+                    // empty so the built-in binding remains visible and active.
+                    shortcut = nil
+                    stop()
+                }
+                // Swallow managed media keys while recording so testing a binding doesn't
+                // also change brightness or volume underneath the recorder.
+                return nil
+            }
+
+            guard event.type == .keyDown else {
+                return event
+            }
             if event.keyCode == UInt16(kVK_Escape) {
                 stop()
                 return nil
             }
-            let modifiers = Self.carbonModifiers(from: event.modifierFlags)
-            // Require a modifier so a bare key isn't registered (it would be swallowed
-            // globally). Let unmodified keys pass through to the app unchanged.
-            guard modifiers != 0 else {
+            guard let recorded = Self.recordedShortcut(
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags
+            ) else {
                 return event
             }
-            shortcut = GlobalShortcut(keyCode: UInt32(event.keyCode), carbonModifiers: modifiers)
+            shortcut = recorded
             stop()
             return nil
         }
@@ -151,12 +184,50 @@ struct ShortcutRecorder: View {
         monitor = nil
     }
 
-    static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
+    nonisolated static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
         var carbon: UInt32 = 0
         if flags.contains(.command) { carbon |= UInt32(cmdKey) }
         if flags.contains(.option) { carbon |= UInt32(optionKey) }
         if flags.contains(.control) { carbon |= UInt32(controlKey) }
         if flags.contains(.shift) { carbon |= UInt32(shiftKey) }
         return carbon
+    }
+
+    nonisolated static func recordedShortcut(
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> GlobalShortcut? {
+        let modifiers = carbonModifiers(from: modifierFlags)
+        // Require a modifier so a bare key isn't registered (it would be swallowed
+        // globally). Let unmodified keys pass through to the app unchanged.
+        guard modifiers != 0 else {
+            return nil
+        }
+        return GlobalShortcut(keyCode: UInt32(keyCode), carbonModifiers: modifiers)
+    }
+
+    static func mediaShortcut(from event: NSEvent) -> MediaKeyShortcut? {
+        guard event.type == .systemDefined,
+              event.subtype.rawValue == 8 else {
+            return nil
+        }
+        return mediaShortcut(data1: event.data1, modifierFlags: event.modifierFlags)
+    }
+
+    nonisolated static func mediaShortcut(data1: Int, modifierFlags: NSEvent.ModifierFlags) -> MediaKeyShortcut? {
+        let keyCode = Int((data1 & 0xFFFF_0000) >> 16)
+        guard MediaKey.managed.contains(keyCode) else {
+            return nil
+        }
+        let keyFlags = data1 & 0x0000_FFFF
+        let isKeyDown = ((keyFlags & 0xFF00) >> 8) == 0x0A
+        guard isKeyDown else {
+            return nil
+        }
+        return MediaKeyShortcut(
+            keyCode: keyCode,
+            control: modifierFlags.contains(.control),
+            shift: modifierFlags.contains(.shift)
+        )
     }
 }
