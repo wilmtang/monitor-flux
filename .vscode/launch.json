@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:monitor-flux}",
+            "name": "Debug MonitorFlux",
+            "target": "MonitorFlux",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MonitorFlux"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:monitor-flux}",
+            "name": "Release MonitorFlux",
+            "target": "MonitorFlux",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MonitorFlux"
+        }
+    ]
+}

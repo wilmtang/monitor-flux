@@ -205,7 +205,7 @@ final class AppStore: ObservableObject {
     func refreshDisplays() {
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
-        displays = displayService.listDisplays()
+        displays = displayService.listDisplays() + mockDisplaySpecs.map(\.display)
         refreshNativeBrightness()
         refreshAudioCapability()
         refreshDDCCapability()
@@ -256,7 +256,38 @@ final class AppStore: ObservableObject {
         for display in displays where !display.isBuiltIn {
             map[display.id] = capable.contains(display.id)
         }
+        // Mock displays have no real IOAVService, so force their declared capability here.
+        for spec in mockDisplaySpecs {
+            map[spec.display.id] = spec.ddcCapable
+        }
         ddcCapableByID = map
+    }
+
+    /// Dev/test hook: `MONITORFLUX_FAKE_DISPLAYS=N` injects up to 4 mock external monitors so the
+    /// popup's multi-card behaviour (drag-to-reorder, tap-to-open) and the per-display
+    /// DDC-vs-software-dimming fallback can be exercised on a machine with only the built-in
+    /// panel. Even-indexed mocks are marked DDC-capable, odd-indexed ones non-DDC, so both
+    /// brightness-slider paths are visible. Their (no-op) hardware writes are best run under
+    /// `MONITORFLUX_SAFE_MODE=1`. Inert unless the variable is set.
+    private var mockDisplaySpecs: [(display: DisplayInfo, ddcCapable: Bool)] {
+        guard let raw = ProcessInfo.processInfo.environment["MONITORFLUX_FAKE_DISPLAYS"],
+              let count = Int(raw), count > 0 else {
+            return []
+        }
+        return (0..<min(count, 4)).map { index in
+            let capable = index % 2 == 0
+            return (
+                DisplayInfo(
+                    id: CGDirectDisplayID(0xF000_0001 + UInt32(index)),
+                    name: "\(capable ? "Mock DDC" : "Mock non-DDC") Monitor \(index + 1)",
+                    persistentID: "mock-display-\(index)",
+                    frameDescription: "2560 × 1440",
+                    isBuiltIn: false,
+                    isOnline: true
+                ),
+                capable
+            )
+        }
     }
 
     /// Whether an audio output (monitor speakers) was detected for this display.
