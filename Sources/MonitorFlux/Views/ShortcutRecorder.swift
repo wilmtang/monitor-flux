@@ -12,7 +12,7 @@ import SwiftUI
 struct ShortcutRecorder: View {
     let label: String
     var icon: String?
-    var defaultShortcut: GlobalShortcut?
+    var suggestedShortcut: GlobalShortcut?
     var mediaShortcut: MediaKeyShortcut?
     var hasConflict = false
     @Binding var shortcut: ShortcutBinding?
@@ -45,17 +45,24 @@ struct ShortcutRecorder: View {
             .help(isRecording ? "Press a shortcut, or Escape to cancel" : "Click to record a shortcut")
 
             Menu {
-                if let defaultShortcut {
-                    Button("Reset to default (\(defaultShortcut.displayString))") {
+                if let mediaShortcut {
+                    Button("Reset to default (\(mediaShortcut.displayString))") {
                         stop()
-                        shortcut = .keyboard(defaultShortcut)
+                        shortcut = nil
+                    }
+                    .disabled(shortcut == nil)
+                }
+                if let suggestedShortcut {
+                    Button("Use suggested keyboard shortcut (\(suggestedShortcut.displayString))") {
+                        stop()
+                        shortcut = .keyboard(suggestedShortcut)
                     }
                 }
-                Button("Disable", role: .destructive) {
+                Button(mediaShortcut == nil ? "Clear" : "Disable", role: .destructive) {
                     stop()
-                    shortcut = nil
+                    shortcut = mediaShortcut == nil ? nil : .disabled
                 }
-                .disabled(shortcut == nil)
+                .disabled((mediaShortcut == nil && shortcut == nil) || shortcut?.isDisabled == true)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -104,6 +111,9 @@ struct ShortcutRecorder: View {
     }
 
     private var displayedTokens: [String]? {
+        if shortcut?.isDisabled == true {
+            return nil
+        }
         if let shortcut {
             return shortcut.displayTokens
         }
@@ -145,7 +155,8 @@ struct ShortcutRecorder: View {
                 if mediaShortcut?.matches(
                     keyCode: media.keyCode,
                     control: media.control,
-                    shift: media.shift
+                    shift: media.shift,
+                    command: media.command
                 ) == true {
                     // This action already uses that media key path; leave the custom override
                     // empty so the built-in binding remains visible and active.
@@ -219,9 +230,8 @@ struct ShortcutRecorder: View {
     }
 
     nonisolated static func mediaShortcut(data1: Int, modifierFlags: NSEvent.ModifierFlags) -> MediaKeyShortcut? {
-        // Option/Command held on a media key belongs to macOS (e.g. ⌥+Brightness opens
-        // Display preferences). Don't capture those combos.
-        guard !modifierFlags.contains(.option), !modifierFlags.contains(.command) else {
+        // Option + media keys belongs to macOS (e.g. opens Display/Sound preferences).
+        guard !modifierFlags.contains(.option) else {
             return nil
         }
         let keyCode = Int((data1 & 0xFFFF_0000) >> 16)
@@ -236,7 +246,8 @@ struct ShortcutRecorder: View {
         return MediaKeyShortcut(
             keyCode: keyCode,
             control: modifierFlags.contains(.control),
-            shift: modifierFlags.contains(.shift)
+            shift: modifierFlags.contains(.shift),
+            command: modifierFlags.contains(.command)
         )
     }
 }

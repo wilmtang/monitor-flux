@@ -62,41 +62,49 @@ struct GlobalShortcut: Codable, Equatable, Sendable {
     ]
 }
 
-/// A built-in media-key binding handled by `KeyboardControlService`, not Carbon.
-/// These are shown in the custom-shortcut list when no user override exists, so an
-/// existing keyboard path doesn't look like an unconfigured "Record" slot.
+/// A media-key binding handled by `KeyboardControlService`, not Carbon.
 struct MediaKeyShortcut: Codable, Hashable, Sendable {
     var keyCode: Int
     var control = false
     var shift = false
+    var command = false
 
     var displayTokens: [String] {
         var tokens: [String] = []
         if control { tokens.append("⌃") }
         if shift { tokens.append("⇧") }
+        if command { tokens.append("⌘") }
         switch keyCode {
         case MediaKey.brightnessUp:
-            tokens.append(contentsOf: ["Brightness", "↑"])
+            tokens.append("Brightness ↑")
         case MediaKey.brightnessDown:
-            tokens.append(contentsOf: ["Brightness", "↓"])
+            tokens.append("Brightness ↓")
         case MediaKey.soundUp:
-            tokens.append(contentsOf: ["Volume", "↑"])
+            tokens.append("Volume ↑")
         case MediaKey.soundDown:
-            tokens.append(contentsOf: ["Volume", "↓"])
+            tokens.append("Volume ↓")
         default:
             tokens.append("Media key")
         }
         return tokens
     }
 
-    func matches(keyCode: Int, control: Bool, shift: Bool) -> Bool {
-        self.keyCode == keyCode && self.control == control && self.shift == shift
+    var displayString: String {
+        displayTokens.joined(separator: " ")
+    }
+
+    func matches(keyCode: Int, control: Bool, shift: Bool, command: Bool) -> Bool {
+        self.keyCode == keyCode
+            && self.control == control
+            && self.shift == shift
+            && self.command == command
     }
 }
 
 /// A user-assigned shortcut binding: either a normal Carbon keyboard combo or a media-key
 /// combo routed through the `CGEventTap`. Persisted in `AppPreferences.hotkeys`.
 enum ShortcutBinding: Codable, Equatable, Sendable {
+    case disabled
     case keyboard(GlobalShortcut)
     case media(MediaKeyShortcut)
 
@@ -110,9 +118,15 @@ enum ShortcutBinding: Codable, Equatable, Sendable {
         return nil
     }
 
+    var isDisabled: Bool {
+        if case .disabled = self { return true }
+        return false
+    }
+
     /// Display tokens for rendering as key-caps, delegating to the wrapped variant.
     var displayTokens: [String] {
         switch self {
+        case .disabled: []
         case .keyboard(let shortcut): shortcut.displayTokens
         case .media(let shortcut): shortcut.displayTokens
         }
@@ -135,7 +149,7 @@ enum HotKeyGroup: CaseIterable {
     var footnote: String {
         switch self {
         case .underPointer:
-            "Brightness/contrast/volume act on the external monitor under your pointer; color is global. Brightness also drives the built-in when the pointer is on it."
+            "Brightness/contrast act on the external monitor under your pointer; color is global. Volume keys stay with macOS unless you record them here."
         case .builtIn:
             "Always act on the built-in panel: brightness is its real backlight; contrast is software (needs the gamma master switch on)."
         }
@@ -199,13 +213,10 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    /// Suggested combo applied by "Reset to default". Shortcuts start unset (nothing is
-    /// registered by default, so nothing can clash on first launch); this just gives each
-    /// action a sensible ⌃⌥ binding to reset to. They can still conflict with another app —
-    /// the recorder shows a ⚠️ if so.
-    var defaultShortcut: GlobalShortcut {
-        // Under-pointer set is ⌃⌥-based; built-in set is ⌘⌥-based — same keys, distinct base,
-        // so resetting both to default never collides.
+    /// Suggested normal-key combo for people who want a Carbon shortcut instead of a media key.
+    /// It is not the factory default; rows with `mediaShortcut` reset to that media binding.
+    var suggestedKeyboardShortcut: GlobalShortcut {
+        // Under-pointer set is ⌃⌥-based; built-in set is ⌘⌥-based, so suggestions do not collide.
         let controlOption = UInt32(controlKey | optionKey)
         let controlOptionShift = UInt32(controlKey | optionKey | shiftKey)
         let commandOption = UInt32(cmdKey | optionKey)
@@ -243,12 +254,16 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
             MediaKeyShortcut(keyCode: MediaKey.brightnessDown, shift: true)
         case .colorCooler:
             MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true)
-        case .volumeUp:
-            MediaKeyShortcut(keyCode: MediaKey.soundUp)
-        case .volumeDown:
-            MediaKeyShortcut(keyCode: MediaKey.soundDown)
-        case .builtInBrightnessUp, .builtInBrightnessDown, .builtInContrastUp, .builtInContrastDown:
+        case .volumeUp, .volumeDown:
             nil
+        case .builtInBrightnessUp:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, command: true)
+        case .builtInBrightnessDown:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown, command: true)
+        case .builtInContrastUp:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true, command: true)
+        case .builtInContrastDown:
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown, control: true, command: true)
         }
     }
 

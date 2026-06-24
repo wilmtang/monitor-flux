@@ -132,11 +132,13 @@ final class PreferencesMigrationTests: XCTestCase {
         var prefs = AppPreferences()
         prefs.hotkeys["volumeUp"] = .media(MediaKeyShortcut(keyCode: MediaKey.soundUp))
         prefs.hotkeys["brightnessUp"] = .keyboard(GlobalShortcut(keyCode: 30, carbonModifiers: 4352))
+        prefs.hotkeys["contrastUp"] = .disabled
 
         let data = try JSONEncoder().encode(prefs)
         let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
 
         XCTAssertEqual(decoded.hotkeys["volumeUp"], .media(MediaKeyShortcut(keyCode: MediaKey.soundUp)))
         XCTAssertEqual(decoded.hotkeys["brightnessUp"], .keyboard(GlobalShortcut(keyCode: 30, carbonModifiers: 4352)))
+        XCTAssertEqual(decoded.hotkeys["contrastUp"], .disabled)
     }
 }

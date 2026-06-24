@@ -22,19 +22,21 @@ final class GlobalShortcutTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
-    func testDefaultShortcutsDoNotCollide() {
-        // Resetting every action to its default must never produce two identical combos —
-        // the under-pointer set is ⌃⌥-based and the built-in set is ⌘⌥-based.
-        let keys = HotKeyAction.allCases.map { "\($0.defaultShortcut.keyCode)-\($0.defaultShortcut.carbonModifiers)" }
+    func testSuggestedKeyboardShortcutsDoNotCollide() {
+        let keys = HotKeyAction.allCases.map {
+            "\($0.suggestedKeyboardShortcut.keyCode)-\($0.suggestedKeyboardShortcut.carbonModifiers)"
+        }
         XCTAssertEqual(Set(keys).count, keys.count)
     }
 
     func testMediaShortcutsRepresentBuiltInKeyboardPath() {
-        XCTAssertEqual(HotKeyAction.brightnessUp.mediaShortcut?.displayTokens, ["Brightness", "↑"])
-        XCTAssertEqual(HotKeyAction.contrastDown.mediaShortcut?.displayTokens, ["⌃", "Brightness", "↓"])
-        XCTAssertEqual(HotKeyAction.colorWarmer.mediaShortcut?.displayTokens, ["⇧", "Brightness", "↓"])
-        XCTAssertEqual(HotKeyAction.volumeUp.mediaShortcut?.displayTokens, ["Volume", "↑"])
-        XCTAssertNil(HotKeyAction.builtInBrightnessUp.mediaShortcut)
+        XCTAssertEqual(HotKeyAction.brightnessUp.mediaShortcut?.displayTokens, ["Brightness ↑"])
+        XCTAssertEqual(HotKeyAction.contrastDown.mediaShortcut?.displayTokens, ["⌃", "Brightness ↓"])
+        XCTAssertEqual(HotKeyAction.colorWarmer.mediaShortcut?.displayTokens, ["⇧", "Brightness ↓"])
+        XCTAssertNil(HotKeyAction.volumeUp.mediaShortcut)
+        XCTAssertNil(HotKeyAction.volumeDown.mediaShortcut)
+        XCTAssertEqual(HotKeyAction.builtInBrightnessUp.mediaShortcut?.displayTokens, ["⌘", "Brightness ↑"])
+        XCTAssertEqual(HotKeyAction.builtInContrastUp.mediaShortcut?.displayTokens, ["⌃", "⌘", "Brightness ↑"])
     }
 
     func testMediaShortcutParserReadsManagedKeyDownEvents() {
@@ -42,6 +44,13 @@ final class GlobalShortcutTests: XCTestCase {
         let shortcut = ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.shift])
 
         XCTAssertEqual(shortcut, MediaKeyShortcut(keyCode: MediaKey.brightnessDown, shift: true))
+    }
+
+    func testMediaShortcutParserKeepsCommandModifier() {
+        let data1 = mediaKeyData1(keyCode: MediaKey.brightnessUp, keyState: 0x0A)
+        let shortcut = ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.control, .command])
+
+        XCTAssertEqual(shortcut, MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true, command: true))
     }
 
     func testMediaShortcutParserIgnoresKeyUpAndUnknownKeys() {
@@ -100,7 +109,9 @@ final class GlobalShortcutTests: XCTestCase {
         let media = ShortcutBinding.media(
             MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true)
         )
-        XCTAssertEqual(media.displayTokens, ["⌃", "Brightness", "↑"])
+        XCTAssertEqual(media.displayTokens, ["⌃", "Brightness ↑"])
+        XCTAssertEqual(ShortcutBinding.disabled.displayTokens, [])
+        XCTAssertTrue(ShortcutBinding.disabled.isDisabled)
     }
 
     private func mediaKeyData1(keyCode: Int, keyState: Int) -> Int {

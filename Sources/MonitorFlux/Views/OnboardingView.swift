@@ -63,16 +63,16 @@ struct OnboardingView: View {
             heroIcon("keyboard", tint: [.blue, .teal])
 
             VStack(spacing: 6) {
-                Text("Use your brightness & volume keys")
+                Text("Use your brightness keys")
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
-                Text("So the keys on your keyboard can drive your external monitors")
+                Text("So the keys on your keyboard can drive your monitors")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
-            Text("MonitorFlux needs Accessibility permission to route the brightness and volume keys to the display under your pointer — not just the built-in screen. You can skip this and turn it on later in Settings.")
+            Text("MonitorFlux needs Accessibility permission to route brightness-key shortcuts to the display under your pointer or directly to the built-in screen. Volume keys stay with macOS unless you record them later in Settings.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

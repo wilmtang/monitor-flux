@@ -105,7 +105,6 @@ final class AppStore: ObservableObject {
             self?.applyLocation(coordinate)
         }
 
-        keyboardService.store = self
         accessibilityTrusted = keyboardService.hasAccessibilityPermission
         if safeMode {
             keyboardStatus = "Off (safe mode)"
@@ -126,9 +125,10 @@ final class AppStore: ObservableObject {
         hotKeyCenter.onAction = { [weak self] action in
             self?.performHotKeyAction(action)
         }
-        // Media-key user bindings route through the same handler.
+        // Media-key bindings use media-key semantics: bare brightness keys leave the built-in
+        // panel to macOS unless the binding is for the built-in-display shortcut group.
         keyboardService.onAction = { [weak self] action in
-            self?.performHotKeyAction(action)
+            self?.performMediaKeyAction(action) ?? false
         }
         refreshHotKeys()
 
@@ -619,12 +619,23 @@ final class AppStore: ObservableObject {
             keyboardService.mediaBindings = [:]
             return
         }
-        // Split bindings by type: keyboard → Carbon, media → event tap.
         var carbonMap: [HotKeyAction: GlobalShortcut] = [:]
         var mediaMap: [MediaKeyShortcut: HotKeyAction] = [:]
+
+        for action in HotKeyAction.allCases {
+            guard preferences.hotkeys[action.rawValue] == nil,
+                  let shortcut = action.mediaShortcut
+            else {
+                continue
+            }
+            mediaMap[shortcut] = action
+        }
+
         for (key, binding) in preferences.hotkeys {
             guard let action = HotKeyAction(rawValue: key) else { continue }
             switch binding {
+            case .disabled:
+                continue
             case .keyboard(let shortcut):
                 carbonMap[action] = shortcut
             case .media(let shortcut):
@@ -636,32 +647,43 @@ final class AppStore: ObservableObject {
     }
 
     private func performHotKeyAction(_ action: HotKeyAction) {
+        _ = performShortcutAction(action, allowBuiltInForPointerBrightness: true)
+    }
+
+    private func performMediaKeyAction(_ action: HotKeyAction) -> Bool {
+        performShortcutAction(action, allowBuiltInForPointerBrightness: false)
+    }
+
+    private func performShortcutAction(
+        _ action: HotKeyAction,
+        allowBuiltInForPointerBrightness: Bool
+    ) -> Bool {
         let step = Self.keyboardStep
         switch action {
         case .brightnessUp:
-            _ = adjustBrightnessUnderCursor(by: step, allowBuiltIn: true)
+            return adjustBrightnessUnderCursor(by: step, allowBuiltIn: allowBuiltInForPointerBrightness)
         case .brightnessDown:
-            _ = adjustBrightnessUnderCursor(by: -step, allowBuiltIn: true)
+            return adjustBrightnessUnderCursor(by: -step, allowBuiltIn: allowBuiltInForPointerBrightness)
         case .contrastUp:
-            _ = adjustContrastUnderCursor(by: step)
+            return adjustContrastUnderCursor(by: step)
         case .contrastDown:
-            _ = adjustContrastUnderCursor(by: -step)
+            return adjustContrastUnderCursor(by: -step)
         case .colorWarmer:
-            _ = adjustColorTemperature(bySteps: -1)
+            return adjustColorTemperature(bySteps: -1)
         case .colorCooler:
-            _ = adjustColorTemperature(bySteps: 1)
+            return adjustColorTemperature(bySteps: 1)
         case .volumeUp:
-            _ = adjustVolumeUnderCursor(by: step)
+            return adjustVolumeUnderCursor(by: step)
         case .volumeDown:
-            _ = adjustVolumeUnderCursor(by: -step)
+            return adjustVolumeUnderCursor(by: -step)
         case .builtInBrightnessUp:
-            _ = adjustBuiltInBrightness(by: step)
+            return adjustBuiltInBrightness(by: step)
         case .builtInBrightnessDown:
-            _ = adjustBuiltInBrightness(by: -step)
+            return adjustBuiltInBrightness(by: -step)
         case .builtInContrastUp:
-            _ = adjustBuiltInContrast(by: step)
+            return adjustBuiltInContrast(by: step)
         case .builtInContrastDown:
-            _ = adjustBuiltInContrast(by: -step)
+            return adjustBuiltInContrast(by: -step)
         }
     }
 

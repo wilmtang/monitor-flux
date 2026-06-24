@@ -38,7 +38,7 @@ struct SettingsView: View {
                 if !store.accessibilityTrusted {
                     accessibilityWarning
                 }
-                Toggle("Use keyboard brightness & volume keys", isOn: Binding {
+                Toggle("Use media-key shortcuts", isOn: Binding {
                     store.preferences.keyboardControlEnabled
                 } set: { isOn in
                     store.setKeyboardControl(isOn)
@@ -46,11 +46,13 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     keyHint("Brightness keys", "brightness of the display under your pointer (DDC)")
                     keyHint("⌃ Control + brightness", "contrast")
+                    keyHint("⌘ Command + brightness", "built-in brightness")
+                    keyHint("⌃ Control + ⌘ Command + brightness", "built-in contrast")
                     keyHint("⇧ Shift + brightness down/up", "warmth warmer / cooler")
-                    keyHint("Volume keys", "volume")
+                    keyHint("Volume keys", "macOS system volume unless recorded below")
                 }
                 .padding(.vertical, 2)
-                Text("Works when this toggle is on and Accessibility is granted. Brightness/contrast/volume act on the external display under your pointer; warmth is global and applies to every display with “Warm this display” enabled.")
+                Text("Works when this toggle is on and Accessibility is granted. Brightness/contrast act on the external display under your pointer; Command + brightness targets the built-in display; warmth is global.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -61,7 +63,7 @@ struct SettingsView: View {
                         ShortcutRecorder(
                             label: action.label,
                             icon: action.icon,
-                            defaultShortcut: action.defaultShortcut,
+                            suggestedShortcut: action.suggestedKeyboardShortcut,
                             mediaShortcut: action.mediaShortcut,
                             hasConflict: store.hotkeyConflicts.contains(action),
                             shortcut: Binding {
@@ -119,12 +121,12 @@ struct SettingsView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 5) {
-                Text("Brightness & volume keys need Accessibility")
+                Text("Media-key shortcuts need Accessibility")
                     .font(.callout)
                     .fontWeight(.semibold)
                 Text(store.preferences.keyboardControlEnabled
-                    ? "MonitorFlux doesn't have Accessibility permission, so it can't intercept the media keys. Grant it in System Settings; the keyboard controls will start when you return. (The custom shortcuts below work without this.)"
-                    : "Turn on keyboard control, then grant Accessibility so MonitorFlux can intercept the media keys. (The custom shortcuts below work without this.)")
+                    ? "MonitorFlux doesn't have Accessibility permission, so it can't intercept media-key shortcuts. Grant it in System Settings; they will start when you return. (The normal-key shortcuts below work without this.)"
+                    : "Turn on media-key shortcuts, then grant Accessibility so MonitorFlux can intercept those keys. (The normal-key shortcuts below work without this.)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

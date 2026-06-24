@@ -3,10 +3,8 @@ import ApplicationServices
 import CoreGraphics
 
 /// Intercepts the keyboard's brightness and volume media keys with a `CGEventTap` and
-/// routes them to the display under the cursor (DDC), MonitorControl-style (MIT; see
-/// ACKNOWLEDGEMENTS.md). Brightness keys change brightness; with Control they change
-/// contrast; with Shift they nudge the global color temperature. Volume keys change volume.
-/// Requires Accessibility permission, since taps that swallow HID events are privileged.
+/// routes bound shortcuts to the app. Requires Accessibility permission, since taps that
+/// swallow HID events are privileged.
 ///
 /// VCP-style media-key codes carried in an `NSSystemDefined` event's `data1`.
 enum MediaKey {
@@ -20,24 +18,21 @@ enum MediaKey {
 
 @MainActor
 final class KeyboardControlService {
-    weak var store: AppStore?
     private(set) var isActive = false
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private let step = 6
     /// Media keys whose key-down we handled, so we swallow only their matching key-up.
     /// Without this, a key we let through (e.g. volume on a speakerless monitor) would have
     /// its key-up swallowed anyway, handing the system an unbalanced down-without-up.
     private var ownedKeys: Set<Int> = []
 
-    /// User-assigned media-key bindings. When a media key matches an entry here, the
-    /// corresponding `HotKeyAction` fires via `onAction` instead of the built-in mapping.
+    /// Active media-key bindings. When a media key matches an entry here, the corresponding
+    /// `HotKeyAction` fires via `onAction`; unbound keys pass through to macOS.
     /// Populated by `AppStore.refreshHotKeys()` whenever preferences change.
     var mediaBindings: [MediaKeyShortcut: HotKeyAction] = [:]
 
-    /// Fired when a user-assigned media-key binding matches. Wired to
-    /// `AppStore.performHotKeyAction` — the same handler as Carbon hot keys.
-    var onAction: ((HotKeyAction) -> Void)?
+    /// Fired when an active media-key binding matches. Returns whether the key was handled.
+    var onAction: ((HotKeyAction) -> Bool)?
 
     var hasAccessibilityPermission: Bool {
         AXIsProcessTrusted()
@@ -98,8 +93,8 @@ final class KeyboardControlService {
 
     /// Handle a media-key press, remembering whether we owned it so the matching key-up is
     /// swallowed iff the key-down was. Returns true when handled (the tap swallows the down).
-    func handleKeyDown(keyCode: Int, control: Bool, shift: Bool) -> Bool {
-        let handled = handle(keyCode: keyCode, control: control, shift: shift)
+    func handleKeyDown(keyCode: Int, control: Bool, shift: Bool, command: Bool) -> Bool {
+        let handled = handle(keyCode: keyCode, control: control, shift: shift, command: command)
         if handled {
             ownedKeys.insert(keyCode)
         } else {
@@ -114,66 +109,13 @@ final class KeyboardControlService {
     }
 
     /// Returns true when MonitorFlux handled the key (so the tap swallows the event).
-    func handle(keyCode: Int, control: Bool, shift: Bool) -> Bool {
-        // Check user-assigned media bindings first.
-        let incoming = MediaKeyShortcut(keyCode: keyCode, control: control, shift: shift)
-        if let action = mediaBindings[incoming] {
-            onAction?(action)
-            return true
-        }
-
-        // Fall back to the built-in mapping.
-        guard let store,
-              let command = Self.command(keyCode: keyCode, control: control, shift: shift, step: step)
-        else {
+    func handle(keyCode: Int, control: Bool, shift: Bool, command: Bool = false) -> Bool {
+        let incoming = MediaKeyShortcut(keyCode: keyCode, control: control, shift: shift, command: command)
+        guard let action = mediaBindings[incoming] else {
             return false
         }
-        switch command {
-        case .brightness(let delta):
-            return store.adjustBrightnessUnderCursor(by: delta)
-        case .contrast(let delta):
-            return store.adjustContrastUnderCursor(by: delta)
-        case .color(let steps):
-            return store.adjustColorTemperature(bySteps: steps)
-        case .volume(let delta):
-            return store.adjustVolumeUnderCursor(by: delta)
-        }
+        return onAction?(action) ?? true
     }
-
-    /// The control a media key maps to, given its modifiers (pure, unit-tested):
-    /// brightness keys alone change brightness; with Control they change contrast; with
-    /// Shift they change the global color temperature. Volume keys change volume.
-    nonisolated static func command(keyCode: Int, control: Bool, shift: Bool, step: Int) -> KeyCommand? {
-        let direction: Int
-        switch keyCode {
-        case MediaKey.brightnessUp:
-            direction = 1
-        case MediaKey.brightnessDown:
-            direction = -1
-        case MediaKey.soundUp:
-            return .volume(step)
-        case MediaKey.soundDown:
-            return .volume(-step)
-        default:
-            return nil
-        }
-        if control {
-            return .contrast(direction * step)
-        }
-        if shift {
-            return .color(direction)
-        }
-        return .brightness(direction * step)
-    }
-}
-
-/// What a handled media key should do. Color is in ±1 steps (scaled to Kelvin by the store);
-/// the rest carry a signed percentage delta.
-enum KeyCommand: Equatable {
-    case brightness(Int)
-    case contrast(Int)
-    case color(Int)
-    case volume(Int)
 }
 
 private extension CGEventType {
@@ -219,9 +161,8 @@ private func mediaKeyTapCallback(
     let optionHeld = event.flags.contains(.maskAlternate) || modifierFlags.contains(.option)
     let commandHeld = event.flags.contains(.maskCommand) || modifierFlags.contains(.command)
 
-    // Pass through to macOS when Option or Command is held. Option + Brightness opens
-    // Display preferences; swallowing it would break macOS behavior.
-    guard !optionHeld, !commandHeld else {
+    // Pass through to macOS when Option is held. Option + Brightness opens Display settings.
+    guard !optionHeld else {
         return Unmanaged.passUnretained(event)
     }
 
@@ -229,7 +170,7 @@ private func mediaKeyTapCallback(
     // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.
     let handled = MainActor.assumeIsolated {
         isKeyDown
-            ? service.handleKeyDown(keyCode: keyCode, control: controlHeld, shift: shiftHeld)
+            ? service.handleKeyDown(keyCode: keyCode, control: controlHeld, shift: shiftHeld, command: commandHeld)
             : service.consumeKeyUp(keyCode: keyCode)
     }
 

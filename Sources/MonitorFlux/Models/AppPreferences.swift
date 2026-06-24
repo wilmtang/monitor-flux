@@ -192,8 +192,8 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var latitude = "47.6"
     var longitude = "-122.3"
     var displayPreferences: [String: DisplayPreferences] = [:]
-    /// User-assigned global shortcuts, keyed by `HotKeyAction.rawValue`. Empty by default —
-    /// the media keys cover brightness/contrast/color/volume out of the box.
+    /// Shortcut overrides, keyed by `HotKeyAction.rawValue`. Missing key means use that
+    /// action's media-key default, when it has one.
     var hotkeys: [String: ShortcutBinding] = [:]
 
     static let defaults = AppPreferences()
