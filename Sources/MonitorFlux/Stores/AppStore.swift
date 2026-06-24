@@ -741,6 +741,19 @@ final class AppStore: ObservableObject {
         !display.isBuiltIn
     }
 
+    /// Whether the display can dim its *real* backlight: the built-in panel through the native
+    /// brightness API, or an external monitor through DDC (when a DDC backend is available).
+    /// When false, software (gamma) dimming is the fallback rather than an optional extra — so
+    /// this drives both the default for `gammaControlsEnabled` and which brightness slider the
+    /// popup shows. Note: macOS exposes no per-monitor DDC probe, so an external display is
+    /// assumed DDC-capable whenever a backend exists.
+    func canUseHardwareBrightness(_ display: DisplayInfo) -> Bool {
+        if display.isBuiltIn {
+            return canUseNativeBrightness(display)
+        }
+        return ddcStatus.isAvailable
+    }
+
     func applyBrightness(for display: DisplayInfo) {
         let displayPreferences = displayPreferences(for: display)
         runDDCCommand(
@@ -1026,6 +1039,10 @@ final class AppStore: ObservableObject {
                 } else {
                     var displayPreferences = DisplayPreferences()
                     displayPreferences.ddcDisplayIndex = display.isBuiltIn ? 1 : externalIndex
+                    // Software dimming defaults OFF when the display can dim in hardware (native
+                    // backlight or DDC) — it's the fallback only for panels with no hardware path.
+                    // Existing, already-seeded displays keep whatever the user has set.
+                    displayPreferences.gammaControlsEnabled = !canUseHardwareBrightness(display)
                     next.displayPreferences[display.key] = displayPreferences
                 }
                 changed = true

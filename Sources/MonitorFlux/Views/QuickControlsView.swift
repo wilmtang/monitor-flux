@@ -257,29 +257,49 @@ private struct DisplayCardView: View {
 
     @ViewBuilder
     private func externalControls(_ preferences: DisplayPreferences) -> some View {
-        ControlRow(
-            icon: "sun.max",
-            value: Double(preferences.hardwareBrightness),
-            range: ControlRanges.hardwarePercent,
-            readout: "\(preferences.hardwareBrightness)%"
-        ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
-
-        ControlRow(
-            icon: "circle.lefthalf.filled",
-            value: Double(preferences.hardwareContrast),
-            range: ControlRanges.hardwarePercent,
-            readout: "\(preferences.hardwareContrast)%"
-        ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
-
-        // Volume only when the monitor actually has speakers (or the user forced it on)
-        // — a speakerless display gets no useless volume slider.
-        if store.shouldShowVolumeControl(for: display) {
+        if store.canUseHardwareBrightness(display) {
             ControlRow(
-                icon: "speaker.wave.2.fill",
-                value: Double(preferences.hardwareVolume),
+                icon: "sun.max",
+                value: Double(preferences.hardwareBrightness),
                 range: ControlRanges.hardwarePercent,
-                readout: "\(preferences.hardwareVolume)%"
-            ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
+                readout: "\(preferences.hardwareBrightness)%"
+            ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
+
+            ControlRow(
+                icon: "circle.lefthalf.filled",
+                value: Double(preferences.hardwareContrast),
+                range: ControlRanges.hardwarePercent,
+                readout: "\(preferences.hardwareContrast)%"
+            ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
+
+            // Volume only when the monitor actually has speakers (or the user forced it on)
+            // — a speakerless display gets no useless volume slider.
+            if store.shouldShowVolumeControl(for: display) {
+                ControlRow(
+                    icon: "speaker.wave.2.fill",
+                    value: Double(preferences.hardwareVolume),
+                    range: ControlRanges.hardwarePercent,
+                    readout: "\(preferences.hardwareVolume)%"
+                ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
+            }
+        } else {
+            // No DDC path to the real backlight — drive software (gamma) dimming instead, the
+            // same fallback a built-in panel with no brightness API gets.
+            ControlRow(
+                icon: "sun.max",
+                value: Double(preferences.gammaBrightness),
+                range: ControlRanges.gammaBrightnessPercent,
+                enabled: store.preferences.gammaEnabled,
+                readout: "\(preferences.gammaBrightness)%"
+            ) { newValue in
+                store.updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = Int(newValue.rounded())
+                        .clamped(to: ControlRanges.gammaBrightnessPercent)
+                }
+            }
+            Text("Software dimming (no DDC on this display)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 }
