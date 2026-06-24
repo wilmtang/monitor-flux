@@ -130,18 +130,70 @@ struct Arm64DDCBackend: Sendable {
         Arm64DDCServiceCache.shared.invalidate()
     }
 
-    /// Non-destructive DDC capability probe: whether macOS exposes an `IOAVService` for this
-    /// display (an external `DCPAVServiceProxy`). True means DDC writes have a service to target;
-    /// false means none exists — built-in HDMI, DisplayLink, and some docks/KVMs don't expose
-    /// one. This only walks the IORegistry (the same resolution a write would do, so it also
-    /// warms the cache); it sends nothing to the monitor.
-    func hasService(for display: DisplayInfo) -> Bool {
-        guard !display.isBuiltIn else {
-            return false
+    /// Which of `displays` can actually do DDC, decided non-destructively and *globally*: resolve
+    /// the external IOAVServices once, score each display against them by EDID, then hand the S
+    /// services to the S best-matching displays. Surplus displays — ones with no service of their
+    /// own, e.g. a non-DDC monitor next to a real one — are left out rather than borrowing a
+    /// neighbour's service the way the write path does (which is why a per-display probe
+    /// over-reports). Walks the IORegistry once; sends nothing to any monitor.
+    static func capableDisplays(among displays: [DisplayInfo]) -> Set<CGDirectDisplayID> {
+        let externals = displays.filter { !$0.isBuiltIn }
+        guard !externals.isEmpty else {
+            return []
         }
-        return Arm64DDCServiceCache.shared.service(for: display.id, resolveRanked: {
-            Self.avServicesRanked(for: display.id)
-        }) != nil
+        let candidates = discoverCandidates()
+        let scores = externals.map { display -> (id: CGDirectDisplayID, score: Int) in
+            let model = Int64(CGDisplayModelNumber(display.id))
+            let serial = Int64(CGDisplaySerialNumber(display.id))
+            let best = candidates.map {
+                matchScore(
+                    displayModel: model,
+                    displaySerial: serial,
+                    candidateProductID: $0.productID,
+                    candidateSerial: $0.serialNumber
+                )
+            }.max() ?? 0
+            return (display.id, best)
+        }
+        return capableDisplayIDs(scores: scores, serviceCount: candidates.count)
+    }
+
+    /// EDID match score between a display and a candidate service — mirrors `avServicesRanked`'s
+    /// ranking (serial match +5, product/model match +3). Pure, unit-tested.
+    static func matchScore(
+        displayModel: Int64,
+        displaySerial: Int64,
+        candidateProductID: Int64?,
+        candidateSerial: Int64?
+    ) -> Int {
+        var score = 0
+        if displaySerial != 0, candidateSerial == displaySerial {
+            score += 5
+        }
+        if displayModel != 0, candidateProductID == displayModel {
+            score += 3
+        }
+        return score
+    }
+
+    /// The `serviceCount` highest-scoring displays can each be given a distinct service; the rest
+    /// have none of their own and aren't DDC-capable. When services cover the displays
+    /// (`serviceCount >= count`) everyone qualifies — so a lone DDC monitor whose EDID doesn't
+    /// match its own service isn't wrongly demoted. Stable by input order on score ties. Pure,
+    /// unit-tested.
+    static func capableDisplayIDs(
+        scores: [(id: CGDirectDisplayID, score: Int)],
+        serviceCount: Int
+    ) -> Set<CGDirectDisplayID> {
+        guard serviceCount > 0 else {
+            return []
+        }
+        let ranked = scores.enumerated().sorted {
+            $0.element.score != $1.element.score
+                ? $0.element.score > $1.element.score
+                : $0.offset < $1.offset
+        }
+        return Set(ranked.prefix(serviceCount).map { $0.element.id })
     }
 
     func setVCPFeature(_ feature: UInt8, value: Int, display: DisplayInfo) throws {

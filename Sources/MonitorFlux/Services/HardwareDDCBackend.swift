@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 enum HardwareDDCError: LocalizedError, Sendable {
@@ -53,17 +54,15 @@ struct HardwareDDCBackend: Sendable {
         #endif
     }
 
-    /// Whether this display can do DDC at all — a non-destructive capability check (no monitor
-    /// round-trip). On Apple Silicon it's whether an `IOAVService` resolves; on Intel there's no
-    /// equally cheap probe wired up, so assume capable (the prior, optimistic behavior).
-    func supportsDDC(_ display: DisplayInfo) -> Bool {
-        guard !display.isBuiltIn else {
-            return false
-        }
+    /// Which external displays can actually do DDC — a non-destructive capability check (no
+    /// monitor round-trip). On Apple Silicon it's a global IOAVService→display match (so a
+    /// non-DDC monitor beside a real one isn't credited a borrowed service); on Intel there's no
+    /// equally cheap probe, so assume every external is capable (the prior, optimistic behavior).
+    func ddcCapableDisplays(_ displays: [DisplayInfo]) -> Set<CGDirectDisplayID> {
         #if arch(arm64)
-        return arm64.hasService(for: display)
+        return Arm64DDCBackend.capableDisplays(among: displays)
         #else
-        return true
+        return Set(displays.filter { !$0.isBuiltIn }.map(\.id))
         #endif
     }
 

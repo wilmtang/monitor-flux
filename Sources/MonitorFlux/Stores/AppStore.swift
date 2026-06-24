@@ -251,11 +251,12 @@ final class AppStore: ObservableObject {
     /// resolve?) and cache it. Runs on every refresh — i.e. on launch and on display-config
     /// changes — so a monitor moved to a port that can't carry DDC is re-evaluated.
     private func refreshDDCCapability() {
-        var capable: [CGDirectDisplayID: Bool] = [:]
+        let capable = ddcBackend.ddcCapableDisplays(displays)
+        var map: [CGDirectDisplayID: Bool] = [:]
         for display in displays where !display.isBuiltIn {
-            capable[display.id] = ddcBackend.supportsDDC(display)
+            map[display.id] = capable.contains(display.id)
         }
-        ddcCapableByID = capable
+        ddcCapableByID = map
     }
 
     /// Whether an audio output (monitor speakers) was detected for this display.
