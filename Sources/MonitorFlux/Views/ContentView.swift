@@ -68,6 +68,10 @@ struct ContentView: View {
             default:
                 break
             }
+            applyRequestedSelection()
+        }
+        .onChange(of: store.requestedSelection) { _, _ in
+            applyRequestedSelection()
         }
         .background {
             // Diagnostics is developer-facing, so it's no longer a sidebar item; reach it
@@ -75,6 +79,15 @@ struct ContentView: View {
             Button("Show Diagnostics") { selection = .diagnostics }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
                 .hidden()
+        }
+    }
+
+    /// Honor a pane requested from the menu-bar popup (which may be set before this window even
+    /// exists), then clear it so it applies once.
+    private func applyRequestedSelection() {
+        if let requested = store.requestedSelection {
+            selection = requested
+            store.requestedSelection = nil
         }
     }
 

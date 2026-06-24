@@ -58,6 +58,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var gammaConflictApps: [String] = []
     /// The user closed the conflict banner; it reappears only when a fresh conflict is seen.
     @Published private(set) var gammaConflictBannerDismissed = false
+    /// A settings pane requested from the menu-bar popup (e.g. tapping a display card). ContentView
+    /// observes this, applies it to the sidebar selection, then clears it.
+    @Published var requestedSelection: AppSelection?
 
     /// Set by `MONITORFLUX_SAFE_MODE=1`. Skips every gamma/DDC/backlight hardware write so
     /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
@@ -380,6 +383,13 @@ final class AppStore: ObservableObject {
     ///   foreground and the window takes keyboard focus. The smoke test passes false so it
     ///   can put the window on screen for `CGWindowList` without yanking focus away from
     ///   whatever the user is doing while tests run.
+    /// Open the main window and jump straight to a settings pane — used by the popup's tappable
+    /// cards so e.g. a display card deep-links into that display's own settings.
+    func openSettings(_ selection: AppSelection) {
+        requestedSelection = selection
+        showMainWindow()
+    }
+
     func showMainWindow(activating: Bool = true) {
         let window = mainWindow ?? makeMainWindow()
         mainWindow = window

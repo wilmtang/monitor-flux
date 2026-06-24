@@ -62,9 +62,21 @@ struct QuickControlsView: View {
     private var ambienceCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Text("Warmth")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                Button {
+                    store.openSettings(.color)
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("Warmth")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open Warmth schedule settings")
                 InfoButton(title: "Warmth (color temperature)", message: HelpText.gamma)
                 Spacer()
                 modeChip
@@ -214,12 +226,24 @@ private struct DisplayCardView: View {
                     .foregroundStyle(.tertiary)
                     .draggable(display.key)
                     .help("Drag to reorder")
-                Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
-                    .foregroundStyle(.secondary)
-                Text(display.name)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
+                Button {
+                    store.openSettings(.display(display.key))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
+                            .foregroundStyle(.secondary)
+                        Text(display.name)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open \(display.name) settings")
             }
 
             if display.isBuiltIn {
