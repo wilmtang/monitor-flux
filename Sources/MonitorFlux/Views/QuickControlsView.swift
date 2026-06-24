@@ -15,8 +15,13 @@ struct QuickControlsView: View {
             if store.displays.isEmpty {
                 emptyHint("No displays detected — connect a monitor to control its brightness and color here.")
             } else {
-                ForEach(store.displays) { display in
+                ForEach(store.orderedDisplays) { display in
                     DisplayCardView(display: display)
+                        .dropDestination(for: String.self) { keys, _ in
+                            guard let dragged = keys.first else { return false }
+                            store.moveDisplay(key: dragged, before: display.key)
+                            return true
+                        }
                 }
                 // Only the built-in panel is present: name what the user would gain by plugging
                 // a monitor in, instead of leaving the area looking like nothing's missing.
@@ -204,6 +209,11 @@ private struct DisplayCardView: View {
         let preferences = store.displayPreferences(for: display)
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .draggable(display.key)
+                    .help("Drag to reorder")
                 Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
                     .foregroundStyle(.secondary)
                 Text(display.name)

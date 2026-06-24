@@ -195,6 +195,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
     /// Shortcut overrides, keyed by `HotKeyAction.rawValue`. Missing key means use that
     /// action's media-key default, when it has one.
     var hotkeys: [String: ShortcutBinding] = [:]
+    /// User-chosen order of the popup's display cards, by `DisplayInfo.key`. Keys not listed
+    /// (newly connected displays) sort after the listed ones in detection order.
+    var displayOrder: [String] = []
 
     static let defaults = AppPreferences()
 
@@ -219,6 +222,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case longitude
         case displayPreferences
         case hotkeys
+        case displayOrder
     }
 
     init() {}
@@ -270,6 +274,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
             forKey: .displayPreferences
         )?.mapValues { $0.normalized() } ?? [:]
         hotkeys = try Self.decodeHotkeys(from: container) ?? [:]
+        displayOrder = try container.decodeIfPresent([String].self, forKey: .displayOrder) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -294,6 +299,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)
         try container.encode(hotkeys, forKey: .hotkeys)
+        try container.encode(displayOrder, forKey: .displayOrder)
     }
 
     /// Try the new `ShortcutBinding` format; fall back to legacy `GlobalShortcut` values

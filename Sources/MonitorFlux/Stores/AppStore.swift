@@ -284,6 +284,24 @@ final class AppStore: ObservableObject {
         preferences.displayPreferences[display.key, default: DisplayPreferences()]
     }
 
+    /// The popup's display cards in the user's chosen order (drag-to-reorder). Displays not yet
+    /// in `displayOrder` — freshly connected ones — follow the ordered set in detection order.
+    var orderedDisplays: [DisplayInfo] {
+        let byKey = Dictionary(displays.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        return DisplayOrdering.sorted(displays.map(\.key), by: preferences.displayOrder)
+            .compactMap { byKey[$0] }
+    }
+
+    /// Persist a new card order, moving `draggedKey` to just before `targetKey`.
+    func moveDisplay(key draggedKey: String, before targetKey: String) {
+        let newOrder = DisplayOrdering.reordered(
+            orderedDisplays.map(\.key),
+            moving: draggedKey,
+            before: targetKey
+        )
+        updateGlobalPreferences { $0.displayOrder = newOrder }
+    }
+
     func updateGlobalPreferences(_ update: (inout AppPreferences) -> Void) {
         var next = preferences
         update(&next)
