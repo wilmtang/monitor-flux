@@ -43,7 +43,10 @@ struct ContentView: View {
                         } label: {
                             Label("Refresh Displays", systemImage: "arrow.clockwise")
                         }
-                        .help("Refresh displays — re-scan connected monitors and re-read their saved brightness/contrast settings")
+                        // Show the title next to the icon — a bare circular arrow reads as
+                        // "restart" and gives no hint that it re-scans monitors.
+                        .labelStyle(.titleAndIcon)
+                        .help("Re-scan connected monitors and re-apply their saved brightness & contrast. Use this if a display isn't detected or looks out of sync. (This does not restart the app.)")
                     }
                 }
         }
