@@ -94,6 +94,40 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertEqual(ColorSchedule.activePhase(preferences: preferences, minuteOfDay: 6 * 60), .bedtime)
     }
 
+    func testClampKeepsSunsetBetweenWakeAndBedtime() {
+        let wake = 7 * 60, sunset = 20 * 60, bedtime = 21 * 60
+
+        // A valid sunset time is left alone.
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(18 * 60, for: .sunset, wake: wake, sunset: sunset, bedtime: bedtime),
+            18 * 60
+        )
+        // Dragged before wake -> snaps to just after wake.
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(6 * 60, for: .sunset, wake: wake, sunset: sunset, bedtime: bedtime, minGap: 15),
+            wake + 15
+        )
+        // Dragged past bedtime -> snaps to just before bedtime.
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(23 * 60, for: .sunset, wake: wake, sunset: sunset, bedtime: bedtime, minGap: 15),
+            bedtime - 15
+        )
+    }
+
+    func testClampAllowsBedtimeAfterMidnight() {
+        // Wake 10:15, sunset 20:00: a 2:30 AM bedtime is in cyclic order and stays put.
+        let wake = 10 * 60 + 15, sunset = 20 * 60, bedtime = 2 * 60 + 30
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(2 * 60 + 30, for: .bedtime, wake: wake, sunset: sunset, bedtime: bedtime),
+            2 * 60 + 30
+        )
+        // Bedtime dragged before sunset -> snaps to just after sunset.
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(19 * 60, for: .bedtime, wake: wake, sunset: sunset, bedtime: bedtime, minGap: 15),
+            sunset + 15
+        )
+    }
+
     func testClockScheduleChoosesDayAndNight() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock

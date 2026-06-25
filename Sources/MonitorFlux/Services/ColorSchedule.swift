@@ -77,6 +77,73 @@ enum ColorSchedule {
         return activePhase(preferences: effective, minuteOfDay: minute)
     }
 
+    /// Keep the three time anchors in cyclic order daytime → sunset → bedtime → (wraps). Returns
+    /// `minute` clamped into the open arc between `phase`'s two cyclic neighbors, so e.g. sunset can
+    /// never be set before wake or after bedtime. `minGap` stops adjacent phases from touching.
+    /// Anything dragged into the forbidden arc snaps to the nearer end of the allowed one.
+    static func clampedStartMinute(
+        _ minute: Int,
+        for phase: ColorPhase,
+        wake: Int,
+        sunset: Int,
+        bedtime: Int,
+        minGap: Int = 15
+    ) -> Int {
+        let (previous, next): (Int, Int)
+        switch phase {
+        case .daytime:
+            previous = bedtime
+            next = sunset
+        case .sunset:
+            previous = wake
+            next = bedtime
+        case .bedtime:
+            previous = sunset
+            next = wake
+        }
+        return clampIntoArc(minute, after: previous, before: next, minGap: minGap)
+    }
+
+    /// Convenience over the explicit-anchors form, reading the anchors from `preferences`.
+    static func clampedStartMinute(
+        _ minute: Int,
+        for phase: ColorPhase,
+        preferences: AppPreferences,
+        minGap: Int = 15
+    ) -> Int {
+        clampedStartMinute(
+            minute,
+            for: phase,
+            wake: preferences.coolStartMinutes,
+            sunset: preferences.sunsetStartMinutes,
+            bedtime: preferences.warmStartMinutes,
+            minGap: minGap
+        )
+    }
+
+    /// Clamp `minute` into the arc that runs forward from `lower` to `upper`, kept `minGap` clear of
+    /// each end. A `minute` already inside the arc is returned unchanged (normalized); one outside
+    /// snaps to whichever end of the arc is angularly closer.
+    private static func clampIntoArc(_ minute: Int, after lower: Int, before upper: Int, minGap: Int) -> Int {
+        let span = circularMinutes(from: lower, to: upper)
+        guard span > 0 else {
+            return ((lower % 1440) + 1440) % 1440
+        }
+        let lo = min(minGap, span / 2)
+        let hi = span - lo
+        var rel = circularMinutes(from: lower, to: minute)
+        if rel < lo || rel > hi {
+            rel = circularDistance(minute, lower) <= circularDistance(minute, upper) ? lo : hi
+        }
+        return (((lower + rel) % 1440) + 1440) % 1440
+    }
+
+    /// Shortest distance between two minutes on the 24h circle, in [0, 720].
+    private static func circularDistance(_ a: Int, _ b: Int) -> Int {
+        let diff = ((a - b) % 1440 + 1440) % 1440
+        return min(diff, 1440 - diff)
+    }
+
     /// The phase active at `minuteOfDay`: the one whose start anchor was passed most recently.
     static func activePhase(preferences: AppPreferences, minuteOfDay: Int) -> ColorPhase {
         let minute = ((minuteOfDay % 1440) + 1440) % 1440

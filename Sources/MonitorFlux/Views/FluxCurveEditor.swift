@@ -5,6 +5,17 @@ enum FluxCurveHandle: Hashable {
     case day
     case sunset
     case night
+
+    var phase: ColorPhase {
+        switch self {
+        case .day:
+            .daytime
+        case .sunset:
+            .sunset
+        case .night:
+            .bedtime
+        }
+    }
 }
 
 struct FluxCurveEditor: View {
@@ -243,8 +254,17 @@ struct FluxCurveEditor: View {
     }
 
     private func update(_ handle: FluxCurveHandle, location: CGPoint, size: CGSize) {
-        let minute = roundedMinutes(from: location.x, width: size.width)
+        let rawMinute = roundedMinutes(from: location.x, width: size.width)
         let kelvin = roundedKelvin(from: location.y, height: size.height)
+        // Keep the dragged anchor inside the daytime → sunset → bedtime order, so a handle can't be
+        // pulled past its neighbors (e.g. sunset dragged before wake snaps back to just after wake).
+        let minute = ColorSchedule.clampedStartMinute(
+            rawMinute,
+            for: handle.phase,
+            wake: coolStartMinutes,
+            sunset: sunsetStartMinutes,
+            bedtime: warmStartMinutes
+        )
 
         switch handle {
         case .day:

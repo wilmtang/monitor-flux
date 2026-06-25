@@ -105,7 +105,7 @@ struct ColorScheduleView: View {
                 curveLegend
 
                 HStack(spacing: 6) {
-                    Stepper(value: scheduleEditBinding(\.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
+                    Stepper(value: phaseStartBinding(for: .daytime, \.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
                         Text(MinuteFormatting.label(for: store.preferences.coolStartMinutes))
                             .font(.title2)
                             .foregroundStyle(.blue)
@@ -115,7 +115,7 @@ struct ColorScheduleView: View {
                         .font(.title3)
                         .foregroundStyle(.blue.opacity(0.9))
                     Spacer()
-                    Stepper(value: scheduleEditBinding(\.warmStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
+                    Stepper(value: phaseStartBinding(for: .bedtime, \.warmStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
                         Text(MinuteFormatting.label(for: store.preferences.warmStartMinutes))
                             .font(.title2)
                             .foregroundStyle(.orange)
@@ -342,6 +342,28 @@ struct ColorScheduleView: View {
         } set: { newValue in
             store.updateGlobalPreferences { preferences in
                 preferences[keyPath: keyPath] = newValue
+                preferences.gammaEnabled = true
+                preferences.colorMode = .clock
+            }
+        }
+    }
+
+    /// Like `scheduleEditBinding`, for the wake/bedtime time anchors: the new minute is clamped to
+    /// keep the daytime → sunset → bedtime order (so wake can't cross sunset, bedtime can't cross
+    /// it from the other side), mirroring the clamp the curve handles use.
+    private func phaseStartBinding(
+        for phase: ColorPhase,
+        _ keyPath: WritableKeyPath<AppPreferences, Int>
+    ) -> Binding<Int> {
+        Binding {
+            store.preferences[keyPath: keyPath]
+        } set: { newValue in
+            store.updateGlobalPreferences { preferences in
+                preferences[keyPath: keyPath] = ColorSchedule.clampedStartMinute(
+                    newValue,
+                    for: phase,
+                    preferences: preferences
+                )
                 preferences.gammaEnabled = true
                 preferences.colorMode = .clock
             }
