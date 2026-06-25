@@ -620,15 +620,32 @@ final class AppStore: ObservableObject {
             osd.show(.brightness, fraction: next, onDisplay: target.id)
             return true
         }
-        let current = displayPreferences(for: target).hardwareBrightness
-        let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
-        setHardwareBrightness(next, for: target)
-        osd.show(.brightness, fraction: percentFraction(next), onDisplay: target.id)
+        // External with a DDC path: drive the real backlight over DDC.
+        if canUseDDC(for: target) {
+            let current = displayPreferences(for: target).hardwareBrightness
+            let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
+            setHardwareBrightness(next, for: target)
+            osd.show(.brightness, fraction: percentFraction(next), onDisplay: target.id)
+            return true
+        }
+        // No DDC path to the backlight — software-dim via gamma, the same fallback the popup
+        // shows for a non-DDC monitor. Only when gamma can actually take effect; otherwise let
+        // the key fall through to macOS rather than swallowing it into a no-op (the bug that made
+        // brightness keys feel dead on a monitor the DDC probe can't drive).
+        guard preferences.gammaEnabled, displayPreferences(for: target).gammaControlsEnabled else {
+            return false
+        }
+        let next = (displayPreferences(for: target).gammaBrightness + delta)
+            .clamped(to: ControlRanges.gammaBrightnessPercent)
+        updateDisplayPreferences(for: target) { $0.gammaBrightness = next }
+        osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: target.id)
         return true
     }
 
     func adjustContrastUnderCursor(by delta: Int) -> Bool {
-        guard let target = displayUnderCursor(), !target.isBuiltIn else {
+        // Contrast is DDC-only for externals (there's no software-contrast path), so a non-DDC
+        // monitor or the built-in panel lets the key fall through instead of swallowing a no-op.
+        guard let target = displayUnderCursor(), !target.isBuiltIn, canUseDDC(for: target) else {
             return false
         }
         let current = displayPreferences(for: target).hardwareContrast
@@ -656,7 +673,11 @@ final class AppStore: ObservableObject {
     }
 
     func adjustVolumeUnderCursor(by delta: Int) -> Bool {
-        guard let target = displayUnderCursor(), shouldShowVolumeControl(for: target) else {
+        // Volume rides DDC; a non-DDC monitor has no path, so let the key reach macOS instead of
+        // swallowing it into a no-op.
+        guard let target = displayUnderCursor(),
+              shouldShowVolumeControl(for: target),
+              canUseDDC(for: target) else {
             return false
         }
         let current = displayPreferences(for: target).hardwareVolume

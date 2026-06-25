@@ -2,11 +2,16 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
-/// Intercepts the keyboard's brightness and volume media keys with a `CGEventTap` and
-/// routes bound shortcuts to the app. Requires Accessibility permission, since taps that
-/// swallow HID events are privileged.
+/// Intercepts the keyboard's brightness and volume keys with a `CGEventTap` and routes bound
+/// shortcuts to the app. Requires Accessibility permission, since taps that swallow HID events
+/// are privileged.
 ///
-/// VCP-style media-key codes carried in an `NSSystemDefined` event's `data1`.
+/// Two delivery paths are normalized onto the same media-key codes:
+/// - Volume (and brightness on older Macs) arrives in an `NSSystemDefined` aux-button event,
+///   with the key code in `data1`.
+/// - On modern Apple silicon the dedicated brightness keys arrive as ordinary `keyDown`/`keyUp`
+///   events (virtual key codes 144/145, Fn flag set), *not* as `NSSystemDefined` — so the tap
+///   has to watch the keyboard event types too, or brightness keys are never seen.
 enum MediaKey {
     static let soundUp = 0
     static let soundDown = 1
@@ -14,6 +19,22 @@ enum MediaKey {
     static let brightnessDown = 3
 
     static let managed: Set<Int> = [soundUp, soundDown, brightnessUp, brightnessDown]
+
+    /// Virtual key codes the dedicated brightness keys emit as plain `keyDown`/`keyUp` events on
+    /// modern Apple silicon (Fn flag set). Mapped onto the brightness media-key codes so the
+    /// binding lookup, OSD, and DDC routing are identical regardless of how macOS delivered the key.
+    static let brightnessUpVirtualKeyCode = 144
+    static let brightnessDownVirtualKeyCode = 145
+
+    /// The media-key code for a dedicated-brightness-key virtual key code, or nil if it's an
+    /// ordinary key the tap should ignore.
+    static func code(forVirtualKeyCode keyCode: Int) -> Int? {
+        switch keyCode {
+        case brightnessUpVirtualKeyCode: return brightnessUp
+        case brightnessDownVirtualKeyCode: return brightnessDown
+        default: return nil
+        }
+    }
 }
 
 @MainActor
@@ -52,9 +73,14 @@ final class KeyboardControlService {
             return false
         }
 
-        let mask = CGEventMask(1 << CGEventType.nsSystemDefined)
+        // keyDown/keyUp catch the modern brightness keys (virtual codes 144/145); NSSystemDefined
+        // catches volume (and brightness on older Macs). Session tap, since the brightness keys
+        // are synthesized above the HID layer and never reach a `.cghidEventTap`.
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.keyUp.rawValue)
+            | CGEventMask(1 << CGEventType.nsSystemDefined)
         guard let tap = CGEvent.tapCreate(
-            tap: .cghidEventTap,
+            tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
@@ -123,6 +149,41 @@ private extension CGEventType {
     static var nsSystemDefined: UInt32 { 14 }
 }
 
+/// A media key resolved from a tapped event: the `MediaKey` code and whether it's the press.
+private struct ResolvedMediaKey {
+    let code: Int
+    let isKeyDown: Bool
+}
+
+/// Normalize a tapped event into a `MediaKey` press/release, from either delivery path, or nil if
+/// it isn't a key we handle. Pulling both paths through one code keeps the binding lookup identical
+/// whether brightness arrived as a `keyDown` (modern Apple silicon) or an `NSSystemDefined` aux key.
+private func resolveMediaKey(type: CGEventType, event: CGEvent) -> ResolvedMediaKey? {
+    switch type.rawValue {
+    case CGEventType.keyDown.rawValue, CGEventType.keyUp.rawValue:
+        // Modern brightness keys: dedicated keys reported as ordinary key events (codes 144/145).
+        let virtualKeyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        guard let code = MediaKey.code(forVirtualKeyCode: virtualKeyCode) else {
+            return nil
+        }
+        return ResolvedMediaKey(code: code, isKeyDown: type.rawValue == CGEventType.keyDown.rawValue)
+    case CGEventType.nsSystemDefined:
+        // Classic aux-button media keys (volume, and brightness on older Macs): code + state in data1.
+        guard let nsEvent = NSEvent(cgEvent: event), nsEvent.subtype.rawValue == 8 else {
+            return nil
+        }
+        let data1 = nsEvent.data1
+        let code = Int((data1 & 0xFFFF_0000) >> 16)
+        guard MediaKey.managed.contains(code) else {
+            return nil
+        }
+        let isKeyDown = (((data1 & 0x0000_FFFF) & 0xFF00) >> 8) == 0x0A
+        return ResolvedMediaKey(code: code, isKeyDown: isKeyDown)
+    default:
+        return nil
+    }
+}
+
 private func mediaKeyTapCallback(
     proxy: CGEventTapProxy,
     type: CGEventType,
@@ -140,26 +201,16 @@ private func mediaKeyTapCallback(
         return Unmanaged.passUnretained(event)
     }
 
-    guard type.rawValue == CGEventType.nsSystemDefined,
-          let nsEvent = NSEvent(cgEvent: event),
-          nsEvent.subtype.rawValue == 8
-    else {
+    // Most events (ordinary typing) aren't ours — bail before reading modifiers.
+    guard let media = resolveMediaKey(type: type, event: event) else {
         return Unmanaged.passUnretained(event)
     }
 
-    let data1 = nsEvent.data1
-    let keyCode = Int((data1 & 0xFFFF_0000) >> 16)
-    guard MediaKey.managed.contains(keyCode) else {
-        return Unmanaged.passUnretained(event)
-    }
-
-    let keyFlags = data1 & 0x0000_FFFF
-    let isKeyDown = ((keyFlags & 0xFF00) >> 8) == 0x0A
-    let modifierFlags = nsEvent.modifierFlags
-    let controlHeld = event.flags.contains(.maskControl) || modifierFlags.contains(.control)
-    let shiftHeld = event.flags.contains(.maskShift) || modifierFlags.contains(.shift)
-    let optionHeld = event.flags.contains(.maskAlternate) || modifierFlags.contains(.option)
-    let commandHeld = event.flags.contains(.maskCommand) || modifierFlags.contains(.command)
+    let flags = event.flags
+    let controlHeld = flags.contains(.maskControl)
+    let shiftHeld = flags.contains(.maskShift)
+    let optionHeld = flags.contains(.maskAlternate)
+    let commandHeld = flags.contains(.maskCommand)
 
     // Pass through to macOS when Option is held. Option + Brightness opens Display settings.
     guard !optionHeld else {
@@ -169,9 +220,9 @@ private func mediaKeyTapCallback(
     // Act on key-down; swallow the matching key-up only if we owned the down, so a key we
     // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.
     let handled = MainActor.assumeIsolated {
-        isKeyDown
-            ? service.handleKeyDown(keyCode: keyCode, control: controlHeld, shift: shiftHeld, command: commandHeld)
-            : service.consumeKeyUp(keyCode: keyCode)
+        media.isKeyDown
+            ? service.handleKeyDown(keyCode: media.code, control: controlHeld, shift: shiftHeld, command: commandHeld)
+            : service.consumeKeyUp(keyCode: media.code)
     }
 
     return handled ? nil : Unmanaged.passUnretained(event)
