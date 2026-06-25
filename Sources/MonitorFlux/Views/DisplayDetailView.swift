@@ -260,6 +260,12 @@ struct DisplayDetailView: View {
             } else {
                 advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
                 if displayPreferences.scheduleBrightness {
+                    scheduleChart(
+                        dayValue: scheduleBinding(\.dayBrightness),
+                        nightValue: scheduleBinding(\.nightBrightness),
+                        accent: .scheduleBrightness,
+                        name: "Brightness schedule curve"
+                    )
                     scheduleSliderRow(title: "Daytime brightness", keyPath: \.dayBrightness)
                     scheduleSliderRow(title: "Night brightness", keyPath: \.nightBrightness)
                 }
@@ -267,6 +273,12 @@ struct DisplayDetailView: View {
                 if !display.isBuiltIn {
                     advancedToggleRow("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
                     if displayPreferences.scheduleContrast {
+                        scheduleChart(
+                            dayValue: scheduleBinding(\.dayContrast),
+                            nightValue: scheduleBinding(\.nightContrast),
+                            accent: .scheduleContrast,
+                            name: "Contrast schedule curve"
+                        )
                         scheduleSliderRow(title: "Daytime contrast", keyPath: \.dayContrast)
                         scheduleSliderRow(title: "Night contrast", keyPath: \.nightContrast)
                     }
@@ -371,6 +383,29 @@ struct DisplayDetailView: View {
                 .frame(width: 52, alignment: .trailing)
         }
         .padding(.vertical, 4)
+    }
+
+    /// A compact day→night curve above the schedule sliders, matching the warmth chart's look at a
+    /// smaller size. The handles drag through `scheduleBinding`, so an edit re-applies the schedule
+    /// immediately — same as dragging the sliders below.
+    private func scheduleChart(
+        dayValue: Binding<Int>,
+        nightValue: Binding<Int>,
+        accent: Color,
+        name: String
+    ) -> some View {
+        HardwareScheduleChart(
+            dayValue: dayValue,
+            nightValue: nightValue,
+            preferences: store.preferences,
+            accent: accent,
+            accessibilityName: name
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(.white.opacity(0.16))
+        )
+        .padding(.bottom, 2)
     }
 
     /// A slider row for a scheduled brightness/contrast day/night target. Re-applies the schedule

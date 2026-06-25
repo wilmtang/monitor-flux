@@ -10,6 +10,14 @@ extension Color {
     static let phaseBedtime = Color.indigo
 }
 
+/// Accent colors for the per-display brightness/contrast schedule charts. Deliberately distinct
+/// from the warmth curve's blue→orange so each control reads as its own thing: a warm gold for
+/// brightness (the sun motif) and a cool teal for contrast.
+extension Color {
+    static let scheduleBrightness = Color(red: 1.0, green: 0.78, blue: 0.28)
+    static let scheduleContrast = Color(red: 0.36, green: 0.78, blue: 0.86)
+}
+
 /// The warmth motif's two poles, shared by the OSD glyph, the menu-bar icon, and the popup's
 /// warm/cool slider ends so "warm" and "cool" look the same everywhere.
 extension Color {
