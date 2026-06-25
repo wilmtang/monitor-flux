@@ -29,6 +29,10 @@ final class AppStore: ObservableObject {
         }
     }
     @Published private(set) var currentTemperature: Int?
+    /// While non-nil, the schedule curve is being scrubbed to preview the warmth at this
+    /// minute-of-day, and gamma shows that instead of the live color. Cleared when the settings
+    /// window reloads (`clearSchedulePreview`), so a preview never silently persists.
+    @Published private(set) var schedulePreviewMinute: Int?
     @Published private(set) var colorMessage = "Color disabled"
     @Published private(set) var ddcMessage = "DDC idle"
     @Published private(set) var loginItemMessage = LoginItemService.statusLabel()
@@ -1023,6 +1027,12 @@ final class AppStore: ObservableObject {
     }
 
     private func reconcileColor() {
+        // A held schedule preview wins: keep showing the scrubbed time. The 60s timer also lands
+        // here, so without this it would snap the screen back to the live color mid-preview.
+        if let minute = schedulePreviewMinute {
+            applySchedulePreview(minute)
+            return
+        }
         currentTemperature = preferences.gammaEnabled
             ? ColorSchedule.targetTemperature(preferences: preferences)
             : nil
@@ -1050,6 +1060,50 @@ final class AppStore: ObservableObject {
             preferences: preferences
         )
         colorMessage = summary.message
+    }
+
+    // MARK: - Schedule preview (scrub the curve to preview the screen's warmth)
+
+    /// Scrub-preview the schedule: warm every gamma display to the curve's color at `minute`, so
+    /// the user can see how the screen will look then. Temporary by design — `clearSchedulePreview`
+    /// (called when the settings window reloads) restores the live color. The stored preferences
+    /// are never touched, so nothing about the real schedule changes.
+    func previewScheduleColor(atMinute minute: Int) {
+        guard preferences.gammaEnabled else {
+            return
+        }
+        let clamped = minute.clamped(to: ControlRanges.minuteOfDay)
+        schedulePreviewMinute = clamped
+        applySchedulePreview(clamped)
+    }
+
+    /// Drop any active schedule preview and restore the live color. Idempotent.
+    func clearSchedulePreview() {
+        guard schedulePreviewMinute != nil else {
+            return
+        }
+        schedulePreviewMinute = nil
+        reconcileColor()
+    }
+
+    private func applySchedulePreview(_ minute: Int) {
+        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
+        let temperature = ColorSchedule.quantizedTemperature(
+            ColorSchedule.scheduledTemperature(preferences: effective, minuteOfDay: minute)
+        )
+        currentTemperature = temperature
+        guard !safeMode else {
+            colorMessage = "Safe mode — preview not applied"
+            return
+        }
+        // Apply through the normal gamma path by faking a manual target at the previewed
+        // temperature; `gammaService` skips unchanged writes, so a continuous scrub doesn't flood
+        // the LUT (and AirPlay/virtual displays stay excluded, as in the live path).
+        var previewPreferences = preferences
+        previewPreferences.colorMode = .manual
+        previewPreferences.manualTemperature = temperature
+        _ = gammaService.apply(displays: displays, preferences: previewPreferences)
+        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(temperature) K"
     }
 
     /// Hide the gamma-conflict banner until another foreign gamma change is detected.

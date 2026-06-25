@@ -15,6 +15,12 @@ struct FluxCurveEditor: View {
     @Binding var coolStartMinutes: Int
     @Binding var sunsetStartMinutes: Int
     let transitionMinutes: Int
+    /// The minute being scrub-previewed (drives the prominent marker), or `nil` for "showing now".
+    var previewMinute: Int? = nil
+    /// Whether the now-marker can be dragged to scrub a preview (only when a schedule is active).
+    var isPreviewable: Bool = false
+    /// Called with the dragged minute-of-day as the user scrubs the time marker.
+    var onPreview: (Int) -> Void = { _ in }
 
     private let minKelvin = ControlRanges.kelvin.lowerBound
     private let maxKelvin = ControlRanges.kelvin.upperBound
@@ -29,7 +35,7 @@ struct FluxCurveEditor: View {
                     drawTemperatureCurve(in: &context, size: canvasSize)
                 }
 
-                currentTimeLine(in: size)
+                timeMarkers(in: size)
 
                 handle(.day, in: size)
                 handle(.sunset, in: size)
@@ -41,28 +47,65 @@ struct FluxCurveEditor: View {
         .accessibilityLabel("Color schedule curve")
     }
 
-    /// A vertical "now" marker at the current time of day, so the curve reads against the real
-    /// clock. Sits above the curve but below the handles (and ignores hits) so it never gets in the
-    /// way of dragging. Driven by `TimelineView(.everyMinute)`: it redraws at most once a minute,
-    /// and only while on screen — the laziest cadence that still keeps the position correct, since
-    /// the schedule's own resolution is one minute (the line shifts ~1px per minute).
-    private func currentTimeLine(in size: CGSize) -> some View {
+    /// The time markers on the curve: the live "now" line, and — while a preview is being
+    /// scrubbed — a faint reference at the real current time plus a prominent, draggable marker at
+    /// the previewed time. Driven by `TimelineView(.everyMinute)`, so it redraws at most once a
+    /// minute (and only while on screen) — the laziest cadence that keeps the position correct,
+    /// since the schedule's resolution is one minute. Sits above the curve, below the handles.
+    private func timeMarkers(in size: CGSize) -> some View {
         TimelineView(.everyMinute) { context in
-            let minute = Self.minuteOfDay(from: context.date)
-            let x = CGFloat(minute) / 1440.0 * size.width
+            let nowMinute = Self.minuteOfDay(from: context.date)
+            let activeMinute = previewMinute ?? nowMinute
             ZStack {
-                Capsule()
-                    .fill(.white.opacity(0.9))
-                    .frame(width: 2, height: size.height)
-                    .shadow(color: .white.opacity(0.4), radius: 3)
-                Circle()
-                    .fill(.white)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
-                    .offset(y: -size.height / 2)
+                // A faint marker at the real "now" while the preview is held at another time, so
+                // the user keeps a sense of the actual clock.
+                if previewMinute != nil {
+                    marker(at: nowMinute, in: size, prominent: false, draggable: false)
+                }
+                // The active marker — the live now, or the scrubbed preview. Drag it (in a clock
+                // schedule) to preview the screen's warmth at that time.
+                marker(at: activeMinute, in: size, prominent: true, draggable: isPreviewable)
             }
-            .position(x: x, y: size.height / 2)
-            .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private func marker(at minute: Int, in size: CGSize, prominent: Bool, draggable: Bool) -> some View {
+        let x = CGFloat(minute) / 1440.0 * size.width
+        let visual = ZStack {
+            Capsule()
+                .fill(.white.opacity(prominent ? 0.9 : 0.3))
+                .frame(width: prominent ? 2 : 1.5, height: size.height)
+                .shadow(color: .white.opacity(prominent ? 0.4 : 0), radius: 3)
+            Circle()
+                .fill(.white.opacity(prominent ? 1 : 0.45))
+                .frame(width: 7, height: 7)
+                .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
+                .offset(y: -size.height / 2)
+        }
+
+        if draggable {
+            // A wide invisible grab strip around the thin line so it's easy to catch. `.position`
+            // reports the drag location in the editor's space (not the moving strip's), so the
+            // marker tracks the cursor without feeding back on itself.
+            visual
+                .frame(width: 26, height: size.height)
+                .contentShape(Rectangle())
+                .position(x: x, y: size.height / 2)
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { value in
+                            guard size.width > 0 else { return }
+                            let dragged = Int((value.location.x / size.width * 1440).rounded())
+                                .clamped(to: ControlRanges.minuteOfDay)
+                            onPreview(dragged)
+                        }
+                )
+        } else {
+            visual
+                .frame(width: 7, height: size.height)
+                .position(x: x, y: size.height / 2)
+                .allowsHitTesting(false)
         }
     }
 

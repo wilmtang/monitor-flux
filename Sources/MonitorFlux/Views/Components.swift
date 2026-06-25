@@ -43,40 +43,31 @@ extension Color {
 /// Plain-language explanations of the two control paths, surfaced via `InfoButton`.
 enum HelpText {
     static let gamma = """
-    “Gamma” is a software adjustment. MonitorFlux edits the color tables macOS uses to \
-    render every pixel, which warms the color temperature and can dim brightness/contrast \
-    on any wired display — including the built-in one. It does NOT change the monitor's real \
-    backlight; it only changes the image the Mac sends out. Only one app should drive gamma \
-    at a time, or they fight (see the color-conflict note). AirPlay and other wireless/virtual \
-    displays ignore gamma entirely — those are dimmed with an overlay instead (see AirPlay dimming).
+    Warmth tints the image by editing macOS's color tables — it never changes the real \
+    backlight. Only one app should drive it at a time (turn off Night Shift / f.lux). \
+    Wired displays only; AirPlay is dimmed by an overlay instead.
     """
 
     static let airplayDimming = """
-    AirPlay and other wireless/virtual displays have no DDC controls and ignore the color-table \
-    (gamma) adjustment, so MonitorFlux dims them a completely different way: it lays a translucent \
-    black overlay over the screen and varies its opacity. That visibly dims everything on the \
-    display — it isn't a backlight or color change — so it can only go darker than the display's \
-    own setting, never brighter, and there's no warmth, contrast, or volume control for it.
+    AirPlay and other wireless displays have no DDC and ignore gamma, so MonitorFlux dims them \
+    with a translucent black overlay instead. It only goes darker, never brighter — and there's \
+    no warmth, contrast, or volume for them.
     """
 
     static let ddc = """
-    “DDC/CI” sends commands over the video cable to an external monitor's own firmware — the \
-    same thing the monitor's physical buttons do. It changes the real backlight brightness, \
-    contrast, and volume. It works on external displays only (not the built-in panel) and \
-    depends on the monitor, cable, and port. On Apple Silicon this uses the private IOAVService.
+    DDC/CI sends commands over the video cable to an external monitor's firmware — the same thing \
+    its physical buttons do — changing the real backlight, contrast, and volume. External displays \
+    only; support depends on the monitor, cable, and port.
     """
 
     static let backlight = """
-    This sets the display's real backlight brightness through the private DisplayServices \
-    framework — the same level the menu-bar brightness slider and the keyboard brightness keys \
-    change. It works on the built-in panel and Apple displays.
+    Sets the real backlight through the private DisplayServices framework — the same level the \
+    menu-bar slider and keyboard brightness keys use. Works on the built-in and Apple displays.
     """
 
     static let schedule = """
-    Scheduled brightness and contrast follow the same day–night timeline as the color \
-    schedule: they hold the daytime target through the day, then ease to the night target \
-    around sunset (and back at wake). Adjusting a slider by hand overrides the schedule until \
-    the next phase change, so automation never fights you mid-task.
+    Scheduled brightness/contrast ride the same day–night timeline as Warmth: hold the daytime \
+    value, ease to the night value at sunset, back at wake. A manual change holds until the next phase.
     """
 }
 

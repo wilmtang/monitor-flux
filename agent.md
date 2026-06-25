@@ -84,9 +84,14 @@ pkill -x MonitorFlux || true
   reads the global coordinate space (not local — the grip rides the lifted card, which would feed back).
 - `Views/Components.swift`: shared `MonitorSlider` (MonitorControl-style, no tick
   marks), `InfoButton` (jargon explainers), and `GammaConflictBanner`.
-- `Views/`: SwiftUI window, the `QuickControlsView` menu-bar popup (drag-to-reorder cards),
-  settings, and per-display controls. AirPlay/virtual displays get a stripped-down detail pane
-  (overlay dimming only — no warmth/DDC/gamma/schedule, since those have no effect there).
+- `Views/`: SwiftUI window, the `QuickControlsView` menu-bar popup (drag-to-reorder cards;
+  the Warmth card mirrors the display cards), settings, and per-display controls. AirPlay/virtual
+  displays get a stripped-down detail pane (overlay dimming only — no warmth/DDC/gamma/schedule,
+  since those have no effect there).
+- `Views/FluxCurveEditor.swift` + `Services/ColorSchedule.swift`: the schedule curve. A draggable
+  "now" marker scrub-previews the screen's warmth at any time via `AppStore.previewScheduleColor`
+  (`schedulePreviewMinute`) — a temporary, gamma-only override that never touches stored prefs and
+  is cleared by `clearSchedulePreview` when the Schedule pane (re)loads. Preview only in clock mode.
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
 - `Tests/`: pure behavior tests; avoid tests that write real gamma or DDC.
 
@@ -136,6 +141,30 @@ pkill -x MonitorFlux || true
 - New behavior should get focused tests unless it directly touches real display
   hardware. The arm64 DDC packet builder and `SolarCalculator` are pure and tested
   (`GammaPlanTests` covers virtual-exclusion + mirror dedup; `DragReorderTests` the reorder math).
+
+## UX bar — design like a senior Apple designer
+
+Hold every user-facing change to what an Apple HI designer would ship. Outcomes over machinery,
+restraint over options, and never trap the user:
+
+- **Clarity first.** One obvious thing per surface. Plain-language labels (Warmth, not "gamma");
+  jargon lives only in ⓘ tooltips, and those stay to **2–3 sentences** — deeper detail goes in the
+  README, not the UI.
+- **Restraint.** Don't add chrome, a toggle, or a third line when a sensible default will do. The
+  popup stays calm; the slider and the schedule curve are the heroes. Reuse existing components
+  (card layout, `MonitorSlider`, slider/stepper rows) instead of inventing one-offs, and keep
+  sibling controls visually consistent (e.g. the Warmth card matches the display cards).
+- **Reversible & safe.** Anything temporary or hardware-touching (a live preview, a gamma
+  override) must read as temporary, be trivially undoable, and never silently persist — e.g. the
+  schedule preview resets when the settings window reloads. Never leave the screen in a surprising
+  state.
+- **Native feel.** Prefer real system affordances (the `OSDManager` bezel, an `NSWindow` shade)
+  over hand-rolled look-alikes; honor light/dark and accessibility; animations are spring-based and
+  quick (like the card reorder).
+- **Show, don't tell.** A visible cue (the "now" line on the curve, the warm/cool tint) beats a
+  paragraph. When you must explain, use the fewest words that work.
+
+When a change is UI, hold it to this bar — and screenshot it before calling it done.
 
 ## Verifying UI changes (hard-won)
 

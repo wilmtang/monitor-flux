@@ -54,28 +54,36 @@ struct QuickControlsView: View {
 
     private var ambienceCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Button {
-                    store.openSettings(.color)
-                } label: {
-                    HStack(spacing: 3) {
-                        Text("Warmth")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .contentShape(Rectangle())
+            // Header mirrors the display cards: a leading icon, the title, then the chevron pinned
+            // to the trailing edge — not tucked right after the title. The whole row opens the
+            // Warmth schedule. (The jargon ⓘ moved off the popup; it lives in the schedule settings.)
+            Button {
+                store.openSettings(.color)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "sun.max")
+                        .foregroundStyle(.secondary)
+                    Text("Warmth")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
-                .help("Open Warmth schedule settings")
-                InfoButton(title: "Warmth (color temperature)", message: HelpText.gamma)
-                Spacer()
-                modeChip
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help("Open Warmth schedule settings")
 
             warmthRow
+
+            // The mode (Off / Manual / Auto · schedule) moved out of the header's top-right to its
+            // own quiet line, so the header matches the display cards and the slider stays full-width.
+            HStack(spacing: 0) {
+                modeChip
+                Spacer(minLength: 0)
+            }
         }
         .padding(12)
         .background(popupCardBackground())

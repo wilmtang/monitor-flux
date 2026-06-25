@@ -259,15 +259,15 @@ struct DisplayDetailView: View {
             } else {
                 advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
                 if displayPreferences.scheduleBrightness {
-                    scheduleStepperRow(title: "Daytime brightness", keyPath: \.dayBrightness)
-                    scheduleStepperRow(title: "Night brightness", keyPath: \.nightBrightness)
+                    scheduleSliderRow(title: "Daytime brightness", keyPath: \.dayBrightness)
+                    scheduleSliderRow(title: "Night brightness", keyPath: \.nightBrightness)
                 }
 
                 if !display.isBuiltIn {
                     advancedToggleRow("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
                     if displayPreferences.scheduleContrast {
-                        scheduleStepperRow(title: "Daytime contrast", keyPath: \.dayContrast)
-                        scheduleStepperRow(title: "Night contrast", keyPath: \.nightContrast)
+                        scheduleSliderRow(title: "Daytime contrast", keyPath: \.dayContrast)
+                        scheduleSliderRow(title: "Night contrast", keyPath: \.nightContrast)
                     }
                 }
 
@@ -372,39 +372,23 @@ struct DisplayDetailView: View {
         .padding(.vertical, 4)
     }
 
-    /// A stepper row styled after the Schedule screen's "Custom Colors" card (label · value · −/+),
-    /// used for the scheduled brightness/contrast day/night targets. Re-applies the schedule on
-    /// change so edits take effect immediately, not at the next minute tick.
-    private func scheduleStepperRow(
+    /// A slider row for a scheduled brightness/contrast day/night target. Re-applies the schedule
+    /// on change so edits take effect immediately, not at the next minute tick.
+    private func scheduleSliderRow(
         title: String,
         keyPath: WritableKeyPath<DisplayPreferences, Int>
     ) -> some View {
-        HStack(spacing: 12) {
-            Color.clear
-                .frame(width: 18)
-                .accessibilityHidden(true)
-            Text(title)
-                .font(.body)
-            Spacer(minLength: 12)
-            Text("\(displayPreferences[keyPath: keyPath])%")
-                .font(.body.monospacedDigit())
-                .foregroundStyle(.secondary)
-            Stepper(
-                title,
-                value: Binding {
-                    displayPreferences[keyPath: keyPath]
-                } set: { newValue in
-                    store.updateDisplayPreferences(for: display) { displayPreferences in
-                        displayPreferences[keyPath: keyPath] = newValue.clamped(to: ControlRanges.hardwarePercent)
-                    }
-                    store.reapplySchedule(for: display)
-                },
-                in: ControlRanges.hardwarePercent,
-                step: 5
-            )
-            .labelsHidden()
+        advancedSliderRow(
+            title: title,
+            icon: nil,
+            value: displayPreferences[keyPath: keyPath],
+            range: ControlRanges.hardwarePercent
+        ) { newValue in
+            store.updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences[keyPath: keyPath] = newValue
+            }
+            store.reapplySchedule(for: display)
         }
-        .padding(.vertical, 3)
     }
 
     private func advancedCaption(_ text: LocalizedStringKey) -> some View {

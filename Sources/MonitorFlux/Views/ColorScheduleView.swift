@@ -9,6 +9,11 @@ struct ColorScheduleView: View {
             content
         }
         .navigationTitle("Schedule")
+        // A scrub preview is a temporary, exploratory state — never let it persist past this
+        // screen. Reset it whenever the Schedule pane is (re)loaded or left, so the screen always
+        // returns to the live color.
+        .onAppear { store.clearSchedulePreview() }
+        .onDisappear { store.clearSchedulePreview() }
     }
 
     private var content: some View {
@@ -79,7 +84,10 @@ struct ColorScheduleView: View {
                     warmStartMinutes: preferenceBinding(\.warmStartMinutes),
                     coolStartMinutes: preferenceBinding(\.coolStartMinutes),
                     sunsetStartMinutes: preferenceBinding(\.sunsetStartMinutes),
-                    transitionMinutes: store.preferences.transitionMinutes
+                    transitionMinutes: store.preferences.transitionMinutes,
+                    previewMinute: store.schedulePreviewMinute,
+                    isPreviewable: store.preferences.gammaEnabled && store.preferences.colorMode == .clock,
+                    onPreview: { store.previewScheduleColor(atMinute: $0) }
                 )
                 .background(
                     RoundedRectangle(cornerRadius: 6)
@@ -255,9 +263,26 @@ struct ColorScheduleView: View {
             legendDot(.phaseSunset, "Sunset", store.preferences.sunsetTemperature)
             legendDot(.phaseBedtime, "Bedtime", store.preferences.nightTemperature)
             Spacer()
-            Text("Drag each dot to set its time & warmth")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if let minute = store.schedulePreviewMinute {
+                // Make the temporary preview obvious and one-tap reversible.
+                HStack(spacing: 8) {
+                    Image(systemName: "eye.fill").font(.caption2)
+                    Text("Previewing \(MinuteFormatting.label(for: minute))")
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                    Button("Reset") { store.clearSchedulePreview() }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+                .foregroundStyle(.orange)
+            } else {
+                Text(store.preferences.colorMode == .clock
+                    ? "Drag the time line to preview · drag a dot to set its warmth"
+                    : "Drag each dot to set its time & warmth")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
