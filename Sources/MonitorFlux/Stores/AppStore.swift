@@ -1165,6 +1165,7 @@ final class AppStore: ObservableObject {
             if displayPreferences.scheduleBrightness {
                 let target = ColorSchedule.scheduledHardwareLevel(
                     dayValue: displayPreferences.dayBrightness,
+                    sunsetValue: displayPreferences.sunsetBrightness,
                     nightValue: displayPreferences.nightBrightness,
                     preferences: effective,
                     minuteOfDay: minute
@@ -1174,6 +1175,7 @@ final class AppStore: ObservableObject {
             if displayPreferences.scheduleContrast {
                 let target = ColorSchedule.scheduledHardwareLevel(
                     dayValue: displayPreferences.dayContrast,
+                    sunsetValue: displayPreferences.sunsetContrast,
                     nightValue: displayPreferences.nightContrast,
                     preferences: effective,
                     minuteOfDay: minute
@@ -1236,6 +1238,7 @@ final class AppStore: ObservableObject {
             if displayPreferences.scheduleBrightness {
                 let target = ColorSchedule.scheduledHardwareLevel(
                     dayValue: displayPreferences.dayBrightness,
+                    sunsetValue: displayPreferences.sunsetBrightness,
                     nightValue: displayPreferences.nightBrightness,
                     preferences: effective,
                     minuteOfDay: minute
@@ -1252,6 +1255,7 @@ final class AppStore: ObservableObject {
             if displayPreferences.scheduleContrast, !display.isBuiltIn {
                 let target = ColorSchedule.scheduledHardwareLevel(
                     dayValue: displayPreferences.dayContrast,
+                    sunsetValue: displayPreferences.sunsetContrast,
                     nightValue: displayPreferences.nightContrast,
                     preferences: effective,
                     minuteOfDay: minute

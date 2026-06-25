@@ -262,11 +262,13 @@ struct DisplayDetailView: View {
                 if displayPreferences.scheduleBrightness {
                     scheduleChart(
                         dayValue: scheduleBinding(\.dayBrightness),
+                        sunsetValue: scheduleBinding(\.sunsetBrightness),
                         nightValue: scheduleBinding(\.nightBrightness),
                         accent: .scheduleBrightness,
                         name: "Brightness schedule curve"
                     )
                     scheduleSliderRow(title: "Daytime brightness", keyPath: \.dayBrightness)
+                    scheduleSliderRow(title: "Sunset brightness", keyPath: \.sunsetBrightness)
                     scheduleSliderRow(title: "Night brightness", keyPath: \.nightBrightness)
                 }
 
@@ -275,11 +277,13 @@ struct DisplayDetailView: View {
                     if displayPreferences.scheduleContrast {
                         scheduleChart(
                             dayValue: scheduleBinding(\.dayContrast),
+                            sunsetValue: scheduleBinding(\.sunsetContrast),
                             nightValue: scheduleBinding(\.nightContrast),
                             accent: .scheduleContrast,
                             name: "Contrast schedule curve"
                         )
                         scheduleSliderRow(title: "Daytime contrast", keyPath: \.dayContrast)
+                        scheduleSliderRow(title: "Sunset contrast", keyPath: \.sunsetContrast)
                         scheduleSliderRow(title: "Night contrast", keyPath: \.nightContrast)
                     }
                 }
@@ -390,12 +394,14 @@ struct DisplayDetailView: View {
     /// immediately — same as dragging the sliders below.
     private func scheduleChart(
         dayValue: Binding<Int>,
+        sunsetValue: Binding<Int>,
         nightValue: Binding<Int>,
         accent: Color,
         name: String
     ) -> some View {
         HardwareScheduleChart(
             dayValue: dayValue,
+            sunsetValue: sunsetValue,
             nightValue: nightValue,
             preferences: store.preferences,
             accent: accent,

@@ -52,12 +52,17 @@ final class ColorScheduleTests: XCTestCase {
 
         // Midday holds the daytime target; deep night holds the night target.
         XCTAssertEqual(
-            ColorSchedule.scheduledHardwareLevel(dayValue: 90, nightValue: 40, preferences: preferences, minuteOfDay: 12 * 60),
+            ColorSchedule.scheduledHardwareLevel(dayValue: 90, sunsetValue: 65, nightValue: 40, preferences: preferences, minuteOfDay: 12 * 60),
             90
         )
         XCTAssertEqual(
-            ColorSchedule.scheduledHardwareLevel(dayValue: 90, nightValue: 40, preferences: preferences, minuteOfDay: 0),
+            ColorSchedule.scheduledHardwareLevel(dayValue: 90, sunsetValue: 65, nightValue: 40, preferences: preferences, minuteOfDay: 0),
             40
+        )
+        // Between sunset (20:00) and bedtime (21:00) the sunset target holds.
+        XCTAssertEqual(
+            ColorSchedule.scheduledHardwareLevel(dayValue: 90, sunsetValue: 65, nightValue: 40, preferences: preferences, minuteOfDay: 20 * 60 + 30),
+            65
         )
     }
 
@@ -68,11 +73,11 @@ final class ColorScheduleTests: XCTestCase {
         preferences.warmStartMinutes = 21 * 60
         preferences.transitionMinutes = 45
 
-        // Partway into the post-sunset fade, the level sits strictly between day and night.
+        // Partway into the post-sunset fade, the level sits strictly between day and sunset.
         let level = ColorSchedule.scheduledHardwareLevel(
-            dayValue: 90, nightValue: 40, preferences: preferences, minuteOfDay: 20 * 60 + 22
+            dayValue: 90, sunsetValue: 65, nightValue: 40, preferences: preferences, minuteOfDay: 20 * 60 + 22
         )
-        XCTAssertGreaterThan(level, 40)
+        XCTAssertGreaterThan(level, 65)
         XCTAssertLessThan(level, 90)
     }
 

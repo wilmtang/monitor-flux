@@ -73,18 +73,26 @@ enum ColorSchedule {
         }
     }
 
-    /// A per-display hardware level (brightness or contrast) on the same day/night timeline
-    /// as the color schedule: holds `dayValue` through the day, fades to `nightValue` at
-    /// sunset, and holds it overnight (fading back at wake). Two targets, the existing
-    /// wake/sunset/bedtime anchors and fade.
+    /// A per-display hardware level (brightness or contrast) on the same day/sunset/night
+    /// timeline as the color schedule: holds `dayValue` through the day, eases to `sunsetValue`
+    /// at sunset, eases again to `nightValue` at bedtime, and fades back to `dayValue` at wake.
+    /// Three targets riding the existing wake/sunset/bedtime anchors and fade.
     static func scheduledHardwareLevel(
         dayValue: Int,
+        sunsetValue: Int,
         nightValue: Int,
         preferences: AppPreferences,
         minuteOfDay: Int
     ) -> Int {
         scheduledValue(preferences: preferences, minuteOfDay: minuteOfDay) { phase in
-            phase == .daytime ? dayValue : nightValue
+            switch phase {
+            case .daytime:
+                dayValue
+            case .sunset:
+                sunsetValue
+            case .bedtime:
+                nightValue
+            }
         }
     }
 

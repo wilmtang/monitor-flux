@@ -74,8 +74,10 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     var scheduleBrightness = false
     var scheduleContrast = false
     var dayBrightness = 90
+    var sunsetBrightness = 65
     var nightBrightness = 40
     var dayContrast = 75
+    var sunsetContrast = 70
     var nightContrast = 65
 
     enum CodingKeys: String, CodingKey {
@@ -91,8 +93,10 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         case scheduleBrightness
         case scheduleContrast
         case dayBrightness
+        case sunsetBrightness
         case nightBrightness
         case dayContrast
+        case sunsetContrast
         case nightContrast
         case brightness
         case contrast
@@ -109,8 +113,10 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         copy.gammaBrightness = copy.gammaBrightness.clamped(to: ControlRanges.gammaBrightnessPercent)
         copy.gammaContrast = copy.gammaContrast.clamped(to: ControlRanges.gammaContrastPercent)
         copy.dayBrightness = copy.dayBrightness.clamped(to: ControlRanges.hardwarePercent)
+        copy.sunsetBrightness = copy.sunsetBrightness.clamped(to: ControlRanges.hardwarePercent)
         copy.nightBrightness = copy.nightBrightness.clamped(to: ControlRanges.hardwarePercent)
         copy.dayContrast = copy.dayContrast.clamped(to: ControlRanges.hardwarePercent)
+        copy.sunsetContrast = copy.sunsetContrast.clamped(to: ControlRanges.hardwarePercent)
         copy.nightContrast = copy.nightContrast.clamped(to: ControlRanges.hardwarePercent)
         return copy
     }
@@ -140,9 +146,13 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         scheduleContrast = try container.decodeIfPresent(Bool.self, forKey: .scheduleContrast) ?? false
         dayBrightness = (try container.decodeIfPresent(Int.self, forKey: .dayBrightness) ?? 90)
             .clamped(to: ControlRanges.hardwarePercent)
+        sunsetBrightness = (try container.decodeIfPresent(Int.self, forKey: .sunsetBrightness) ?? 65)
+            .clamped(to: ControlRanges.hardwarePercent)
         nightBrightness = (try container.decodeIfPresent(Int.self, forKey: .nightBrightness) ?? 40)
             .clamped(to: ControlRanges.hardwarePercent)
         dayContrast = (try container.decodeIfPresent(Int.self, forKey: .dayContrast) ?? 75)
+            .clamped(to: ControlRanges.hardwarePercent)
+        sunsetContrast = (try container.decodeIfPresent(Int.self, forKey: .sunsetContrast) ?? 70)
             .clamped(to: ControlRanges.hardwarePercent)
         nightContrast = (try container.decodeIfPresent(Int.self, forKey: .nightContrast) ?? 65)
             .clamped(to: ControlRanges.hardwarePercent)
@@ -162,8 +172,10 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         try container.encode(scheduleBrightness, forKey: .scheduleBrightness)
         try container.encode(scheduleContrast, forKey: .scheduleContrast)
         try container.encode(dayBrightness, forKey: .dayBrightness)
+        try container.encode(sunsetBrightness, forKey: .sunsetBrightness)
         try container.encode(nightBrightness, forKey: .nightBrightness)
         try container.encode(dayContrast, forKey: .dayContrast)
+        try container.encode(sunsetContrast, forKey: .sunsetContrast)
         try container.encode(nightContrast, forKey: .nightContrast)
     }
 }

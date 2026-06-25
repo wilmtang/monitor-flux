@@ -1,13 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// A compact day→night curve for a per-display hardware level (brightness or contrast), the
-/// smaller sibling of the warmth `FluxCurveEditor`. It rides the identical global timeline
-/// (wake/sunset/bedtime anchors + fade) via `ColorSchedule.scheduledHardwareLevel`, so the
-/// shape always matches the warmth schedule's. Two handles set the daytime and night targets;
-/// they drag vertically only, because the times come from the Schedule screen, not per display.
+/// A compact day→sunset→night curve for a per-display hardware level (brightness or contrast),
+/// the smaller sibling of the warmth `FluxCurveEditor`. It rides the identical global timeline
+/// (wake/sunset/bedtime anchors + fade) via `ColorSchedule.scheduledHardwareLevel`, so the shape
+/// always matches the warmth schedule's. One handle per phase sets that phase's target; they sit
+/// at the same anchors as the warmth handles and drag vertically only, because the times come
+/// from the Schedule screen, not per display.
 struct HardwareScheduleChart: View {
     @Binding var dayValue: Int
+    @Binding var sunsetValue: Int
     @Binding var nightValue: Int
     /// The global schedule shape (anchors + fade), read-only here. Same value the warmth curve
     /// draws from, so the two charts line up in time.
@@ -31,8 +33,9 @@ struct HardwareScheduleChart: View {
 
                 nowMarker(in: size)
 
-                handle(isDay: true, in: size)
-                handle(isDay: false, in: size)
+                handle(.daytime, in: size)
+                handle(.sunset, in: size)
+                handle(.bedtime, in: size)
             }
             .contentShape(Rectangle())
         }
@@ -98,6 +101,7 @@ struct HardwareScheduleChart: View {
             let minute = step * 10
             let value = ColorSchedule.scheduledHardwareLevel(
                 dayValue: dayValue,
+                sunsetValue: sunsetValue,
                 nightValue: nightValue,
                 preferences: preferences,
                 minuteOfDay: minute
@@ -116,10 +120,9 @@ struct HardwareScheduleChart: View {
         return path
     }
 
-    private func handle(isDay: Bool, in size: CGSize) -> some View {
-        let current = isDay ? dayValue : nightValue
-        let x = CGFloat(plateauMinute(isDay: isDay)) / 1440.0 * size.width
-        let y = yPosition(for: current, height: size.height)
+    private func handle(_ phase: ColorPhase, in size: CGSize) -> some View {
+        let x = CGFloat(preferences.startMinutes(for: phase)) / 1440.0 * size.width
+        let y = yPosition(for: value(for: phase), height: size.height)
 
         return Circle()
             .fill(accent.opacity(0.9))
@@ -130,31 +133,32 @@ struct HardwareScheduleChart: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { drag in
-                        let newValue = value(from: drag.location.y, height: size.height)
-                        if isDay {
-                            dayValue = newValue
-                        } else {
-                            nightValue = newValue
-                        }
+                        setValue(value(from: drag.location.y, height: size.height), for: phase)
                     }
             )
-            .accessibilityLabel(isDay ? "Daytime value handle" : "Night value handle")
+            .accessibilityLabel("\(phase.label) value handle")
     }
 
-    /// Place each handle at the middle of its plateau so it sits on the flat part of the curve,
-    /// clear of the fades right after each anchor. The handle's height comes from the bound value,
-    /// so dragging edits the plateau directly.
-    private func plateauMinute(isDay: Bool) -> Int {
-        let start = isDay ? preferences.coolStartMinutes : preferences.sunsetStartMinutes
-        let end = isDay ? preferences.sunsetStartMinutes : preferences.coolStartMinutes
-        let span = circularSpan(from: start, to: end)
-        return (start + span / 2) % 1440
+    private func value(for phase: ColorPhase) -> Int {
+        switch phase {
+        case .daytime:
+            dayValue
+        case .sunset:
+            sunsetValue
+        case .bedtime:
+            nightValue
+        }
     }
 
-    private func circularSpan(from start: Int, to end: Int) -> Int {
-        let normalizedStart = ((start % 1440) + 1440) % 1440
-        let normalizedEnd = ((end % 1440) + 1440) % 1440
-        return (normalizedEnd - normalizedStart + 1440) % 1440
+    private func setValue(_ newValue: Int, for phase: ColorPhase) {
+        switch phase {
+        case .daytime:
+            dayValue = newValue
+        case .sunset:
+            sunsetValue = newValue
+        case .bedtime:
+            nightValue = newValue
+        }
     }
 
     private func yPosition(for value: Int, height: CGFloat) -> CGFloat {
