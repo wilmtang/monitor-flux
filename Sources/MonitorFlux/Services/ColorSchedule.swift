@@ -64,6 +64,29 @@ enum ColorSchedule {
         return copy
     }
 
+    /// The schedule phase in effect right now — the same "most recently begun" anchor
+    /// `scheduledValue` treats as active, after applying any solar adjustment. Used to
+    /// pre-select the Schedule screen's phase tab so it opens on the live phase.
+    static func currentPhase(
+        preferences: AppPreferences,
+        date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ColorPhase {
+        let effective = solarAdjustedPreferences(preferences, date: date, calendar: calendar)
+        let minute = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+        return activePhase(preferences: effective, minuteOfDay: minute)
+    }
+
+    /// The phase active at `minuteOfDay`: the one whose start anchor was passed most recently.
+    static func activePhase(preferences: AppPreferences, minuteOfDay: Int) -> ColorPhase {
+        let minute = ((minuteOfDay % 1440) + 1440) % 1440
+        return ColorPhase.allCases
+            .min { lhs, rhs in
+                circularMinutes(from: preferences.startMinutes(for: lhs), to: minute)
+                    < circularMinutes(from: preferences.startMinutes(for: rhs), to: minute)
+            } ?? .daytime
+    }
+
     static func scheduledTemperature(
         preferences: AppPreferences,
         minuteOfDay: Int

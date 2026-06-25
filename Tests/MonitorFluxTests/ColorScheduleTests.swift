@@ -81,6 +81,19 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertLessThan(level, 90)
     }
 
+    func testActivePhaseTracksTheClock() {
+        var preferences = AppPreferences.defaults
+        preferences.coolStartMinutes = 7 * 60     // daytime begins
+        preferences.sunsetStartMinutes = 20 * 60  // sunset begins
+        preferences.warmStartMinutes = 21 * 60    // bedtime begins
+
+        XCTAssertEqual(ColorSchedule.activePhase(preferences: preferences, minuteOfDay: 12 * 60), .daytime)
+        XCTAssertEqual(ColorSchedule.activePhase(preferences: preferences, minuteOfDay: 20 * 60 + 30), .sunset)
+        XCTAssertEqual(ColorSchedule.activePhase(preferences: preferences, minuteOfDay: 23 * 60), .bedtime)
+        // Before wake, the most recently begun phase is still bedtime from the night before.
+        XCTAssertEqual(ColorSchedule.activePhase(preferences: preferences, minuteOfDay: 6 * 60), .bedtime)
+    }
+
     func testClockScheduleChoosesDayAndNight() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock

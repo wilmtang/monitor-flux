@@ -11,8 +11,12 @@ struct ColorScheduleView: View {
         .navigationTitle("Schedule")
         // A scrub preview is a temporary, exploratory state — never let it persist past this
         // screen. Reset it whenever the Schedule pane is (re)loaded or left, so the screen always
-        // returns to the live color.
-        .onAppear { store.clearSchedulePreview() }
+        // returns to the live color. Also open the phase tab on whatever phase is live now, so the
+        // slider edits the phase the screen is actually in.
+        .onAppear {
+            store.clearSchedulePreview()
+            selectedPhase = ColorSchedule.currentPhase(preferences: store.preferences)
+        }
         .onDisappear { store.clearSchedulePreview() }
     }
 
