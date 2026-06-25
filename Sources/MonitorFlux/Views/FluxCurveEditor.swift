@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 enum FluxCurveHandle: Hashable {
@@ -28,6 +29,8 @@ struct FluxCurveEditor: View {
                     drawTemperatureCurve(in: &context, size: canvasSize)
                 }
 
+                currentTimeLine(in: size)
+
                 handle(.day, in: size)
                 handle(.sunset, in: size)
                 handle(.night, in: size)
@@ -36,6 +39,36 @@ struct FluxCurveEditor: View {
         }
         .frame(height: 150)
         .accessibilityLabel("Color schedule curve")
+    }
+
+    /// A vertical "now" marker at the current time of day, so the curve reads against the real
+    /// clock. Sits above the curve but below the handles (and ignores hits) so it never gets in the
+    /// way of dragging. Driven by `TimelineView(.everyMinute)`: it redraws at most once a minute,
+    /// and only while on screen — the laziest cadence that still keeps the position correct, since
+    /// the schedule's own resolution is one minute (the line shifts ~1px per minute).
+    private func currentTimeLine(in size: CGSize) -> some View {
+        TimelineView(.everyMinute) { context in
+            let minute = Self.minuteOfDay(from: context.date)
+            let x = CGFloat(minute) / 1440.0 * size.width
+            ZStack {
+                Capsule()
+                    .fill(.white.opacity(0.9))
+                    .frame(width: 2, height: size.height)
+                    .shadow(color: .white.opacity(0.4), radius: 3)
+                Circle()
+                    .fill(.white)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
+                    .offset(y: -size.height / 2)
+            }
+            .position(x: x, y: size.height / 2)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private static func minuteOfDay(from date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
     }
 
     private func drawGrid(in context: inout GraphicsContext, size: CGSize) {

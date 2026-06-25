@@ -59,6 +59,8 @@ struct ContentView: View {
             switch ProcessInfo.processInfo.environment["MONITORFLUX_SELECT"] {
             case "general":
                 selection = .general
+            case "color":
+                selection = .color
             case "diagnostics":
                 selection = .diagnostics
             case "display":
