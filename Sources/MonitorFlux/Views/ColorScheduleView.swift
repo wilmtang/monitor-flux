@@ -65,6 +65,11 @@ struct ColorScheduleView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 380)
                     .disabled(store.preferences.colorMode != .clock)
+                    // Switching phases is a fresh editing intent, so drop any scrub preview and
+                    // snap the time line back to "now" — the same reset we do on enter/leave.
+                    .onChange(of: selectedPhase) { _, _ in
+                        store.clearSchedulePreview()
+                    }
 
                     Text("Pick a phase, then drag the slider above to set its warmth.")
                         .font(.caption)
