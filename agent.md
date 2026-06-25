@@ -89,9 +89,14 @@ pkill -x MonitorFlux || true
   displays get a stripped-down detail pane (overlay dimming only — no warmth/DDC/gamma/schedule,
   since those have no effect there).
 - `Views/FluxCurveEditor.swift` + `Services/ColorSchedule.swift`: the schedule curve. A draggable
-  "now" marker scrub-previews the screen's warmth at any time via `AppStore.previewScheduleColor`
-  (`schedulePreviewMinute`) — a temporary, gamma-only override that never touches stored prefs and
-  is cleared by `clearSchedulePreview` when the Schedule pane (re)loads. Preview only in clock mode.
+  "now" marker scrub-previews how the screen will look at any time — warmth via
+  `AppStore.previewScheduleColor` (`schedulePreviewMinute`, a gamma override that doesn't touch
+  stored prefs), plus each external display's **scheduled brightness/contrast** at that time (the
+  live schedule is suspended while previewing; `restoreScheduledHardwareAfterPreview` puts the
+  now-targets back on exit). Dragging the marker — or editing **any** schedule control (a curve
+  dot, wake/bedtime, a phase temp, the fade, via `scheduleEditBinding`) — adopts clock mode. The
+  preview is always temporary: `clearSchedulePreview` restores the live values whenever the Schedule
+  pane reloads, the settings window loses key focus, the mode leaves clock, or Refresh is tapped.
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
 - `Tests/`: pure behavior tests; avoid tests that write real gamma or DDC.
 

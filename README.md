@@ -92,9 +92,12 @@ for warmth.
   selector, a draggable three-handle schedule curve, wake/bedtime controls, and a
   **Manual times / Sunrise & sunset** source. In solar mode the daytime and sunset
   anchors come from your location (CoreLocation + `SolarCalculator`). A **"now" marker**
-  rides the curve at the current time; in a clock schedule you can **drag it to preview** how the
-  screen will look at any time of day. The preview is temporary — it resets when you reopen the
-  Schedule screen — and the real current-time marker stays visible (fainter) while you scrub.
+  rides the curve at the current time. **Drag it to preview** how the screen will look at any time
+  of day — the warmth *and* any scheduled brightness/contrast — and it adopts the clock schedule if
+  you weren't already on it (so does editing any dot, the wake/bedtime times, a phase temperature,
+  or the fade). The preview is always temporary: it resets when you leave or reload the Schedule
+  screen, switch away from the window, change the mode off the schedule, or hit Refresh — and the
+  real current-time marker stays visible (fainter) while you scrub.
   In-app ⓘ tooltips are short summaries; the deeper explanations live here in the README.
 - Each **Display** screen separates the monitor's real controls (DDC brightness/contrast, or
   the built-in backlight) from software gamma brightness and the day/night brightness schedule,

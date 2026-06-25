@@ -78,12 +78,12 @@ struct ColorScheduleView: View {
                     .frame(maxWidth: .infinity)
 
                 FluxCurveEditor(
-                    dayTemperature: preferenceBinding(\.dayTemperature),
-                    sunsetTemperature: preferenceBinding(\.sunsetTemperature),
-                    nightTemperature: preferenceBinding(\.nightTemperature),
-                    warmStartMinutes: preferenceBinding(\.warmStartMinutes),
-                    coolStartMinutes: preferenceBinding(\.coolStartMinutes),
-                    sunsetStartMinutes: preferenceBinding(\.sunsetStartMinutes),
+                    dayTemperature: scheduleEditBinding(\.dayTemperature),
+                    sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
+                    nightTemperature: scheduleEditBinding(\.nightTemperature),
+                    warmStartMinutes: scheduleEditBinding(\.warmStartMinutes),
+                    coolStartMinutes: scheduleEditBinding(\.coolStartMinutes),
+                    sunsetStartMinutes: scheduleEditBinding(\.sunsetStartMinutes),
                     transitionMinutes: store.preferences.transitionMinutes,
                     previewMinute: store.schedulePreviewMinute,
                     onPreview: { store.previewScheduleColor(atMinute: $0) }
@@ -96,7 +96,7 @@ struct ColorScheduleView: View {
                 curveLegend
 
                 HStack(spacing: 6) {
-                    Stepper(value: preferenceBinding(\.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
+                    Stepper(value: scheduleEditBinding(\.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
                         Text(MinuteFormatting.label(for: store.preferences.coolStartMinutes))
                             .font(.title2)
                             .foregroundStyle(.blue)
@@ -106,7 +106,7 @@ struct ColorScheduleView: View {
                         .font(.title3)
                         .foregroundStyle(.blue.opacity(0.9))
                     Spacer()
-                    Stepper(value: preferenceBinding(\.warmStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
+                    Stepper(value: scheduleEditBinding(\.warmStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
                         Text(MinuteFormatting.label(for: store.preferences.warmStartMinutes))
                             .font(.title2)
                             .foregroundStyle(.orange)
@@ -136,19 +136,19 @@ struct ColorScheduleView: View {
 
             Form {
                 Section("Custom Colors") {
-                    Stepper(value: preferenceBinding(\.dayTemperature), in: ControlRanges.kelvin, step: 100) {
+                    Stepper(value: scheduleEditBinding(\.dayTemperature), in: ControlRanges.kelvin, step: 100) {
                         LabeledContent("Daytime", value: "\(store.preferences.dayTemperature) K")
                     }
 
-                    Stepper(value: preferenceBinding(\.sunsetTemperature), in: ControlRanges.kelvin, step: 100) {
+                    Stepper(value: scheduleEditBinding(\.sunsetTemperature), in: ControlRanges.kelvin, step: 100) {
                         LabeledContent("Sunset", value: "\(store.preferences.sunsetTemperature) K")
                     }
 
-                    Stepper(value: preferenceBinding(\.nightTemperature), in: ControlRanges.kelvin, step: 100) {
+                    Stepper(value: scheduleEditBinding(\.nightTemperature), in: ControlRanges.kelvin, step: 100) {
                         LabeledContent("Bedtime", value: "\(store.preferences.nightTemperature) K")
                     }
 
-                    Stepper(value: preferenceBinding(\.transitionMinutes), in: ControlRanges.transitionMinutes, step: 5) {
+                    Stepper(value: scheduleEditBinding(\.transitionMinutes), in: ControlRanges.transitionMinutes, step: 5) {
                         LabeledContent("Fade", value: "\(store.preferences.transitionMinutes) min")
                     }
                 }
@@ -317,6 +317,24 @@ struct ColorScheduleView: View {
         } set: { newValue in
             store.updateGlobalPreferences { preferences in
                 preferences[keyPath: keyPath] = newValue
+            }
+        }
+    }
+
+    /// Like `preferenceBinding`, but editing the value also adopts the clock schedule (Warmth on,
+    /// mode → Schedule). Touching any schedule control — a curve dot, wake/bedtime, a phase
+    /// temperature, the fade — means the user wants the schedule, mirroring how dragging the time
+    /// line switches to it. Used only for schedule-shape controls, not Manual/location settings.
+    private func scheduleEditBinding<Value>(
+        _ keyPath: WritableKeyPath<AppPreferences, Value>
+    ) -> Binding<Value> {
+        Binding {
+            store.preferences[keyPath: keyPath]
+        } set: { newValue in
+            store.updateGlobalPreferences { preferences in
+                preferences[keyPath: keyPath] = newValue
+                preferences.gammaEnabled = true
+                preferences.colorMode = .clock
             }
         }
     }

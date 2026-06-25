@@ -20,11 +20,25 @@ final class AppStore: ObservableObject {
             // this dozens of times a second; doing a synchronous save + full gamma pass on
             // every tick is what made the controls feel laggy next to MonitorControl.
             schedulePreferencesSave()
+            // Leaving the clock schedule (to Manual/Off, or Warmth off) ends any scrub preview —
+            // there's no live schedule left to preview.
+            let endPreview = schedulePreviewMinute != nil
+                && !(preferences.gammaEnabled && preferences.colorMode == .clock)
+            if endPreview {
+                schedulePreviewMinute = nil
+            }
             if oldValue.colorSignature != preferences.colorSignature {
                 reconcileColor()
                 // The per-display software-brightness value (gammaBrightness) is part of the
                 // color signature, so an AirPlay slider drag lands here — push it to the shade.
                 reconcileShades()
+            }
+            if endPreview {
+                // Restore the now scheduled brightness/contrast the preview overrode, deferred so
+                // the restore's hardware writes don't re-enter this didSet.
+                DispatchQueue.main.async { [weak self] in
+                    self?.restoreScheduledHardwareAfterPreview()
+                }
             }
         }
     }
@@ -225,8 +239,14 @@ final class AppStore: ObservableObject {
 
     func refreshDisplays() {
         // A display change (or the Refresh button) ends any schedule preview, so the user isn't
-        // stranded on a previewed color; the reconcile below re-applies the live color.
-        schedulePreviewMinute = nil
+        // stranded on a previewed color or brightness. The reconcile + schedule below re-apply the
+        // live values; clearing lastScheduled forces the scheduled brightness/contrast back over
+        // whatever the preview last wrote.
+        if schedulePreviewMinute != nil {
+            schedulePreviewMinute = nil
+            lastScheduledBrightness.removeAll()
+            lastScheduledContrast.removeAll()
+        }
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays() + mockDisplaySpecs.map(\.display)
@@ -1108,6 +1128,7 @@ final class AppStore: ObservableObject {
         }
         schedulePreviewMinute = nil
         reconcileColor()
+        restoreScheduledHardwareAfterPreview()
     }
 
     private func applySchedulePreview(_ minute: Int) {
@@ -1127,7 +1148,47 @@ final class AppStore: ObservableObject {
         previewPreferences.colorMode = .manual
         previewPreferences.manualTemperature = temperature
         _ = gammaService.apply(displays: displays, preferences: previewPreferences)
+        // Preview the scheduled brightness/contrast at this time too, so the *whole* schedule
+        // shows on screen — not just the warmth.
+        previewScheduledHardware(atMinute: minute)
         colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(temperature) K"
+    }
+
+    /// During a scrub preview, drive each external display's scheduled brightness/contrast to its
+    /// value at the previewed time (when that schedule is on). Uses the normal throttled DDC path;
+    /// the live (now) schedule is suspended while previewing (see `applyScheduledHardware`), and
+    /// `restoreScheduledHardwareAfterPreview` puts the now-targets back when the preview ends.
+    private func previewScheduledHardware(atMinute minute: Int) {
+        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
+        for display in displays where !display.isBuiltIn {
+            let displayPreferences = displayPreferences(for: display)
+            if displayPreferences.scheduleBrightness {
+                let target = ColorSchedule.scheduledHardwareLevel(
+                    dayValue: displayPreferences.dayBrightness,
+                    nightValue: displayPreferences.nightBrightness,
+                    preferences: effective,
+                    minuteOfDay: minute
+                )
+                setHardwareBrightness(target, for: display)
+            }
+            if displayPreferences.scheduleContrast {
+                let target = ColorSchedule.scheduledHardwareLevel(
+                    dayValue: displayPreferences.dayContrast,
+                    nightValue: displayPreferences.nightContrast,
+                    preferences: effective,
+                    minuteOfDay: minute
+                )
+                setHardwareContrast(target, for: display)
+            }
+        }
+    }
+
+    /// Re-apply each display's *current-time* scheduled brightness/contrast after a preview ends —
+    /// the preview drove them to a different time, so force the now-targets back over it.
+    private func restoreScheduledHardwareAfterPreview() {
+        lastScheduledBrightness.removeAll()
+        lastScheduledContrast.removeAll()
+        applyScheduledHardware()
     }
 
     /// Hide the gamma-conflict banner until another foreign gamma change is detected.
@@ -1156,6 +1217,12 @@ final class AppStore: ObservableObject {
     /// the scheduled target actually changes (see `lastScheduled*`), so manual tweaks hold.
     func applyScheduledHardware() {
         guard !displays.isEmpty else {
+            return
+        }
+        // While a schedule preview is held it drives brightness/contrast to the previewed time;
+        // don't let the live (now) schedule fight it. `restoreScheduledHardwareAfterPreview`
+        // re-applies the now-targets once the preview ends.
+        guard schedulePreviewMinute == nil else {
             return
         }
         let effective = ColorSchedule.solarAdjustedPreferences(preferences)
