@@ -79,13 +79,18 @@ final class DisplayService {
         let bounds = CGDisplayBounds(id)
         let size = "\(Int(bounds.width)) x \(Int(bounds.height))"
         let origin = "(\(Int(bounds.origin.x)), \(Int(bounds.origin.y)))"
+        // `CGDisplayMirrorsDisplay` returns the mirror master, or `kCGNullDirectDisplay` (0) when
+        // this display isn't mirroring another — map that to nil so `effectiveID` falls back to self.
+        let mirrored = CGDisplayMirrorsDisplay(id)
         return DisplayInfo(
             id: id,
             name: name,
             persistentID: persistentID,
             frameDescription: "\(size) @ \(origin)",
             isBuiltIn: CGDisplayIsBuiltin(id) != 0,
-            isOnline: CGDisplayIsOnline(id) != 0
+            isOnline: CGDisplayIsOnline(id) != 0,
+            isVirtual: CoreDisplayInfo.isVirtual(id),
+            mirrorMaster: mirrored == 0 ? nil : mirrored
         )
     }
 }

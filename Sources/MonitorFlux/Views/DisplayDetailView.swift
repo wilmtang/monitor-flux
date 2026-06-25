@@ -16,15 +16,58 @@ struct DisplayDetailView: View {
     var body: some View {
         Form {
             displaySection
-            colorSection
-            // Brightness/contrast, ordered most-real first: the monitor's own controls stay
-            // up top; software (gamma) dimming and the day/night schedule tuck under Advanced.
-            realControlsSection
-            advancedSection
+            if display.isVirtual {
+                // AirPlay/virtual display: no hardware controls and gamma is ignored, so the only
+                // thing that works is the overlay-based dimming. Everything else (warmth, DDC
+                // contrast/volume, software gamma, schedule) is hidden because it has no effect here.
+                airplayBrightnessSection
+            } else {
+                colorSection
+                // Brightness/contrast, ordered most-real first: the monitor's own controls stay
+                // up top; software (gamma) dimming and the day/night schedule tuck under Advanced.
+                realControlsSection
+                advancedSection
+            }
         }
         .formStyle(.grouped)
         .padding()
         .navigationTitle(display.name)
+    }
+
+    /// The only control an AirPlay/virtual display supports: overlay (“shade”) dimming, written
+    /// through the same software-brightness value the popup uses. 0–100%, darker-only.
+    private var airplayBrightnessSection: some View {
+        let level = min(100, displayPreferences.gammaBrightness)
+        return Section {
+            HStack(spacing: 10) {
+                Image(systemName: "sun.max")
+                    .frame(width: 18)
+                    .foregroundStyle(.secondary)
+                Text("Brightness")
+                    .lineLimit(1)
+                    .frame(width: 80, alignment: .leading)
+                Slider(
+                    value: Binding {
+                        Double(level)
+                    } set: { newValue in
+                        store.updateDisplayPreferences(for: display) { displayPreferences in
+                            displayPreferences.gammaBrightness = Int(newValue.rounded())
+                                .clamped(to: ControlRanges.hardwarePercent)
+                        }
+                    },
+                    in: 0...100
+                )
+                Text("\(level)%")
+                    .monospacedDigit()
+                    .frame(width: 44, alignment: .trailing)
+            }
+            Text("Dimmed with a translucent overlay, since AirPlay/wireless displays have no hardware brightness and ignore gamma. It only goes darker, not brighter.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } header: {
+            sectionHeader("Brightness", help: HelpText.airplayDimming, helpTitle: "AirPlay dimming")
+        }
     }
 
     private var displaySection: some View {

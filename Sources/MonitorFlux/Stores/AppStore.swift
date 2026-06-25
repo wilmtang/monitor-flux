@@ -22,6 +22,9 @@ final class AppStore: ObservableObject {
             schedulePreferencesSave()
             if oldValue.colorSignature != preferences.colorSignature {
                 reconcileColor()
+                // The per-display software-brightness value (gammaBrightness) is part of the
+                // color signature, so an AirPlay slider drag lands here — push it to the shade.
+                reconcileShades()
             }
         }
     }
@@ -79,6 +82,8 @@ final class AppStore: ObservableObject {
     private let osd = OSDController()
     private let hotKeyCenter = HotKeyCenter()
     private let gammaService = GammaTemperatureService()
+    /// Software dimming for AirPlay/virtual displays, which ignore gamma (see `ShadeController`).
+    private let shadeController = ShadeController()
     private var mainWindow: MainWindow?
     private var onboardingWindow: NSWindow?
     private var timer: Timer?
@@ -214,6 +219,31 @@ final class AppStore: ObservableObject {
         }
         applyScheduledHardware()
         restoreHardwareSettings()
+        // Match shade overlays to the current AirPlay/virtual displays (and drop any for
+        // displays that just disconnected).
+        reconcileShades()
+    }
+
+    /// Drive each AirPlay/virtual display's shade overlay from its software-brightness value.
+    /// These displays ignore gamma, so this is their only working brightness path. Independent of
+    /// the Warmth master — a shade is plain dimming, not a color change.
+    private func reconcileShades() {
+        guard !safeMode else {
+            shadeController.removeAll()
+            return
+        }
+        var active: Set<CGDirectDisplayID> = []
+        for display in displays where display.isVirtual {
+            let fraction = Double(displayPreferences(for: display).gammaBrightness.clamped(to: 0...100)) / 100.0
+            // Only materialize an overlay when the display is actually dimmed; at full brightness
+            // it's dropped so there's no invisible full-screen window sitting at shield level.
+            guard fraction < 1 else {
+                continue
+            }
+            shadeController.setBrightness(fraction, for: display.effectiveID)
+            active.insert(display.effectiveID)
+        }
+        shadeController.retainOnly(active)
     }
 
     /// Re-send each external display's saved brightness/contrast over DDC on launch and on
@@ -264,26 +294,30 @@ final class AppStore: ObservableObject {
     }
 
     /// Dev/test hook: `MONITORFLUX_FAKE_DISPLAYS=N` injects up to 4 mock external monitors so the
-    /// popup's multi-card behaviour (drag-to-reorder, tap-to-open) and the per-display
-    /// DDC-vs-software-dimming fallback can be exercised on a machine with only the built-in
-    /// panel. Even-indexed mocks are marked DDC-capable, odd-indexed ones non-DDC, so both
-    /// brightness-slider paths are visible. Their (no-op) hardware writes are best run under
-    /// `MONITORFLUX_SAFE_MODE=1`. Inert unless the variable is set.
+    /// popup's multi-card behaviour (drag-to-reorder, tap-to-open) and the per-display control
+    /// paths can be exercised on a machine with only the built-in panel. The mocks cover each
+    /// brightness path: even index = DDC-capable, odd index = non-DDC (gamma software dimming),
+    /// and index 2 is marked AirPlay/virtual (shade software dimming). Their hardware/shade writes
+    /// are no-ops (no real service or `NSScreen`), so run under `MONITORFLUX_SAFE_MODE=1`. Inert
+    /// unless the variable is set.
     private var mockDisplaySpecs: [(display: DisplayInfo, ddcCapable: Bool)] {
         guard let raw = ProcessInfo.processInfo.environment["MONITORFLUX_FAKE_DISPLAYS"],
               let count = Int(raw), count > 0 else {
             return []
         }
         return (0..<min(count, 4)).map { index in
-            let capable = index % 2 == 0
+            let isVirtual = index == 2
+            let capable = !isVirtual && index % 2 == 0
+            let label = isVirtual ? "Mock AirPlay" : (capable ? "Mock DDC" : "Mock non-DDC")
             return (
                 DisplayInfo(
                     id: CGDirectDisplayID(0xF000_0001 + UInt32(index)),
-                    name: "\(capable ? "Mock DDC" : "Mock non-DDC") Monitor \(index + 1)",
+                    name: "\(label) Monitor \(index + 1)",
                     persistentID: "mock-display-\(index)",
                     frameDescription: "2560 × 1440",
                     isBuiltIn: false,
-                    isOnline: true
+                    isOnline: true,
+                    isVirtual: isVirtual
                 ),
                 capable
             )
@@ -343,14 +377,10 @@ final class AppStore: ObservableObject {
             .compactMap { byKey[$0] }
     }
 
-    /// Persist a new card order, moving `draggedKey` to just before `targetKey`.
-    func moveDisplay(key draggedKey: String, before targetKey: String) {
-        let newOrder = DisplayOrdering.reordered(
-            orderedDisplays.map(\.key),
-            moving: draggedKey,
-            before: targetKey
-        )
-        updateGlobalPreferences { $0.displayOrder = newOrder }
+    /// Persist the popup's full card order (the drag-to-reorder commit). `keys` is the complete
+    /// set of currently-shown display keys in their new order.
+    func setDisplayOrder(_ keys: [String]) {
+        updateGlobalPreferences { $0.displayOrder = keys }
     }
 
     func updateGlobalPreferences(_ update: (inout AppPreferences) -> Void) {
@@ -626,6 +656,15 @@ final class AppStore: ObservableObject {
             let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
             setHardwareBrightness(next, for: target)
             osd.show(.brightness, fraction: percentFraction(next), onDisplay: target.id)
+            return true
+        }
+        // AirPlay/virtual display: gamma is a no-op, so dim via the shade overlay. Independent of
+        // the Warmth master, and clamped to 0–100% (a shade only darkens). Driven through the
+        // shared software-brightness value, which `reconcileShades` pushes to the overlay.
+        if target.isVirtual {
+            let next = (displayPreferences(for: target).gammaBrightness + delta).clamped(to: 0...100)
+            updateDisplayPreferences(for: target) { $0.gammaBrightness = next }
+            osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: target.id)
             return true
         }
         // No DDC path to the backlight — software-dim via gamma, the same fallback the popup
@@ -968,6 +1007,9 @@ final class AppStore: ObservableObject {
             return
         }
         gammaService.restore()
+        // Lift any AirPlay/virtual shade overlays too, so those screens return to full brightness
+        // on quit (the shade isn't a gamma table, so the gamma restore above doesn't clear it).
+        shadeController.removeAll()
         currentTemperature = nil
         colorMessage = "Color restored"
     }

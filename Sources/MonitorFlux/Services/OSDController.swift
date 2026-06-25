@@ -1,10 +1,14 @@
 import AppKit
 import CoreGraphics
+import ObjectiveC
 import SwiftUI
 
-/// A MonitorControl/macOS-style on-screen display: a floating, non-activating panel that
-/// flashes an icon + level bar on the relevant display when a control changes by keyboard,
-/// then fades out. Non-activating so it never steals focus.
+/// A MonitorControl/macOS-style on-screen display. Brightness, contrast, and volume use the
+/// **real system bezel** via the private `OSDManager` (OSD.framework) — exactly what macOS
+/// itself draws, so the overlay is pixel-identical to the native one (this is how MonitorControl
+/// matches it). Color/warmth has no native bezel image, so it keeps a custom floating panel with
+/// the app's cool→warm tint; that same panel is also the fallback if the private API is ever
+/// unavailable.
 @MainActor
 final class OSDController {
     private var panel: NSPanel?
@@ -28,11 +32,46 @@ final class OSDController {
             case .color: "thermometer.sun.fill"
             }
         }
+
+        /// The native OSD.framework image code for this control, or `nil` to use the custom panel.
+        /// Brightness and volume have real macOS bezels; contrast and color do not (macOS has no
+        /// contrast or color-temperature bezel — the contrast code renders the level bar with no
+        /// glyph), so they keep the custom panel, which draws a proper icon over the bar.
+        var nativeImage: NativeOSD.Image? {
+            switch self {
+            case .brightness: .brightness
+            case .volume: .speaker
+            case .contrast, .color: nil
+            }
+        }
     }
 
     /// Flash the OSD for `kind` at `fraction` (0...1) on the display with `displayID`
     /// (falling back to the main screen). Re-showing resets the auto-hide timer.
     func show(_ kind: Kind, fraction: Double, onDisplay displayID: CGDirectDisplayID?) {
+        let clampedFraction = fraction.clamped(to: 0...1)
+
+        // Use the native system bezel for brightness/contrast/volume. The screenshot-capture
+        // hook forces the custom panel (the native bezel can't be held on screen or captured by
+        // window id), so UI verification still works.
+        let wantsCapture = ProcessInfo.processInfo.environment["MONITORFLUX_OSD_HOLD"] == "1"
+        if !wantsCapture, let nativeImage = kind.nativeImage {
+            let id = displayID ?? CGMainDisplayID()
+            let image: NativeOSD.Image = (kind == .volume && clampedFraction <= 0) ? .speakerMuted : nativeImage
+            if NativeOSD.show(image, onDisplay: id, filled: Int((clampedFraction * 100).rounded()), total: 100) {
+                // Native bezel shown; tear down any leftover custom panel so the two can't overlap.
+                hideWorkItem?.cancel()
+                panel?.orderOut(nil)
+                return
+            }
+        }
+
+        showCustomPanel(kind, fraction: clampedFraction, onDisplay: displayID)
+    }
+
+    /// The custom floating panel — used for color/warmth, the screenshot-capture hook, and as a
+    /// fallback when the native bezel is unavailable.
+    private func showCustomPanel(_ kind: Kind, fraction: Double, onDisplay displayID: CGDirectDisplayID?) {
         let panel = panel ?? makePanel()
         self.panel = panel
 

@@ -15,14 +15,7 @@ struct QuickControlsView: View {
             if store.displays.isEmpty {
                 emptyHint("No displays detected — connect a monitor to control its brightness and color here.")
             } else {
-                ForEach(store.orderedDisplays) { display in
-                    DisplayCardView(display: display)
-                        .dropDestination(for: String.self) { keys, _ in
-                            guard let dragged = keys.first else { return false }
-                            store.moveDisplay(key: dragged, before: display.key)
-                            return true
-                        }
-                }
+                DisplayCardsList(displays: store.orderedDisplays)
                 // Only the built-in panel is present: name what the user would gain by plugging
                 // a monitor in, instead of leaving the area looking like nothing's missing.
                 if !store.displays.contains(where: { !$0.isBuiltIn }) {
@@ -134,15 +127,14 @@ struct QuickControlsView: View {
         }
     }
 
-    /// The global warmth (color-temperature) slider, flanked by warm/cool end affordances: a
-    /// flame at the low-Kelvin (warm) end and a snowflake at the high-Kelvin (cool) end, so the
-    /// blue↔amber motif reads at a glance. Dragging is an immediate "set it now" override → Manual.
+    /// The global warmth (color-temperature) slider. Laid out exactly like the per-display
+    /// `ControlRow` — a full-width `MonitorSlider` plus a fixed-width readout — so every slider
+    /// in the popup shares the same track length and left/right edges. (The warm↔cool motif lives
+    /// in the in-track thermometer glyph, the "K" readout, and the Warmth schedule view; the old
+    /// flanking flame/snowflake were what made this track shorter than the brightness ones.)
+    /// Dragging is an immediate "set it now" override → Manual.
     private var warmthRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "flame.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(.orange)
-                .help("Warmer (lower color temperature)")
+        HStack(spacing: 10) {
             MonitorSlider(
                 systemImage: "thermometer.sun",
                 value: Double(ambienceTemperature),
@@ -156,10 +148,6 @@ struct QuickControlsView: View {
                     preferences.manualTemperature = rounded
                 }
             }
-            Image(systemName: "snowflake")
-                .font(.system(size: 11))
-                .foregroundStyle(.blue)
-                .help("Cooler (higher color temperature)")
             Text("\(ambienceTemperature) K")
                 .font(.callout)
                 .monospacedDigit()
@@ -209,6 +197,141 @@ struct QuickControlsView: View {
     }
 }
 
+// MARK: - Reorderable display cards
+
+/// The popup's display cards with an iOS-app-icon-style drag-to-reorder: grabbing a card's grip
+/// lifts it (scale + shadow), it tracks the cursor, and the others slide out of the way with a
+/// spring. Built on a plain `DragGesture` instead of `.draggable`, so the whole interaction stays
+/// inside the menu-bar popover — the detached system drag session `.draggable` starts is what made
+/// the old reorder feel awkward (and could dismiss the popover).
+private struct DisplayCardsList: View {
+    @EnvironmentObject private var store: AppStore
+    let displays: [DisplayInfo]
+
+    @State private var drag = DragReorderState()
+    @State private var heights: [String: CGFloat] = [:]
+
+    private static let spacing: CGFloat = 14
+    private static let space = "displayCardsReorder"
+
+    /// The order shown: the live (drag-mutated) order while dragging, else the store's order.
+    private var order: [String] {
+        drag.liveOrder ?? displays.map(\.key)
+    }
+
+    var body: some View {
+        let byKey = Dictionary(displays.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        VStack(spacing: Self.spacing) {
+            ForEach(order, id: \.self) { key in
+                if let display = byKey[key] {
+                    let isDragging = drag.draggingKey == key
+                    DisplayCardView(
+                        display: display,
+                        isDragging: isDragging,
+                        onDragChanged: { translationHeight in
+                            handleDragChanged(key: key, translationHeight: translationHeight)
+                        },
+                        onDragEnded: { handleDragEnded() }
+                    )
+                    .background(heightReader(key: key))
+                    .scaleEffect(isDragging ? 1.04 : 1, anchor: .center)
+                    .shadow(
+                        color: .black.opacity(isDragging ? 0.28 : 0),
+                        radius: isDragging ? 10 : 0,
+                        y: isDragging ? 6 : 0
+                    )
+                    .offset(y: isDragging ? drag.offset : 0)
+                    .zIndex(isDragging ? 1 : 0)
+                    // Siblings animate into their new slots when `order` changes; the dragged card
+                    // opts out so its slot move stays instant and it never lags behind the cursor.
+                    .animation(isDragging ? nil : .spring(response: 0.30, dampingFraction: 0.82), value: order)
+                }
+            }
+        }
+        .coordinateSpace(name: Self.space)
+        .onPreferenceChange(CardHeightKey.self) { heights = $0 }
+        .onChange(of: displays.map(\.key)) { _, _ in
+            // Once the drag has ended and the store's order has caught up (or the display set
+            // changed underneath us), drop the local copy so external changes flow through.
+            if drag.draggingKey == nil { drag.liveOrder = nil }
+        }
+    }
+
+    private func heightReader(key: String) -> some View {
+        GeometryReader { geometry in
+            Color.clear.preference(key: CardHeightKey.self, value: [key: geometry.size.height])
+        }
+    }
+
+    private func handleDragChanged(key: String, translationHeight: CGFloat) {
+        if drag.draggingKey != key {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.72)) {
+                drag.begin(key: key, order: order)
+            }
+        }
+        drag.update(translationHeight: translationHeight, heights: heights, spacing: Self.spacing)
+    }
+
+    private func handleDragEnded() {
+        let committed = drag.liveOrder
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+            drag.end()
+        }
+        if let committed {
+            store.setDisplayOrder(committed)
+        }
+    }
+}
+
+/// Transient state for a card reorder drag. `liveOrder` is the locally-reordered key list shown
+/// while dragging; `offset` is the lifted card's vertical travel from its current slot. The swap
+/// math lives in the pure, unit-tested `DragReorder`.
+private struct DragReorderState {
+    var draggingKey: String?
+    var liveOrder: [String]?
+    var offset: CGFloat = 0
+    private var lastTranslation: CGFloat = 0
+
+    mutating func begin(key: String, order: [String]) {
+        draggingKey = key
+        liveOrder = order
+        offset = 0
+        lastTranslation = 0
+    }
+
+    mutating func update(translationHeight: CGFloat, heights: [String: CGFloat], spacing: CGFloat) {
+        guard let key = draggingKey, let current = liveOrder else {
+            return
+        }
+        offset += translationHeight - lastTranslation
+        lastTranslation = translationHeight
+        let resolved = DragReorder.resolve(
+            order: current,
+            draggingKey: key,
+            offset: offset,
+            heights: heights,
+            spacing: spacing
+        )
+        liveOrder = resolved.order
+        offset = resolved.offset
+    }
+
+    mutating func end() {
+        draggingKey = nil
+        offset = 0
+        lastTranslation = 0
+    }
+}
+
+/// Collects each card's measured height (keyed by display key) so the reorder math can pick the
+/// correct swap threshold for cards of different sizes.
+private struct CardHeightKey: PreferenceKey {
+    static let defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 // MARK: - Per-display card
 
 /// One display's controls in the popup. Keep sliders visible so opening the menu is enough
@@ -216,6 +339,9 @@ struct QuickControlsView: View {
 private struct DisplayCardView: View {
     @EnvironmentObject private var store: AppStore
     let display: DisplayInfo
+    var isDragging = false
+    var onDragChanged: (CGFloat) -> Void = { _ in }
+    var onDragEnded: () -> Void = {}
 
     var body: some View {
         let preferences = store.displayPreferences(for: display)
@@ -223,8 +349,20 @@ private struct DisplayCardView: View {
             HStack(spacing: 6) {
                 Image(systemName: "line.3.horizontal")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .draggable(display.key)
+                    .foregroundStyle(isDragging ? .secondary : .tertiary)
+                    .padding(.vertical, 4)
+                    .padding(.trailing, 2)
+                    .contentShape(Rectangle())
+                    // A plain drag gesture on just the grip: it can't conflict with the sliders'
+                    // own drag, and it drives the parent's lift/reorder via callbacks. Measured in
+                    // the **global** space, not the grip's local space — the grip rides along with
+                    // the lifted card's offset, so a local-space translation would feed back into
+                    // itself and make the dragged card jitter. Global space is stable.
+                    .gesture(
+                        DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                            .onChanged { onDragChanged($0.translation.height) }
+                            .onEnded { _ in onDragEnded() }
+                    )
                     .help("Drag to reorder")
                 Button {
                     store.openSettings(.display(display.key))
@@ -316,6 +454,25 @@ private struct DisplayCardView: View {
                     readout: "\(preferences.hardwareVolume)%"
                 ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
             }
+        } else if display.isVirtual {
+            // AirPlay/virtual display: gamma is ignored here, so brightness rides a shade overlay
+            // (0–100%). It's plain dimming, not a color change, so it stays usable even when the
+            // Warmth master is off.
+            let level = min(100, preferences.gammaBrightness)
+            ControlRow(
+                icon: "sun.max",
+                value: Double(level),
+                range: ControlRanges.hardwarePercent,
+                readout: "\(level)%"
+            ) { newValue in
+                store.updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = Int(newValue.rounded())
+                        .clamped(to: ControlRanges.hardwarePercent)
+                }
+            }
+            Text("Overlay dimming (AirPlay — no hardware control)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         } else {
             // No DDC path to the real backlight — drive software (gamma) dimming instead, the
             // same fallback a built-in panel with no brightness API gets.
@@ -393,6 +550,15 @@ func dismissMenuBarPopup() {
 
     closeMenuBarPopupWindows()
     clearMenuBarHighlight()
+}
+
+/// Open the menu-bar popup programmatically — a dev/verification hook (paired with
+/// `MONITORFLUX_OPEN_POPUP=1`) so the popup panel can be put on screen and captured by window id
+/// with ScreenCaptureKit. The popup is a SwiftUI `MenuBarExtra` window with no public "show" API,
+/// so this performs the same click the user would on the status item.
+@MainActor
+func openMenuBarPopup() {
+    menuBarStatusButton()?.performClick(nil)
 }
 
 @MainActor

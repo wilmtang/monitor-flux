@@ -56,6 +56,7 @@ Every hardware-writing path in `AppStore` is gated on `safeMode`. When on:
 | `runDDCCommand(…)` (brightness, contrast) | sends DDC over I²C | **skipped**; status reads `Safe mode — DDC not sent` |
 | `applyVolume(…)` | sends DDC volume | **skipped** |
 | `setNativeBrightness(…)` | `DisplayServicesSetBrightness` | **skipped** (UI cache still updates) |
+| `reconcileShades()` | AirPlay/virtual overlay dimming via `ShadeController` | **skipped**; `removeAll()` so no overlay windows appear |
 | keyboard media-key tap | `CGEventTap` started | **not started**; status reads `Off (safe mode)` |
 
 ## What still works in safe mode

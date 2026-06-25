@@ -81,6 +81,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        // Verification hook: open the menu-bar popup so it can be captured by window id (the
+        // popup has no public "show" API). The status item exists once the scene's label has
+        // appeared, so defer one tick.
+        if ProcessInfo.processInfo.environment["MONITORFLUX_OPEN_POPUP"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                openMenuBarPopup()
+            }
+        }
+
         // First-run welcome: show once on a fresh install. `MONITORFLUX_SHOW_ONBOARDING=1` forces
         // it for a screenshot run; the main-window test hook suppresses it so the smoke geometry
         // check finds only the titled main window, not the welcome sheet.

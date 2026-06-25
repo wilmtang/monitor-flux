@@ -18,6 +18,16 @@ MonitorFlux, but the techniques and hardware/interop details are owed to Monitor
 - [`Sources/MonitorFlux/Services/KeyboardControlService.swift`](Sources/MonitorFlux/Services/KeyboardControlService.swift)
   uses the same `NSSystemDefined` media-key event-tap technique to capture the
   brightness/volume keys.
+- [`Sources/MonitorFlux/Services/NativeOSD.swift`](Sources/MonitorFlux/Services/NativeOSD.swift)
+  drives the private `OSDManager` (OSD.framework) for the native brightness/volume bezel, as in
+  MonitorControl's `Support/OSDUtils.swift` (the `showImage:onDisplayID:…:filledChiclets:totalChiclets:locked:`
+  call and image codes).
+- [`Sources/MonitorFlux/Services/ShadeController.swift`](Sources/MonitorFlux/Services/ShadeController.swift)
+  and [`Sources/MonitorFlux/Services/CoreDisplayInfo.swift`](Sources/MonitorFlux/Services/CoreDisplayInfo.swift)
+  follow MonitorControl's `DisplayManager` for AirPlay/virtual detection
+  (`CoreDisplay_DisplayCreateInfoDictionary`, `kCGDisplayIsAirPlay`) and the overlay-window
+  ("shade") dimming those displays use because they ignore gamma, plus the
+  `CGDisplayMirrorsDisplay` effective-display resolution for mirror sets.
 
 MonitorControl's license is reproduced below in full, per its terms.
 

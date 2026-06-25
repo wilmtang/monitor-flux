@@ -67,10 +67,26 @@ pkill -x MonitorFlux || true
 - `Services/LocationService.swift`: CoreLocation one-shot fix for the solar schedule.
 - `Services/KeyboardControlService.swift`: a `CGEventTap` that routes the brightness/
   volume media keys to the display under the cursor (needs Accessibility permission).
+  Two delivery paths exist: external USB keyboards send `NSSystemDefined` subtype 8
+  (key code in the high 16 bits of `data1`, `isKeyDown == (keyFlags & 0xFF00) >> 8 == 0x0A`),
+  the **built-in** keyboard sends brightness as plain `keyDown` 144/145 — the tap handles both.
+- `Services/OSDController.swift` + `Services/NativeOSD.swift`: the on-screen bezel.
+  Brightness/volume use the **private `OSDManager`** (OSD.framework) so they're pixel-identical
+  to macOS's own bezel (the MonitorControl approach); contrast and color/warmth have no native
+  bezel, so they use a custom tinted SwiftUI panel (also the fallback if the private API is absent).
+  `NativeOSD` binds `OSDManager` dynamically (dlopen + IMP cast), no bridging header.
+- `Services/ShadeController.swift` + `Services/CoreDisplayInfo.swift`: software dimming for
+  **AirPlay/virtual** displays. They ignore gamma, so `CoreDisplayInfo` detects them (private
+  `CoreDisplay_DisplayCreateInfoDictionary`, `kCGDisplayIsAirPlay`/virtual) and `ShadeController`
+  dims them with a black overlay window at `CGShieldingWindowLevel()` — the MonitorControl "shade".
+- `Support/DragReorder.swift`: pure swap math for the popup's iOS-style drag-to-reorder (cards
+  lift and siblings spring aside). The gesture lives on the card grip in `QuickControlsView` and
+  reads the global coordinate space (not local — the grip rides the lifted card, which would feed back).
 - `Views/Components.swift`: shared `MonitorSlider` (MonitorControl-style, no tick
   marks), `InfoButton` (jargon explainers), and `GammaConflictBanner`.
-- `Views/`: SwiftUI window, the `QuickControlsView` menu-bar popup, settings, and
-  per-display controls.
+- `Views/`: SwiftUI window, the `QuickControlsView` menu-bar popup (drag-to-reorder cards),
+  settings, and per-display controls. AirPlay/virtual displays get a stripped-down detail pane
+  (overlay dimming only — no warmth/DDC/gamma/schedule, since those have no effect there).
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
 - `Tests/`: pure behavior tests; avoid tests that write real gamma or DDC.
 
@@ -107,16 +123,45 @@ pkill -x MonitorFlux || true
   fallback). External-display brightness/contrast always go through DDC.
 - Saved DDC brightness/contrast is re-applied to **external** displays on launch/reconnect
   (`restoreHardwareSettings`); never re-apply to the built-in.
+- **AirPlay/virtual displays ignore gamma.** Detect them with `CoreDisplayInfo.isVirtual` and
+  dim them through `ShadeController` (overlay), not gamma. `GammaPlan` excludes them, and their
+  detail/popup UI hides the controls that don't work (warmth, DDC, gamma, schedule). The shade is
+  plain dimming, independent of the Warmth master, and darker-only.
+- **Mirror sets:** gamma/shade writes target `DisplayInfo.effectiveID` (the mirror master via
+  `CGDisplayMirrorsDisplay`), and `GammaPlan` dedupes a mirror set to one write through the master
+  — never write gamma to a mirrored child.
+- **OSD:** brightness/volume go through the native `OSDManager` bezel; contrast/color use the
+  custom panel (no native bezel exists for them). Don't expect the native path to draw a glyph for
+  contrast — macOS has none.
 - New behavior should get focused tests unless it directly touches real display
-  hardware. The arm64 DDC packet builder and `SolarCalculator` are pure and tested.
+  hardware. The arm64 DDC packet builder and `SolarCalculator` are pure and tested
+  (`GammaPlanTests` covers virtual-exclusion + mirror dedup; `DragReorderTests` the reorder math).
 
 ## Verifying UI changes (hard-won)
 
 - **A passing smoke test does NOT mean the UI renders.** `smoke_test.sh` only checks window
   *geometry* (on-screen, sane size) via `CGWindowList` — it has twice passed on a window that
-  was blank or wrongly sized. Always screenshot the actual window:
-  `screencapture -l<windowID> -o -x out.png` (get the id from `CGWindowListCopyWindowInfo`),
-  then read it. Test hooks: `MONITORFLUX_OPEN_MAIN=1|reopen`, `MONITORFLUX_SELECT=general|color|display`.
+  was blank or wrongly sized. Always screenshot the actual window and read it.
+- **Screenshot pipeline (this machine is multi-display; plain `screencapture` misses/occludes
+  the window):** the main window restores onto the **external** display and the test hooks open
+  it non-activating, so capture by window id, not a full-screen crop:
+  ```sh
+  swift script/_shot_winid.swift              # list MonitorFlux windows: id x y w h layer title
+  swift script/_shot_sck.swift <id> out.png   # ScreenCaptureKit capture by id (occlusion-proof)
+  ```
+  The popup is ≈312 wide; the main window is large/titled. Note: `_shot_sck` renders the OSD's
+  `.hudWindow` vibrancy as flat gray (no blur) — judge the OSD with `_shot_crop.swift` over a real
+  `screencapture` instead.
+- **Launch hooks (env vars), set under `MONITORFLUX_SAFE_MODE=1`:**
+  - `MONITORFLUX_OPEN_MAIN=1|reopen`, `MONITORFLUX_SELECT=general|color|display|diagnostics`
+    (or `display:<name substring>`, e.g. `display:AirPlay`, to target a specific display pane)
+  - `MONITORFLUX_OPEN_POPUP=1` opens the menu-bar popup ~1s after launch (it has no public "show"
+    API) so it can be captured by id; pair with `MONITORFLUX_FAKE_DISPLAYS=N` for mock cards
+    (even index = DDC, odd = non-DDC, index 2 = AirPlay/virtual) to exercise multi-display paths
+    on a built-in-only Mac. **Dismiss the popup / `pkill -x MonitorFlux` when done** so it doesn't
+    sit over the user's screen.
+  - `MONITORFLUX_SHOW_OSD=brightness|color` (+ `MONITORFLUX_OSD_HOLD=1` holds it and forces the
+    custom panel, since the native bezel can't be held or captured by id), `MONITORFLUX_SHOW_ONBOARDING=1`.
 - To drive a SwiftUI button in a test, use accessibility **`AXPress`** (find it by its `help`
   string — SwiftUI buttons often expose no AX title), not synthetic coordinate clicks (they
   miss). For shortcut recording, `AXPress` the Record button then `keystroke` the combo.

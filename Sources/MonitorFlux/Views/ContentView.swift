@@ -65,6 +65,13 @@ struct ContentView: View {
                 if let display = store.displays.first(where: { !$0.isBuiltIn }) ?? store.displays.first {
                     selection = .display(display.key)
                 }
+            case let value? where value.hasPrefix("display:"):
+                // `display:<name substring>` targets a specific display pane for verification
+                // (e.g. `display:AirPlay`), since the bare `display` hook only picks the first external.
+                let needle = String(value.dropFirst("display:".count))
+                if let display = store.displays.first(where: { $0.name.localizedCaseInsensitiveContains(needle) }) {
+                    selection = .display(display.key)
+                }
             default:
                 break
             }

@@ -12,9 +12,10 @@ fighting for the same macOS gamma table.
 
 MonitorFlux has two separate control paths:
 
-- **Gamma path:** color temperature, software brightness, and software contrast.
-  These are pixel-level adjustments. They are planned in `GammaPlan`, composed
-  in `GammaCompositor`, and applied by `GammaTemperatureService`.
+- **Gamma path:** color temperature and software brightness. These are pixel-level
+  adjustments, planned in `GammaPlan`, composed in `GammaCompositor`, and applied by
+  `GammaTemperatureService`. (AirPlay/wireless displays ignore gamma, so their software
+  dimming uses a black overlay window — `ShadeController` — instead.)
 - **Hardware DDC path:** brightness and contrast commands sent to external
   monitor firmware. These use native macOS IOKit I2C/DDC APIs first, with
   `ddcctl` only as an optional fallback if it already exists on the machine.
@@ -56,7 +57,7 @@ gamma leaves the backlight at full power and just tells the GPU to output **dark
 | Image quality | full bit depth & contrast preserved | **banding / posterization** — scaling values into a smaller range loses precision |
 | Contrast (LCD) | unchanged | **drops** — blacks stay lit, so they gray out vs dimmed whites |
 | Power / OLED wear | **lower** (less emission) | no savings |
-| Where it works | external monitors only (DDC/CI) | **any** display, incl. the built-in panel |
+| Where it works | external monitors only (DDC/CI) | **any wired** display, incl. the built-in (AirPlay/wireless ignore gamma — those use an overlay) |
 | Speed | slower (I²C bus) | instant (GPU-side) |
 | Color temperature | can't | **only** way to warm color |
 | How low it goes | stops at the monitor's lit floor | can go much darker, toward black |
@@ -78,18 +79,23 @@ for warmth.
   modeled after MonitorControl: a card per display with live brightness, contrast,
   and volume sliders (a custom `MonitorSlider` — rounded track, icon-in-track, no
   tick marks), plus a global ambience (color-temperature) slider and an
-  Off/Manual/Schedule mode. DDC writes are debounced so dragging doesn't flood the
+  Off/Manual/Schedule mode. Cards **drag-to-reorder** by their grip with an iOS-app-icon
+  lift-and-shuffle animation. DDC writes are debounced so dragging doesn't flood the
   I2C bus. The Settings/Quit rows highlight on hover and show their shortcuts. The
   app is menu-bar-first (no Dock icon by default; a "Show in Dock" setting toggles it).
+- The **on-screen display** (`OSDController`) flashes a level bezel when a control changes
+  by keyboard. Brightness and volume use the **private `OSDManager`** (OSD.framework) so they
+  look identical to macOS's own bezel; contrast and warmth use a custom tinted panel (macOS has
+  no native bezel for those). See `NativeOSD`.
 - The **Schedule** screen is modeled after f.lux preferences: three phase
   temperatures (Daytime / Sunset / Bedtime) over the same Kelvin range, a phase
   selector, a draggable three-handle schedule curve, wake/bedtime controls, and a
   **Manual times / Sunrise & sunset** source. In solar mode the daytime and sunset
   anchors come from your location (CoreLocation + `SolarCalculator`).
-- Each **Display** screen separates:
-  - Warm color enablement for that display.
-  - Gamma brightness/contrast for pixel-level control.
-  - Hardware DDC brightness/contrast for external monitor firmware control.
+- Each **Display** screen separates the monitor's real controls (DDC brightness/contrast, or
+  the built-in backlight) from software gamma brightness and the day/night brightness schedule,
+  with warmth enablement on top. **AirPlay/wireless** displays get a stripped-down pane — overlay
+  dimming only — because they have no hardware controls and ignore gamma.
 
 ## Keyboard control
 
@@ -210,6 +216,7 @@ it needs an Xcode app target + UI-test target, which a pure SwiftPM package does
 
 ## Acknowledgements
 
-MonitorFlux's Apple Silicon DDC, built-in backlight, and media-key handling were
-developed by studying [MonitorControl](https://github.com/MonitorControl/MonitorControl)
-(MIT). See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and the full license.
+MonitorFlux's Apple Silicon DDC, built-in backlight, media-key handling, native OSD bezel
+(`OSDManager`), and AirPlay overlay dimming (the "shade") were developed by studying
+[MonitorControl](https://github.com/MonitorControl/MonitorControl) (MIT). See
+[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and the full license.

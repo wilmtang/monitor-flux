@@ -14,12 +14,15 @@ is whether the hardened runtime breaks them. It doesn't:
 - **IOAVService** (Apple Silicon DDC) and **CGDisplayIOServicePort** (Intel DDC) are bound
   with `@_silgen_name`, i.e. resolved at **link time** against already-linked Apple
   frameworks. The hardened runtime doesn't affect that.
-- **DisplayServices** (built-in backlight) is `dlopen`'d at runtime from
-  `/System/Library/PrivateFrameworks/`. Under the hardened runtime, `dlopen` is governed by
-  **library validation**, which permits libraries signed by Apple or your team. DisplayServices
-  is Apple-signed, so it loads — **verified** by `dlopen`ing it from a hardened-runtime-signed
-  test binary with no entitlements, and by running the whole app re-signed with
-  `--options runtime` (it launches and passes `codesign --verify --strict`).
+- **DisplayServices** (built-in backlight), **OSD.framework** (`OSDManager`, the native OSD
+  bezel), and **CoreDisplay** (`CoreDisplay_DisplayCreateInfoDictionary`, AirPlay detection) are
+  `dlopen`'d at runtime from the system framework paths. Under the hardened runtime, `dlopen` is
+  governed by **library validation**, which permits libraries signed by Apple or your team. All
+  three are Apple-signed, so they load — **verified** by `dlopen`ing DisplayServices from a
+  hardened-runtime-signed test binary with no entitlements, and by running the whole app re-signed
+  with `--options runtime` (it launches and passes `codesign --verify --strict`). `OSDManager`
+  (class lookup) and CoreDisplay (`dlsym`) resolve after the same `dlopen`, so they fall under the
+  same library-validation rule.
 
 So **no entitlements file and no `disable-library-validation`** are required. (Accessibility
 for the media-key tap, Location for solar times, and global hot keys are runtime TCC

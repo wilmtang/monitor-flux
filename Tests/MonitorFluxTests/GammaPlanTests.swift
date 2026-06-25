@@ -39,13 +39,79 @@ final class GammaPlanTests: XCTestCase {
         XCTAssertEqual(adjustment?.contrastPercent, 100)
     }
 
-    private func makeDisplay(id: CGDirectDisplayID) -> DisplayInfo {
+    func testVirtualDisplayExcludedFromGammaPlan() {
+        // An AirPlay/virtual display ignores gamma, so it must never appear in the plan — even
+        // with warmth on. A normal display alongside it still gets its adjustment.
+        let virtual = makeDisplay(id: 5, isVirtual: true)
+        let normal = makeDisplay(id: 1)
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .manual
+        preferences.manualTemperature = 3400
+
+        let plan = GammaPlan.adjustments(displays: [virtual, normal], preferences: preferences)
+
+        XCTAssertNil(plan[virtual.id])
+        XCTAssertNotNil(plan[normal.id])
+        XCTAssertEqual(plan.count, 1)
+    }
+
+    func testMirroredChildIsWrittenThroughItsMaster() {
+        // In a mirror set the child's adjustment folds into the master's effective ID, so gamma
+        // is written once (to the master) rather than to a child with no framebuffer of its own.
+        let master = makeDisplay(id: 1)
+        let child = makeDisplay(id: 2, mirrorMaster: 1)
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .manual
+        preferences.manualTemperature = 3400
+
+        let plan = GammaPlan.adjustments(displays: [master, child], preferences: preferences)
+
+        XCTAssertEqual(plan.count, 1)
+        XCTAssertNotNil(plan[master.id])
+        XCTAssertNil(plan[child.id])
+    }
+
+    func testMirrorMasterAdjustmentWinsOverChild() {
+        // The master's own brightness drives the shared framebuffer; a mirrored child can't
+        // overwrite it regardless of enumeration order.
+        let master = makeDisplay(id: 1)
+        let child = makeDisplay(id: 2, mirrorMaster: 1)
+        var masterPreferences = DisplayPreferences()
+        masterPreferences.gammaBrightness = 80
+        var childPreferences = DisplayPreferences()
+        childPreferences.gammaBrightness = 50
+
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .manual
+        preferences.manualTemperature = 3400
+        preferences.displayPreferences[master.key] = masterPreferences
+        preferences.displayPreferences[child.key] = childPreferences
+
+        // Child first in the list, to prove order doesn't matter.
+        let plan = GammaPlan.adjustments(displays: [child, master], preferences: preferences)
+
+        XCTAssertEqual(plan[master.id]?.brightnessPercent, 80)
+        XCTAssertNil(plan[child.id])
+    }
+
+    func testEffectiveIDFollowsMirrorMaster() {
+        XCTAssertEqual(makeDisplay(id: 7).effectiveID, 7)
+        XCTAssertEqual(makeDisplay(id: 7, mirrorMaster: 3).effectiveID, 3)
+    }
+
+    private func makeDisplay(
+        id: CGDirectDisplayID,
+        isVirtual: Bool = false,
+        mirrorMaster: CGDirectDisplayID? = nil
+    ) -> DisplayInfo {
         DisplayInfo(
             id: id,
             name: "Display \(id)",
             frameDescription: "100 x 100 @ (0, 0)",
             isBuiltIn: false,
-            isOnline: true
+            isOnline: true,
+            isVirtual: isVirtual,
+            mirrorMaster: mirrorMaster
         )
     }
 }

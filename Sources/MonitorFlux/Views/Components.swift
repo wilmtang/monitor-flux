@@ -45,9 +45,18 @@ enum HelpText {
     static let gamma = """
     “Gamma” is a software adjustment. MonitorFlux edits the color tables macOS uses to \
     render every pixel, which warms the color temperature and can dim brightness/contrast \
-    on any display — including the built-in one. It does NOT change the monitor's real \
+    on any wired display — including the built-in one. It does NOT change the monitor's real \
     backlight; it only changes the image the Mac sends out. Only one app should drive gamma \
-    at a time, or they fight (see the color-conflict note).
+    at a time, or they fight (see the color-conflict note). AirPlay and other wireless/virtual \
+    displays ignore gamma entirely — those are dimmed with an overlay instead (see AirPlay dimming).
+    """
+
+    static let airplayDimming = """
+    AirPlay and other wireless/virtual displays have no DDC controls and ignore the color-table \
+    (gamma) adjustment, so MonitorFlux dims them a completely different way: it lays a translucent \
+    black overlay over the screen and varies its opacity. That visibly dims everything on the \
+    display — it isn't a backlight or color change — so it can only go darker than the display's \
+    own setting, never brighter, and there's no warmth, contrast, or volume control for it.
     """
 
     static let ddc = """
