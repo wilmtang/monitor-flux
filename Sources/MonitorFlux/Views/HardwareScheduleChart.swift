@@ -20,6 +20,9 @@ struct HardwareScheduleChart: View {
     let accessibilityName: String
 
     private let range = ControlRanges.hardwarePercent
+    /// Vertical breathing room (handle radius + stroke) so a handle at 0%/100% stays fully inside
+    /// the chart and grabbable. The curve uses the same inset, so handles stay on it.
+    private let verticalInset: CGFloat = 10
 
     var body: some View {
         GeometryReader { proxy in
@@ -164,14 +167,16 @@ struct HardwareScheduleChart: View {
     private func yPosition(for value: Int, height: CGFloat) -> CGFloat {
         let clamped = value.clamped(to: range)
         let progress = Double(clamped - range.lowerBound) / Double(range.upperBound - range.lowerBound)
-        return height - (height * CGFloat(progress))
+        let usable = max(0, height - 2 * verticalInset)
+        return verticalInset + usable * CGFloat(1 - progress)
     }
 
     private func value(from y: CGFloat, height: CGFloat) -> Int {
-        guard height > 0 else {
+        let usable = height - 2 * verticalInset
+        guard usable > 0 else {
             return range.lowerBound
         }
-        let progress = Double((height - y) / height).clamped(to: 0...1)
+        let progress = Double((height - verticalInset - y) / usable).clamped(to: 0...1)
         let raw = range.lowerBound + Int((Double(range.upperBound - range.lowerBound) * progress).rounded())
         return raw.clamped(to: range)
     }

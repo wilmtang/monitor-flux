@@ -34,6 +34,10 @@ struct FluxCurveEditor: View {
 
     private let minKelvin = ControlRanges.kelvin.lowerBound
     private let maxKelvin = ControlRanges.kelvin.upperBound
+    /// Vertical breathing room (handle radius + stroke) so a handle parked at the warmest/coolest
+    /// extreme stays fully inside the chart instead of half-clipped — and therefore fully grabbable.
+    /// The curve uses the same inset, so handles still sit exactly on it.
+    private let verticalInset: CGFloat = 12
 
     var body: some View {
         GeometryReader { proxy in
@@ -295,7 +299,8 @@ struct FluxCurveEditor: View {
     private func yPosition(for kelvin: Int, height: CGFloat) -> CGFloat {
         let clamped = kelvin.clamped(to: minKelvin...maxKelvin)
         let progress = Double(clamped - minKelvin) / Double(maxKelvin - minKelvin)
-        return height - (height * CGFloat(progress))
+        let usable = max(0, height - 2 * verticalInset)
+        return verticalInset + usable * CGFloat(1 - progress)
     }
 
     private func roundedMinutes(from x: CGFloat, width: CGFloat) -> Int {
@@ -309,11 +314,12 @@ struct FluxCurveEditor: View {
     }
 
     private func roundedKelvin(from y: CGFloat, height: CGFloat) -> Int {
-        guard height > 0 else {
+        let usable = height - 2 * verticalInset
+        guard usable > 0 else {
             return dayTemperature
         }
 
-        let progress = Double((height - y) / height).clamped(to: 0...1)
+        let progress = Double((height - verticalInset - y) / usable).clamped(to: 0...1)
         let raw = minKelvin + Int((Double(maxKelvin - minKelvin) * progress).rounded())
         return (Int((Double(raw) / 100.0).rounded()) * 100).clamped(to: ControlRanges.kelvin)
     }
