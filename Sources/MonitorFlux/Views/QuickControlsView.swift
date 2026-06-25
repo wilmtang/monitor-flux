@@ -58,6 +58,9 @@ struct QuickControlsView: View {
             // to the trailing edge — not tucked right after the title. The whole row opens the
             // Warmth schedule. (The jargon ⓘ moved off the popup; it lives in the schedule settings.)
             Button {
+                // Tapping a card to deep-link into its settings dismisses the popup, just like
+                // clicking the Settings row — otherwise the popup hangs open behind the window.
+                dismissMenuBarPopup()
                 store.openSettings(.color)
             } label: {
                 HStack(spacing: 6) {
@@ -373,6 +376,7 @@ private struct DisplayCardView: View {
                     )
                     .help("Drag to reorder")
                 Button {
+                    dismissMenuBarPopup()
                     store.openSettings(.display(display.key))
                 } label: {
                     HStack(spacing: 6) {
