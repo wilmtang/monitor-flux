@@ -35,7 +35,8 @@ final class GammaPlanTests: XCTestCase {
 
         XCTAssertEqual(adjustment?.temperature, 3400)
         XCTAssertEqual(adjustment?.brightnessPercent, 80)
-        XCTAssertEqual(adjustment?.contrastPercent, 120)
+        // Software contrast was removed — gammaContrast is no longer applied, always neutral.
+        XCTAssertEqual(adjustment?.contrastPercent, 100)
     }
 
     private func makeDisplay(id: CGDirectDisplayID) -> DisplayInfo {

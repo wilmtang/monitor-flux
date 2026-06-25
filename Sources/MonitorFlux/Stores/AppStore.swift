@@ -780,10 +780,6 @@ final class AppStore: ObservableObject {
             return adjustBuiltInBrightness(by: step)
         case .builtInBrightnessDown:
             return adjustBuiltInBrightness(by: -step)
-        case .builtInContrastUp:
-            return adjustBuiltInContrast(by: step)
-        case .builtInContrastDown:
-            return adjustBuiltInContrast(by: -step)
         }
     }
 
@@ -803,20 +799,6 @@ final class AppStore: ObservableObject {
             updateDisplayPreferences(for: builtIn) { $0.gammaBrightness = next }
             osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: builtIn.id)
         }
-        return true
-    }
-
-    /// Built-in-set contrast: software (gamma) contrast — takes effect when the gamma master
-    /// switch is on.
-    @discardableResult
-    func adjustBuiltInContrast(by delta: Int) -> Bool {
-        guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
-            return false
-        }
-        let next = (displayPreferences(for: builtIn).gammaContrast + delta)
-            .clamped(to: ControlRanges.gammaContrastPercent)
-        updateDisplayPreferences(for: builtIn) { $0.gammaContrast = next }
-        osd.show(.contrast, fraction: Double(next) / 200.0, onDisplay: builtIn.id)
         return true
     }
 

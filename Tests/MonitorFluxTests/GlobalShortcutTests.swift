@@ -9,8 +9,9 @@ final class GlobalShortcutTests: XCTestCase {
         let builtIn = HotKeyAction.allCases.filter { $0.group == .builtIn }
 
         XCTAssertEqual(underPointer.count, 8)
-        // Built-in set is brightness + contrast only (color is global; built-in has no volume).
-        XCTAssertEqual(Set(builtIn.map(\.label)), ["Brightness up", "Brightness down", "Contrast up", "Contrast down"])
+        // Built-in set is brightness only: the panel has no contrast control, color is global,
+        // and the built-in has no volume.
+        XCTAssertEqual(Set(builtIn.map(\.label)), ["Brightness up", "Brightness down"])
     }
 
     func testHotKeyIDsAreStableAndUnique() {
@@ -36,7 +37,6 @@ final class GlobalShortcutTests: XCTestCase {
         XCTAssertNil(HotKeyAction.volumeUp.mediaShortcut)
         XCTAssertNil(HotKeyAction.volumeDown.mediaShortcut)
         XCTAssertEqual(HotKeyAction.builtInBrightnessUp.mediaShortcut?.displayTokens, ["⌘", "Brightness ↑"])
-        XCTAssertEqual(HotKeyAction.builtInContrastUp.mediaShortcut?.displayTokens, ["⌃", "⌘", "Brightness ↑"])
     }
 
     func testMediaShortcutParserReadsManagedKeyDownEvents() {

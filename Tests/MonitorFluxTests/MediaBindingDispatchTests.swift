@@ -50,13 +50,13 @@ final class MediaBindingDispatchTests: XCTestCase {
         var fired: HotKeyAction?
         service.onAction = { fired = $0; return true }
         service.mediaBindings = [
-            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true, command: true): .builtInContrastUp,
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, command: true): .builtInBrightnessUp,
         ]
 
-        let handled = service.handle(keyCode: MediaKey.brightnessUp, control: true, shift: false, command: true)
+        let handled = service.handle(keyCode: MediaKey.brightnessUp, control: false, shift: false, command: true)
 
         XCTAssertTrue(handled)
-        XCTAssertEqual(fired, .builtInContrastUp)
+        XCTAssertEqual(fired, .builtInBrightnessUp)
     }
 
     func testBindingPassesThroughWhenActionReportsUnhandled() {

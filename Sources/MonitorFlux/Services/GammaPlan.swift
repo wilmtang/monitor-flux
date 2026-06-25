@@ -19,9 +19,10 @@ enum GammaPlan {
                 brightnessPercent: displayPreferences.gammaControlsEnabled
                     ? displayPreferences.gammaBrightness
                     : 100,
-                contrastPercent: displayPreferences.gammaControlsEnabled
-                    ? displayPreferences.gammaContrast
-                    : 100
+                // Software (gamma) contrast was removed: it only ever produced a banding-prone
+                // approximation, and the built-in panel — its only would-be user — has no real
+                // contrast control. Contrast is now a DDC (external monitor) hardware control only.
+                contrastPercent: 100
             )
             return adjustment.isNeutral ? nil : (display.id, adjustment)
         })

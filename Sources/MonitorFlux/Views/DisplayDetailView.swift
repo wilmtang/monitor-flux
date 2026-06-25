@@ -196,24 +196,12 @@ struct DisplayDetailView: View {
                 }
             }
 
-            advancedSliderRow(
-                title: "Software contrast",
-                icon: "circle.lefthalf.filled",
-                value: displayPreferences.gammaContrast,
-                range: ControlRanges.gammaContrastPercent,
-                isEnabled: gammaSlidersEnabled
-            ) { newValue in
-                store.updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaContrast = newValue
-                }
-            }
-
             if !store.preferences.gammaEnabled {
-                advancedCaption("Turn on Warmth on the Schedule screen to use these.")
+                advancedCaption("Turn on Warmth on the Schedule screen to use this.")
             } else if !displayPreferences.gammaControlsEnabled {
-                advancedCaption("Turn on “Use software dimming” to adjust software brightness and contrast.")
+                advancedCaption("Turn on “Use software dimming” to adjust software brightness.")
             } else {
-                advancedCaption("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding.")
+                advancedCaption("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding. (Contrast is a DDC control on external monitors only.)")
             }
         }
     }

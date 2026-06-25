@@ -45,9 +45,8 @@ struct SettingsView: View {
                 })
                 VStack(alignment: .leading, spacing: 3) {
                     keyHint("Brightness keys", "brightness of the display under your pointer (DDC)")
-                    keyHint("⌃ Control + brightness", "contrast")
+                    keyHint("⌃ Control + brightness", "contrast (external monitor)")
                     keyHint("⌘ Command + brightness", "built-in brightness")
-                    keyHint("⌃ Control + ⌘ Command + brightness", "built-in contrast")
                     keyHint("⇧ Shift + brightness down/up", "warmth warmer / cooler")
                     keyHint("Volume keys", "macOS system volume unless recorded below")
                 }
@@ -100,6 +99,10 @@ struct SettingsView: View {
                 Text("Master switch for warmth — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own controls and macOS color remain). On means each display follows its **own** Warmth and software-dimming settings on its Display screen. Same setting as \u{201C}Warmth\u{201D} on the Schedule screen; doesn't affect real backlight, the monitor's own DDC controls, or volume.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("The built-in display has no DDC, so everything MonitorFlux changes on it — warmth and software dimming — goes through the color tables. With this off, the built-in display can't be adjusted here; only its real backlight brightness (the macOS brightness keys) still works.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Warmth")
             }
