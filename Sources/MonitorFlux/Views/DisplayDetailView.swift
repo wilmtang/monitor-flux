@@ -99,9 +99,10 @@ struct DisplayDetailView: View {
             Section {
                 if store.canUseNativeBrightness(display) {
                     nativeBacklightRow
-                    Text("The real backlight, matching macOS's brightness level. Software dimming stays under Advanced.")
+                    Text("This is the **real backlight** — the same hardware level as macOS's own brightness control. To go **dimmer than the panel's hardware minimum** (e.g. a dark room), turn on Software dimming under Advanced.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Label("No adjustable backlight", systemImage: "laptopcomputer")
                         .foregroundStyle(.secondary)
@@ -244,7 +245,7 @@ struct DisplayDetailView: View {
             } else if !displayPreferences.gammaControlsEnabled {
                 advancedCaption("Turn on “Use software dimming” to adjust software brightness.")
             } else {
-                advancedCaption("Dims the **image** via the color tables — it does not change the real backlight above. Use it to go dimmer than the monitor allows; heavy use can cause banding. (Contrast is a DDC control on external monitors only.)")
+                advancedCaption("Darkens the **image** with the color tables, stacked on top of the real backlight above — so the screen can go **below its hardware-minimum brightness**. It never touches the backlight itself; heavy use can cause slight banding.")
             }
         }
     }
@@ -253,9 +254,9 @@ struct DisplayDetailView: View {
     private var scheduleContent: some View {
         advancedGroup("Schedule — automatic", help: HelpText.schedule, helpTitle: "Scheduled brightness & contrast") {
             if display.isBuiltIn, store.canUseNativeBrightness(display) {
-                // macOS already manages the built-in backlight (auto-brightness, Night Shift);
+                // macOS already manages the built-in backlight (auto-brightness / ambient sensor);
                 // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
-                advancedCaption("The built-in display's brightness follows macOS (auto-brightness, Night Shift), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
+                advancedCaption("The built-in display's brightness is managed by macOS (auto-brightness), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
             } else {
                 advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
                 if displayPreferences.scheduleBrightness {

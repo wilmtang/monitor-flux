@@ -17,9 +17,8 @@ struct FluxCurveEditor: View {
     let transitionMinutes: Int
     /// The minute being scrub-previewed (drives the prominent marker), or `nil` for "showing now".
     var previewMinute: Int? = nil
-    /// Whether the now-marker can be dragged to scrub a preview (only when a schedule is active).
-    var isPreviewable: Bool = false
-    /// Called with the dragged minute-of-day as the user scrubs the time marker.
+    /// Called with the dragged minute-of-day as the user scrubs the time marker. Dragging works in
+    /// any mode — the store switches to the clock schedule when it fires.
     var onPreview: (Int) -> Void = { _ in }
 
     private let minKelvin = ControlRanges.kelvin.lowerBound
@@ -62,9 +61,9 @@ struct FluxCurveEditor: View {
                 if previewMinute != nil {
                     marker(at: nowMinute, in: size, prominent: false, draggable: false)
                 }
-                // The active marker — the live now, or the scrubbed preview. Drag it (in a clock
-                // schedule) to preview the screen's warmth at that time.
-                marker(at: activeMinute, in: size, prominent: true, draggable: isPreviewable)
+                // The active marker — the live now, or the scrubbed preview. Always draggable;
+                // dragging previews the screen's warmth at that time (and adopts clock mode).
+                marker(at: activeMinute, in: size, prominent: true, draggable: true)
             }
         }
     }

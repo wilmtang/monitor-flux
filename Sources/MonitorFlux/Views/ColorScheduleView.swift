@@ -86,7 +86,6 @@ struct ColorScheduleView: View {
                     sunsetStartMinutes: preferenceBinding(\.sunsetStartMinutes),
                     transitionMinutes: store.preferences.transitionMinutes,
                     previewMinute: store.schedulePreviewMinute,
-                    isPreviewable: store.preferences.gammaEnabled && store.preferences.colorMode == .clock,
                     onPreview: { store.previewScheduleColor(atMinute: $0) }
                 )
                 .background(
@@ -277,9 +276,7 @@ struct ColorScheduleView: View {
                 }
                 .foregroundStyle(.orange)
             } else {
-                Text(store.preferences.colorMode == .clock
-                    ? "Drag the time line to preview · drag a dot to set its warmth"
-                    : "Drag each dot to set its time & warmth")
+                Text("Drag the time line to preview · drag a dot to set its warmth")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

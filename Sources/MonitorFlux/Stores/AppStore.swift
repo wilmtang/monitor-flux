@@ -139,6 +139,18 @@ final class AppStore: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // End any schedule-curve preview when the settings window loses key focus — switching
+        // apps, clicking another window, or closing it — so a temporary preview never strands the
+        // user on a previewed color.
+        NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)
+            .sink { [weak self] notification in
+                guard let self, (notification.object as? NSWindow) === self.mainWindow else {
+                    return
+                }
+                self.clearSchedulePreview()
+            }
+            .store(in: &cancellables)
+
         // Custom global shortcuts use Carbon hot keys, which (unlike the media-key tap) need
         // no Accessibility permission, so they're registered independently of that toggle.
         hotKeyCenter.onAction = { [weak self] action in
@@ -212,6 +224,9 @@ final class AppStore: ObservableObject {
     }
 
     func refreshDisplays() {
+        // A display change (or the Refresh button) ends any schedule preview, so the user isn't
+        // stranded on a previewed color; the reconcile below re-applies the live color.
+        schedulePreviewMinute = nil
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays() + mockDisplaySpecs.map(\.display)
@@ -1069,12 +1084,21 @@ final class AppStore: ObservableObject {
     /// (called when the settings window reloads) restores the live color. The stored preferences
     /// are never touched, so nothing about the real schedule changes.
     func previewScheduleColor(atMinute minute: Int) {
-        guard preferences.gammaEnabled else {
-            return
-        }
         let clamped = minute.clamped(to: ControlRanges.minuteOfDay)
         schedulePreviewMinute = clamped
-        applySchedulePreview(clamped)
+        // Scrubbing the time line commits to the schedule: adopt clock mode (turning Warmth on if
+        // it was off, or switching from Manual), so the preview reflects the schedule the user is
+        // now exploring. That mode change is real and persists; the preview itself stays temporary.
+        if !preferences.gammaEnabled || preferences.colorMode != .clock {
+            updateGlobalPreferences { preferences in
+                preferences.gammaEnabled = true
+                preferences.colorMode = .clock
+            }
+            // updateGlobalPreferences → reconcileColor, which honors schedulePreviewMinute and
+            // applies the preview.
+        } else {
+            applySchedulePreview(clamped)
+        }
     }
 
     /// Drop any active schedule preview and restore the live color. Idempotent.
@@ -1177,7 +1201,7 @@ final class AppStore: ObservableObject {
 
     private func applyScheduledBrightness(_ value: Int, for display: DisplayInfo) {
         if display.isBuiltIn {
-            // The built-in backlight is macOS-managed (auto-brightness, Night Shift). Forcing
+            // The built-in backlight is macOS-managed (auto-brightness / ambient sensor). Forcing
             // a scheduled level onto it fights macOS and jumps the brightness on every launch,
             // so leave the real backlight to macOS. Only software-dim built-ins that expose no
             // backlight API at all.
