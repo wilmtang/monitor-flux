@@ -253,6 +253,9 @@ final class AppStore: ObservableObject {
         refreshNativeBrightness()
         refreshAudioCapability()
         refreshDDCCapability()
+        // The non-drag entry point for conflict detection (reconcileColor no longer does it). Runs
+        // before the re-apply below so it reads the on-screen LUT, not the one we're about to write.
+        refreshGammaConflictState()
         if !seedMissingDisplayPreferences() {
             reconcileColor()
         }
@@ -1075,18 +1078,13 @@ final class AppStore: ObservableObject {
             colorMessage = "Safe mode — gamma not applied"
             return
         }
-        // Read the LUT back (before re-applying) to notice another gamma app fighting us.
-        // A freshly-detected conflict un-dismisses the banner so it reappears.
-        if preferences.gammaEnabled {
-            let detected = gammaService.detectsForeignGammaChange(displays: displays)
-            if detected, !gammaConflictDetected {
-                gammaConflictBannerDismissed = false
-            }
-            gammaConflictDetected = detected
-            // We can't ask the OS which process wrote the gamma table, so name any known gamma
-            // app that's running as the likely cause.
-            gammaConflictApps = detected ? GammaConflictApp.runningConflictingAppNames() : []
-        } else {
+        // Turning Warmth off clears the conflict banner immediately — that's cheap (no LUT read), so
+        // it stays here for a responsive feel. Detecting a *new* conflict is the expensive part (a
+        // per-display LUT read-back, plus a running-app scan on a hit) and must NOT run here: this
+        // method fires on every warmth/software-dim slider tick. `refreshGammaConflictState` does the
+        // detection on the 60s timer and on display refresh, where an occasional check is plenty — a
+        // foreign gamma app is a persistent condition, not one that appears between two drag frames.
+        if !preferences.gammaEnabled {
             gammaConflictDetected = false
             gammaConflictApps = []
         }
@@ -1095,6 +1093,28 @@ final class AppStore: ObservableObject {
             preferences: preferences
         )
         colorMessage = summary.message
+    }
+
+    /// Read the gamma LUT back to notice another app (Night Shift, f.lux…) fighting us for the
+    /// single-owner gamma tables, naming the likely culprit. Deliberately kept off the per-drag
+    /// `reconcileColor` path: the read-back is a CoreGraphics round-trip per display and, on a hit,
+    /// an `NSWorkspace` running-app scan — fine once on the 60s timer or after a display change,
+    /// wasteful at slider-drag frequency. Must run *before* `gammaService.apply` re-asserts our table
+    /// (which would mask the foreign change). A freshly-detected conflict un-dismisses the banner.
+    private func refreshGammaConflictState() {
+        guard !safeMode, preferences.gammaEnabled else {
+            gammaConflictDetected = false
+            gammaConflictApps = []
+            return
+        }
+        let detected = gammaService.detectsForeignGammaChange(displays: displays)
+        if detected, !gammaConflictDetected {
+            gammaConflictBannerDismissed = false
+        }
+        gammaConflictDetected = detected
+        // We can't ask the OS which process wrote the gamma table, so name any known gamma app
+        // that's running as the likely cause.
+        gammaConflictApps = detected ? GammaConflictApp.runningConflictingAppNames() : []
     }
 
     // MARK: - Schedule preview (scrub the curve to preview the screen's warmth)
@@ -1231,8 +1251,11 @@ final class AppStore: ObservableObject {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.reconcileColor()
-                self?.applyScheduledHardware()
+                guard let self else { return }
+                // Detection reads the LUT, so it must run before reconcileColor re-applies our table.
+                self.refreshGammaConflictState()
+                self.reconcileColor()
+                self.applyScheduledHardware()
             }
         }
         timer?.tolerance = 10

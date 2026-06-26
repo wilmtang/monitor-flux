@@ -110,6 +110,11 @@ pkill -x MonitorFlux || true
   `GammaCompositor`. Never add a second gamma writer.
 - `GammaTemperatureService` must avoid repeated identical writes. Repeated gamma
   writes can cause visible flicker.
+- Keep gamma-conflict *detection* off the per-drag path. `reconcileColor` runs on every
+  warmth/software-dim slider tick, so the LUT read-back + running-app scan that spot a foreign
+  gamma app live in `AppStore.refreshGammaConflictState` (driven by the 60s timer and display
+  refreshes), never in `reconcileColor`. A foreign gamma app is a persistent condition, so a
+  periodic check is enough — and detection must run before `apply` re-asserts our table.
 - Normalize preferences with `ControlRanges` before saving or using values.
 - Keep hardware DDC separate from gamma controls in naming, state, and UI.
 - Do not make Homebrew tools required. `ddcctl` is fallback only, and it is
