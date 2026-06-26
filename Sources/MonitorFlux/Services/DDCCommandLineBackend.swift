@@ -115,10 +115,14 @@ struct DDCCommandLineBackend: Sendable {
         process.standardError = outputPipe
 
         try process.run()
+        // Drain the pipe *before* waiting. stdout and stderr share one pipe, so if ddcctl ever wrote
+        // more than the ~64KB pipe buffer, waitUntilExit() would deadlock with no reader. Reading to
+        // EOF returns when the child closes its end (i.e. exits), so this both drains the output and
+        // waits for completion; the waitUntilExit() below then just reaps the finished process.
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
             let output = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             throw DDCBackendError.commandFailed(output)
