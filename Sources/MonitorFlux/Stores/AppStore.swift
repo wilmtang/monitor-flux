@@ -250,6 +250,7 @@ final class AppStore: ObservableObject {
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays() + mockDisplaySpecs.map(\.display)
+        pruneDisplayKeyedState()
         refreshNativeBrightness()
         refreshAudioCapability()
         refreshDDCCapability()
@@ -264,6 +265,32 @@ final class AppStore: ObservableObject {
         // Match shade overlays to the current AirPlay/virtual displays (and drop any for
         // displays that just disconnected).
         reconcileShades()
+    }
+
+    /// Drop per-display bookkeeping for monitors that are no longer connected. Most display-keyed
+    /// caches (`nativeBrightness`, `ddcCapableByID`, `displaysWithAudio`) are rebuilt wholesale on
+    /// each refresh and the gamma service prunes its own, but the schedule's last-written targets and
+    /// the DDC throttle timestamps are only ever touched for *live* displays — so a monitor that
+    /// comes and goes leaves a stale entry behind. Each is a few bytes and `CGDirectDisplayID`s are
+    /// reused, so the growth is tiny, but it's unbounded over a long uptime; prune on every change.
+    private func pruneDisplayKeyedState() {
+        let liveIDs = Set(displays.map(\.id))
+        lastScheduledBrightness = lastScheduledBrightness.filter { liveIDs.contains($0.key) }
+        lastScheduledContrast = lastScheduledContrast.filter { liveIDs.contains($0.key) }
+        // ddcLastWrite / ddcWriteWorkItems are keyed "<displayID>.<control>"; keep only live ones.
+        let isLiveKey: (String) -> Bool = { key in
+            guard let idText = key.split(separator: ".").first,
+                  let id = CGDirectDisplayID(idText)
+            else {
+                return false
+            }
+            return liveIDs.contains(id)
+        }
+        ddcLastWrite = ddcLastWrite.filter { isLiveKey($0.key) }
+        for key in ddcWriteWorkItems.keys.filter({ !isLiveKey($0) }) {
+            ddcWriteWorkItems[key]?.cancel()
+            ddcWriteWorkItems[key] = nil
+        }
     }
 
     /// Drive each AirPlay/virtual display's shade overlay from its software-brightness value.
