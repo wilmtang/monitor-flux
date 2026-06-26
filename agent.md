@@ -133,7 +133,9 @@ pkill -x MonitorFlux || true
   forcing a level fights macOS and jumps brightness on launch. Only *user-initiated* actions
   touch it: the manual native-backlight slider, and custom hotkeys (which pass
   `allowBuiltIn: true` to `adjustBrightnessUnderCursor`, since a custom combo has no macOS
-  fallback). External-display brightness/contrast always go through DDC.
+  fallback). External-display **contrast** always goes through DDC; external **brightness** uses
+  DDC when the panel supports it, else falls back to software (gamma/shade) dimming — the same
+  fallback the live brightness slider uses, so scheduled brightness still works on non-DDC monitors.
 - Saved DDC brightness/contrast is re-applied to **external** displays on launch/reconnect
   (`restoreHardwareSettings`); never re-apply to the built-in.
 - **AirPlay/virtual displays ignore gamma.** Detect them with `CoreDisplayInfo.isVirtual` and

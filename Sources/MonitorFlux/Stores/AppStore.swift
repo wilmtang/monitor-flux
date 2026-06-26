@@ -1279,11 +1279,25 @@ final class AppStore: ObservableObject {
             guard !canUseNativeBrightness(display) else {
                 return
             }
-            updateDisplayPreferences(for: display) { displayPreferences in
-                displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.gammaBrightnessPercent)
-            }
-        } else {
+            applyScheduledSoftwareBrightness(value, for: display)
+        } else if canUseDDC(for: display) {
             setHardwareBrightness(value, for: display)
+        } else {
+            // External display with no DDC path to its backlight (some USB-C / DisplayLink docks,
+            // and AirPlay/virtual screens): fall back to software dimming, exactly as the live
+            // brightness slider does (QuickControlsView). Without this the schedule would mutate
+            // stored prefs but never actually change the screen.
+            applyScheduledSoftwareBrightness(value, for: display)
+        }
+    }
+
+    /// Software (gamma / shade) dimming for the schedule — the fallback when a display has no real
+    /// backlight to drive. The `gammaBrightness` write rides the normal didSet → reconcileColor /
+    /// reconcileShades path, dimming wired panels via the color tables and AirPlay/virtual screens
+    /// via the shade overlay.
+    private func applyScheduledSoftwareBrightness(_ value: Int, for display: DisplayInfo) {
+        updateDisplayPreferences(for: display) { displayPreferences in
+            displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.gammaBrightnessPercent)
         }
     }
 
