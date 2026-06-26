@@ -94,8 +94,9 @@ pkill -x MonitorFlux || true
 - `Views/FluxCurveEditor.swift` + `Services/ColorSchedule.swift`: the schedule curve. A draggable
   "now" marker scrub-previews how the screen will look at any time — warmth via
   `AppStore.previewScheduleColor` (`schedulePreviewMinute`, a gamma override that doesn't touch
-  stored prefs), plus each external display's **scheduled brightness/contrast** at that time (the
-  live schedule is suspended while previewing; `restoreScheduledHardwareAfterPreview` puts the
+  stored prefs), plus each DDC external display's **scheduled brightness/contrast** at that time,
+  sent transiently to the monitor firmware via `previewHardwareDDC` with **no stored-pref writes**
+  (the live schedule is suspended while previewing; `restoreScheduledHardwareAfterPreview` puts the
   now-targets back on exit). Dragging the marker — or editing **any** schedule control (a curve
   dot, wake/bedtime, a phase temp, the fade, via `scheduleEditBinding`) — adopts clock mode. The
   preview is always temporary: `clearSchedulePreview` restores the live values whenever the Schedule

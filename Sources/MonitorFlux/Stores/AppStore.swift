@@ -1154,9 +1154,10 @@ final class AppStore: ObservableObject {
         colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(temperature) K"
     }
 
-    /// During a scrub preview, drive each external display's scheduled brightness/contrast to its
-    /// value at the previewed time (when that schedule is on). Uses the normal throttled DDC path;
-    /// the live (now) schedule is suspended while previewing (see `applyScheduledHardware`), and
+    /// During a scrub preview, drive each DDC external display's scheduled brightness/contrast to
+    /// its value at the previewed time (when that schedule is on). Sent straight to the monitor
+    /// firmware via `previewHardwareDDC` so the preview never rewrites stored prefs; the live (now)
+    /// schedule is suspended while previewing (see `applyScheduledHardware`), and
     /// `restoreScheduledHardwareAfterPreview` puts the now-targets back when the preview ends.
     private func previewScheduledHardware(atMinute minute: Int) {
         let effective = ColorSchedule.solarAdjustedPreferences(preferences)
@@ -1170,7 +1171,7 @@ final class AppStore: ObservableObject {
                     preferences: effective,
                     minuteOfDay: minute
                 )
-                setHardwareBrightness(target, for: display)
+                previewHardwareDDC(.brightness, value: target, label: "brightness", for: display)
             }
             if displayPreferences.scheduleContrast {
                 let target = ColorSchedule.scheduledHardwareLevel(
@@ -1180,8 +1181,31 @@ final class AppStore: ObservableObject {
                     preferences: effective,
                     minuteOfDay: minute
                 )
-                setHardwareContrast(target, for: display)
+                previewHardwareDDC(.contrast, value: target, label: "contrast", for: display)
             }
+        }
+    }
+
+    /// Send a brightness/contrast value to a display's DDC firmware *without* persisting it — the
+    /// transient path the schedule scrub-preview uses, so scrubbing the curve never rewrites the
+    /// user's stored hardware prefs (unlike `setHardwareBrightness`/`setHardwareContrast`). Throttled
+    /// under the same per-control key as the live drag, so a continuous scrub doesn't flood the I2C
+    /// bus and the post-preview now-write cleanly supersedes any still-pending preview write.
+    private func previewHardwareDDC(_ kind: DDCControlKind, value: Int, label: String, for display: DisplayInfo) {
+        let clamped = value.clamped(to: ControlRanges.hardwarePercent)
+        let displayIndex = displayPreferences(for: display).ddcDisplayIndex
+        let suffix = switch kind {
+        case .brightness: "b"
+        case .contrast: "c"
+        }
+        scheduleDDC(key: "\(display.id).\(suffix)", for: display) { [weak self] in
+            self?.runDDCCommand(
+                kind: kind,
+                label: label,
+                display: display,
+                value: clamped,
+                displayIndex: displayIndex
+            )
         }
     }
 
