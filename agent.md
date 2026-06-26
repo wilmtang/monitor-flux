@@ -70,6 +70,9 @@ pkill -x MonitorFlux || true
   Two delivery paths exist: external USB keyboards send `NSSystemDefined` subtype 8
   (key code in the high 16 bits of `data1`, `isKeyDown == (keyFlags & 0xFF00) >> 8 == 0x0A`),
   the **built-in** keyboard sends brightness as plain `keyDown` 144/145 — the tap handles both.
+  The shortcut **recorder** (`ShortcutRecorder.mediaShortcut(from:)`) normalizes the same two
+  paths, so recording a brightness key always yields a media binding rather than a stray Carbon
+  key-code-144 keyboard shortcut, and Option+brightness still passes through to macOS.
 - `Services/OSDController.swift` + `Services/NativeOSD.swift`: the on-screen bezel.
   Brightness/volume use the **private `OSDManager`** (OSD.framework) so they're pixel-identical
   to macOS's own bezel (the MonitorControl approach); contrast and color/warmth have no native

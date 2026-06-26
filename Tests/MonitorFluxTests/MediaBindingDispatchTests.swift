@@ -87,6 +87,28 @@ final class MediaBindingDispatchTests: XCTestCase {
         XCTAssertNotNil(ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.control]))
     }
 
+    func testRecorderParsesModernBrightnessKeyByCode() {
+        // The keyDown delivery path (modern Apple silicon) resolves the virtual key code to a
+        // MediaKey code, then shares this parser — so it must apply the same Option / managed rules
+        // as the NSSystemDefined path instead of falling through to a Carbon keyboard shortcut.
+        let code = MediaKey.code(forVirtualKeyCode: MediaKey.brightnessUpVirtualKeyCode)!
+        // Bare brightness key → a media binding (the key itself is the shortcut).
+        XCTAssertEqual(
+            ShortcutRecorder.mediaShortcut(code: code, modifierFlags: []),
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp)
+        )
+        // Command → a real binding modifier (built-in-display shortcut set).
+        XCTAssertEqual(
+            ShortcutRecorder.mediaShortcut(code: code, modifierFlags: [.command]),
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, command: true)
+        )
+        // Option belongs to macOS → nil, so the recorder passes it through instead of recording a
+        // stray Carbon key-code-144 shortcut.
+        XCTAssertNil(ShortcutRecorder.mediaShortcut(code: code, modifierFlags: [.option]))
+        // A non-managed code is rejected.
+        XCTAssertNil(ShortcutRecorder.mediaShortcut(code: 99, modifierFlags: [.command]))
+    }
+
     func testModernBrightnessVirtualKeyCodesMapToMediaCodes() {
         // On Apple silicon the dedicated brightness keys come through as plain keyDown events with
         // these virtual key codes; they must normalize onto the brightness media-key codes.

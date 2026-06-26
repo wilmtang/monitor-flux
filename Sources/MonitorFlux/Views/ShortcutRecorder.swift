@@ -172,6 +172,15 @@ struct ShortcutRecorder: View {
                 return nil
             }
 
+            // A dedicated brightness key arriving as a plain keyDown (modern Apple silicon, codes
+            // 144/145) is not an ordinary key — never record it as a Carbon keyboard shortcut. If it
+            // didn't resolve to a media binding above, Option was held (which belongs to macOS), so
+            // let it pass through to the system untouched.
+            if event.type == .keyDown,
+               MediaKey.code(forVirtualKeyCode: Int(event.keyCode)) != nil {
+                return event
+            }
+
             guard event.type == .keyDown else {
                 return event
             }
@@ -222,29 +231,51 @@ struct ShortcutRecorder: View {
     }
 
     static func mediaShortcut(from event: NSEvent) -> MediaKeyShortcut? {
-        guard event.type == .systemDefined,
-              event.subtype.rawValue == 8 else {
+        switch event.type {
+        case .systemDefined:
+            // Classic aux-button media keys (volume, and brightness on older Macs / external USB
+            // keyboards): the key code and press/release state are packed into `data1`.
+            guard event.subtype.rawValue == 8 else {
+                return nil
+            }
+            return mediaShortcut(data1: event.data1, modifierFlags: event.modifierFlags)
+        case .keyDown:
+            // Modern Apple silicon delivers the dedicated brightness keys as ordinary keyDown
+            // events (virtual key codes 144/145), not NSSystemDefined. Map them onto the same
+            // media-key codes so recording a brightness key produces a media binding — mirroring
+            // the live tap's `resolveMediaKey`, which already handles both delivery paths.
+            guard let code = MediaKey.code(forVirtualKeyCode: Int(event.keyCode)) else {
+                return nil
+            }
+            return mediaShortcut(code: code, modifierFlags: event.modifierFlags)
+        default:
             return nil
         }
-        return mediaShortcut(data1: event.data1, modifierFlags: event.modifierFlags)
     }
 
     nonisolated static func mediaShortcut(data1: Int, modifierFlags: NSEvent.ModifierFlags) -> MediaKeyShortcut? {
-        // Option + media keys belongs to macOS (e.g. opens Display/Sound preferences).
-        guard !modifierFlags.contains(.option) else {
-            return nil
-        }
         let keyCode = Int((data1 & 0xFFFF_0000) >> 16)
-        guard MediaKey.managed.contains(keyCode) else {
-            return nil
-        }
         let keyFlags = data1 & 0x0000_FFFF
         let isKeyDown = ((keyFlags & 0xFF00) >> 8) == 0x0A
         guard isKeyDown else {
             return nil
         }
+        return mediaShortcut(code: keyCode, modifierFlags: modifierFlags)
+    }
+
+    /// Build a media-key shortcut from an already-resolved `MediaKey` code, applying the rules
+    /// shared by both delivery paths: Option belongs to macOS, and only managed keys (brightness /
+    /// volume) are bindable.
+    nonisolated static func mediaShortcut(code: Int, modifierFlags: NSEvent.ModifierFlags) -> MediaKeyShortcut? {
+        // Option + media keys belongs to macOS (e.g. opens Display/Sound preferences).
+        guard !modifierFlags.contains(.option) else {
+            return nil
+        }
+        guard MediaKey.managed.contains(code) else {
+            return nil
+        }
         return MediaKeyShortcut(
-            keyCode: keyCode,
+            keyCode: code,
             control: modifierFlags.contains(.control),
             shift: modifierFlags.contains(.shift),
             command: modifierFlags.contains(.command)
