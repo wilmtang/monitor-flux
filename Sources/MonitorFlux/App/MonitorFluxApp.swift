@@ -63,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // app to the foreground or stealing focus from the developer's current work.
             store?.showMainWindow(activating: false)
         case "activate":
-            // Like "1", but key/active so window-scoped keyboard shortcuts (⌘+/⌘-/⌘0 zoom,
+            // Like "1", but key/active so window-scoped keyboard shortcuts (⌃⌘S sidebar toggle,
             // ⌘⇧D) can be exercised during verification. Steals focus — verification only.
             store?.showMainWindow(activating: true)
         case "reopen":

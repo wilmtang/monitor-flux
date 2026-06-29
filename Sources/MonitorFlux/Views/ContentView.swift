@@ -3,9 +3,13 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selection: AppSelection? = .general
+    // Bound so a sidebar collapsed by dragging the divider can always be brought back via the
+    // toolbar toggle below — without it, NavigationSplitView's drag-to-collapse strands the user
+    // with no sidebar and no way to restore it.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
                 Section {
                     Label("General", systemImage: "gearshape")
@@ -37,6 +41,17 @@ struct ContentView: View {
         } detail: {
             detailView
                 .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            withAnimation(.snappy(duration: 0.18)) {
+                                columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+                            }
+                        } label: {
+                            Label("Toggle Sidebar", systemImage: "sidebar.left")
+                        }
+                        .keyboardShortcut("s", modifiers: [.control, .command])
+                        .help("Show or hide the sidebar")
+                    }
                     ToolbarItem {
                         Button {
                             store.refreshDisplays()

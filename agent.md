@@ -40,7 +40,9 @@ pkill -x MonitorFlux || true
   view is `.frame(idealWidth:idealHeight:)`-pinned so the controller doesn't size the window
   to the tall detail pane (that produced an off-screen ~880x3305 "blank" window). Detail
   panes scroll internally (`ColorScheduleView` is a `ScrollView`). Default content size is
-  `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch.
+  `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch. The
+  sidebar is collapsible by dragging the divider, so `ContentView` binds `columnVisibility` and
+  adds a toolbar sidebar toggle (⌃⌘S) — otherwise a collapsed sidebar can't be brought back.
 - `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
   (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
   unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level
