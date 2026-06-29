@@ -33,19 +33,26 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 LabeledContent("Window zoom") {
-                    HStack(spacing: 8) {
-                        Button("−") { store.decreaseFontSize() }
-                            .buttonStyle(.borderless)
-                            .disabled(store.preferences.fontSizeStep <= AppPreferences.fontSizeStepRange.lowerBound)
+                    HStack(spacing: 6) {
                         Text("\(Int((store.preferences.settingsZoomScale * 100).rounded()))%")
                             .monospacedDigit()
-                            .frame(minWidth: 36, alignment: .center)
-                        Button("+") { store.increaseFontSize() }
-                            .buttonStyle(.borderless)
-                            .disabled(store.preferences.fontSizeStep >= AppPreferences.fontSizeStepRange.upperBound)
-                        Divider().frame(height: 14)
+                            .frame(minWidth: 40, alignment: .trailing)
+                        Stepper(
+                            "",
+                            value: Binding(
+                                get: { store.preferences.fontSizeStep },
+                                set: { newStep in
+                                    if newStep > store.preferences.fontSizeStep {
+                                        store.increaseFontSize()
+                                    } else {
+                                        store.decreaseFontSize()
+                                    }
+                                }
+                            ),
+                            in: AppPreferences.fontSizeStepRange
+                        )
+                        .labelsHidden()
                         Button("Reset") { store.resetFontSize() }
-                            .buttonStyle(.borderless)
                             .disabled(store.preferences.fontSizeStep == AppPreferences.defaultFontSizeStep)
                     }
                 }
