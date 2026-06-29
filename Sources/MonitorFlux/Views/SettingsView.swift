@@ -32,6 +32,26 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                LabeledContent("Window zoom") {
+                    HStack(spacing: 8) {
+                        Button("−") { store.decreaseFontSize() }
+                            .buttonStyle(.borderless)
+                            .disabled(store.preferences.fontSizeStep <= AppPreferences.fontSizeStepRange.lowerBound)
+                        Text("\(Int((store.preferences.settingsZoomScale * 100).rounded()))%")
+                            .monospacedDigit()
+                            .frame(minWidth: 36, alignment: .center)
+                        Button("+") { store.increaseFontSize() }
+                            .buttonStyle(.borderless)
+                            .disabled(store.preferences.fontSizeStep >= AppPreferences.fontSizeStepRange.upperBound)
+                        Divider().frame(height: 14)
+                        Button("Reset") { store.resetFontSize() }
+                            .buttonStyle(.borderless)
+                            .disabled(store.preferences.fontSizeStep == AppPreferences.defaultFontSizeStep)
+                    }
+                }
+                Text("Scales this settings window. Also ⌘+ / ⌘− / ⌘0.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Keyboard") {

@@ -103,6 +103,7 @@ final class AppStore: ObservableObject {
     /// Software dimming for AirPlay/virtual displays, which ignore gamma (see `ShadeController`).
     private let shadeController = ShadeController()
     private var mainWindow: MainWindow?
+    private var zoomContainerView: ZoomContainerView?
     private var onboardingWindow: NSWindow?
     private var timer: Timer?
     /// Trailing (coalesced) DDC writes per control, and the last time each one actually
@@ -516,6 +517,7 @@ final class AppStore: ObservableObject {
         updateGlobalPreferences {
             $0.fontSizeStep = step.clamped(to: AppPreferences.fontSizeStepRange)
         }
+        zoomContainerView?.setScale(preferences.settingsZoomScale)
     }
 
     /// The app launches as a menu-bar accessory (no Dock icon). It shows a Dock icon
@@ -587,8 +589,23 @@ final class AppStore: ObservableObject {
                 minWidth: 620, idealWidth: Self.mainWindowDefaultSize.width, maxWidth: .infinity,
                 minHeight: 500, idealHeight: Self.mainWindowDefaultSize.height, maxHeight: .infinity
             )
-        let controller = NSHostingController(rootView: root)
-        let window = MainWindow(contentViewController: controller)
+        let hosting = NSHostingController(rootView: root)
+
+        // ZoomContainerView lays the hosting view out at bounds/scale, applies a CALayer
+        // transform to scale it back up visually, and overrides hitTest to map click
+        // coordinates through the inverse scale — so every click lands on the visible
+        // control regardless of zoom level. ZoomWrapperViewController owns the container
+        // as its view and keeps hosting as a child VC so the NavigationSplitView VC
+        // hierarchy requirement is satisfied without NSHostingController being the
+        // direct contentViewController (which would fight ZoomContainerView's sizing).
+        let container = ZoomContainerView()
+        container.install(hosting.view, scale: preferences.settingsZoomScale)
+        zoomContainerView = container
+
+        let wrapperVC = ZoomWrapperViewController(zoomView: container)
+        wrapperVC.addChild(hosting)
+
+        let window = MainWindow(contentViewController: wrapperVC)
         window.title = "MonitorFlux"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(Self.mainWindowDefaultSize)

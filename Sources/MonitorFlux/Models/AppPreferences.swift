@@ -218,6 +218,12 @@ struct AppPreferences: Codable, Equatable, Sendable {
     static let fontSizeStepRange = 0...6
     static let defaultFontSizeStep = 3
 
+    /// Maps fontSizeStep to a window zoom scale factor (1.0 = default, VS Code-style).
+    var settingsZoomScale: CGFloat {
+        let scales: [CGFloat] = [0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30]
+        return scales[fontSizeStep.clamped(to: Self.fontSizeStepRange)]
+    }
+
     enum CodingKeys: String, CodingKey {
         case gammaEnabled
         case colorMode
