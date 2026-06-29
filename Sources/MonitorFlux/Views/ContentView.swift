@@ -5,6 +5,19 @@ struct ContentView: View {
     @State private var selection: AppSelection? = .general
 
     var body: some View {
+        // macOS ignores Dynamic Type for these views, so ⌘+/⌘- zoom the content VS Code–style: the
+        // window keeps its size and everything inside scales. The content lays out at the window size
+        // ÷ scale, then scales up to fill, so a larger scale shows fewer logical points and the panes
+        // reflow / scroll — exactly like an editor zoom.
+        GeometryReader { proxy in
+            let scale = CGFloat(store.preferences.uiScale)
+            splitView
+                .frame(width: proxy.size.width / scale, height: proxy.size.height / scale)
+                .scaleEffect(scale, anchor: .topLeading)
+        }
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             List(selection: $selection) {
                 Section {
@@ -87,6 +100,22 @@ struct ContentView: View {
             // with ⌘⇧D. The MONITORFLUX_SELECT=diagnostics hook also jumps here for tests.
             Button("Show Diagnostics") { selection = .diagnostics }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+                .hidden()
+
+            // Window text size: ⌘+ / ⌘- / ⌘0. Hidden buttons are how this accessory app (no menu
+            // bar) wires window-scoped shortcuts. "+" and "=" both zoom in so it works with and
+            // without Shift.
+            Button("Increase text size") { store.increaseFontSize() }
+                .keyboardShortcut("+", modifiers: .command)
+                .hidden()
+            Button("Increase text size") { store.increaseFontSize() }
+                .keyboardShortcut("=", modifiers: .command)
+                .hidden()
+            Button("Decrease text size") { store.decreaseFontSize() }
+                .keyboardShortcut("-", modifiers: .command)
+                .hidden()
+            Button("Reset text size") { store.resetFontSize() }
+                .keyboardShortcut("0", modifiers: .command)
                 .hidden()
         }
     }

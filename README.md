@@ -78,8 +78,10 @@ for warmth.
 - The **menu bar popup** (`QuickControlsView`, `.menuBarExtraStyle(.window)`) is
   modeled after MonitorControl: a card per display with live brightness, contrast,
   and volume sliders (a custom `MonitorSlider` — rounded track, icon-in-track, no
-  tick marks), plus a global ambience (color-temperature) slider and an
-  Off/Manual/Schedule mode. Cards **drag-to-reorder** by their grip with an iOS-app-icon
+  tick marks), plus a global warmth (color-temperature) slider and an
+  Off/Fixed/Automatic mode. (On a schedule, dragging the warmth slider re-warms the
+  phase that's active right now and stays Automatic, rather than switching to Fixed.)
+  Cards **drag-to-reorder** by their grip with an iOS-app-icon
   lift-and-shuffle animation. DDC writes are debounced so dragging doesn't flood the
   I2C bus. The Settings/Quit rows highlight on hover and show their shortcuts. The
   app is menu-bar-first (no Dock icon by default; a "Show in Dock" setting toggles it).
@@ -89,20 +91,26 @@ for warmth.
   no native bezel for those). See `NativeOSD`.
 - The **Schedule** screen is modeled after f.lux preferences: three phase
   temperatures (Daytime / Sunset / Bedtime) over the same Kelvin range, a phase
-  selector, a draggable three-handle schedule curve, wake/bedtime controls, and a
-  **Manual times / Sunrise & sunset** source. In solar mode the daytime and sunset
-  anchors come from your location (CoreLocation + `SolarCalculator`). A **"now" marker**
-  rides the curve at the current time. **Drag it to preview** how the screen will look at any time
-  of day — the warmth *and* any scheduled brightness/contrast — and it adopts the clock schedule if
-  you weren't already on it (so does editing any dot, the wake/bedtime times, a phase temperature,
-  or the fade). The preview is always temporary: it resets when you leave or reload the Schedule
-  screen, switch away from the window, change the mode off the schedule, or hit Refresh — and the
-  real current-time marker stays visible (fainter) while you scrub.
+  selector, a draggable three-handle schedule curve, **wake / sunset / bedtime** time
+  steppers, and a **Set times / Sunrise & sunset** source. In **Sunrise & sunset** mode
+  the wake and sunset anchors come from your location (CoreLocation + `SolarCalculator`),
+  and the curve, dots, and steppers all show those computed times (bedtime stays your set
+  hour). A **"now" marker** rides the curve at the current time. **Drag it to preview** how
+  the screen will look at any time of day — the warmth *and* any scheduled brightness/contrast —
+  and it adopts the **Automatic** schedule if you weren't already on it (so does editing any dot,
+  a time, a phase temperature, or the fade). Editing a **time** (a dot or a stepper) also switches
+  the source to **Set times**, since you're then placing the times by hand. The preview is always
+  temporary: it resets when you leave or reload the Schedule screen, switch away from the window,
+  change the mode off the schedule, or hit Refresh — and the real current-time marker stays visible
+  (fainter) while you scrub.
   In-app ⓘ tooltips are short summaries; the deeper explanations live here in the README.
 - Each **Display** screen separates the monitor's real controls (DDC brightness/contrast, or
   the built-in backlight) from software gamma brightness and the day/night brightness schedule,
   with warmth enablement on top. **AirPlay/wireless** displays get a stripped-down pane — overlay
   dimming only — because they have no hardware controls and ignore gamma.
+- The settings window supports **⌘+ / ⌘− / ⌘0** to zoom its contents (VS Code–style: the window
+  keeps its size and everything inside scales, since macOS doesn't apply Dynamic Type here). The
+  chosen size is remembered.
 
 ## Keyboard control
 

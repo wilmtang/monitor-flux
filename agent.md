@@ -39,7 +39,14 @@ pkill -x MonitorFlux || true
   default `sizingOptions` MUST stay (clearing them also blanks the columns), and the root
   view is `.frame(idealWidth:idealHeight:)`-pinned so the controller doesn't size the window
   to the tall detail pane (that produced an off-screen ~880x3305 "blank" window). Detail
-  panes scroll internally (`ColorScheduleView` is a `ScrollView`).
+  panes scroll internally (`ColorScheduleView` is a `ScrollView`). Default content size is
+  `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch.
+- **Window text size** (`⌘+`/`⌘-`/`⌘0`, persisted as `AppPreferences.fontSizeStep`): macOS
+  ignores SwiftUI `.dynamicTypeSize` for these views, so `ContentView` zooms VS Code–style —
+  the window keeps its size and the content scales via a `GeometryReader` + `.scaleEffect`
+  (lay out at window÷scale, scale up to fill). Shortcuts are hidden `.keyboardShortcut` buttons
+  (same pattern as ⌘⇧D); `fontSizeStep` is excluded from `ColorSignature` so changing it never
+  rewrites gamma.
 - `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
   (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
   unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level
@@ -97,10 +104,15 @@ pkill -x MonitorFlux || true
   stored prefs), plus each DDC external display's **scheduled brightness/contrast** at that time,
   sent transiently to the monitor firmware via `previewHardwareDDC` with **no stored-pref writes**
   (the live schedule is suspended while previewing; `restoreScheduledHardwareAfterPreview` puts the
-  now-targets back on exit). Dragging the marker — or editing **any** schedule control (a curve
-  dot, wake/bedtime, a phase temp, the fade, via `scheduleEditBinding`) — adopts clock mode. The
-  preview is always temporary: `clearSchedulePreview` restores the live values whenever the Schedule
-  pane reloads, the settings window loses key focus, the mode leaves clock, or Refresh is tapped.
+  now-targets back on exit). Dragging the marker — or editing **any** schedule control — adopts
+  Automatic mode (`colorMode = .clock`): phase temps and the fade go through `scheduleEditBinding`,
+  while the wake/sunset/bedtime **times** go through `timeAnchorBinding`, which additionally pins the
+  source to **Set times** (`.manualTimes`) — hand-placing a time means you're setting it, and a solar
+  source would otherwise recompute over it. `timeAnchorBinding` also *reads* the solar-adjusted
+  ("effective") anchor, so in Sunrise & sunset mode the curve, dots, and steppers show the computed
+  sunrise/sunset (`ColorSchedule.solarAdjustedPreferences`). The preview is always temporary:
+  `clearSchedulePreview` restores the live values whenever the Schedule pane reloads, the settings
+  window loses key focus, the mode leaves clock, or Refresh is tapped.
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
 - `Tests/`: pure behavior tests; avoid tests that write real gamma or DDC.
 

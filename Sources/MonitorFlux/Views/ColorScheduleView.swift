@@ -90,9 +90,9 @@ struct ColorScheduleView: View {
                     dayTemperature: scheduleEditBinding(\.dayTemperature),
                     sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
                     nightTemperature: scheduleEditBinding(\.nightTemperature),
-                    warmStartMinutes: scheduleEditBinding(\.warmStartMinutes),
-                    coolStartMinutes: scheduleEditBinding(\.coolStartMinutes),
-                    sunsetStartMinutes: scheduleEditBinding(\.sunsetStartMinutes),
+                    warmStartMinutes: timeAnchorBinding(.bedtime),
+                    coolStartMinutes: timeAnchorBinding(.daytime),
+                    sunsetStartMinutes: timeAnchorBinding(.sunset),
                     transitionMinutes: store.preferences.transitionMinutes,
                     previewMinute: store.schedulePreviewMinute,
                     onPreview: { store.previewScheduleColor(atMinute: $0) }
@@ -104,26 +104,12 @@ struct ColorScheduleView: View {
 
                 curveLegend
 
-                HStack(spacing: 6) {
-                    Stepper(value: phaseStartBinding(for: .daytime, \.coolStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
-                        Text(MinuteFormatting.label(for: store.preferences.coolStartMinutes))
-                            .font(.title2)
-                            .foregroundStyle(.blue)
-                            .monospacedDigit()
-                    }
-                    Text("is when I wake up.")
-                        .font(.title3)
-                        .foregroundStyle(.blue.opacity(0.9))
-                    Spacer()
-                    Stepper(value: phaseStartBinding(for: .bedtime, \.warmStartMinutes), in: ControlRanges.minuteOfDay, step: 15) {
-                        Text(MinuteFormatting.label(for: store.preferences.warmStartMinutes))
-                            .font(.title2)
-                            .foregroundStyle(.orange)
-                            .monospacedDigit()
-                    }
-                    Text("is bedtime.")
-                        .font(.title3)
-                        .foregroundStyle(.orange.opacity(0.9))
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    timeStepper(.daytime, title: "Wake", tint: .blue)
+                    Spacer(minLength: 8)
+                    timeStepper(.sunset, title: "Sunset", tint: .orange)
+                    Spacer(minLength: 8)
+                    timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
                 }
 
                 if store.showsGammaConflictBanner {
@@ -144,26 +130,16 @@ struct ColorScheduleView: View {
             .padding(34)
 
             Form {
-                Section("Custom Colors") {
-                    Stepper(value: scheduleEditBinding(\.dayTemperature), in: ControlRanges.kelvin, step: 100) {
-                        LabeledContent("Daytime", value: "\(store.preferences.dayTemperature) K")
-                    }
-
-                    Stepper(value: scheduleEditBinding(\.sunsetTemperature), in: ControlRanges.kelvin, step: 100) {
-                        LabeledContent("Sunset", value: "\(store.preferences.sunsetTemperature) K")
-                    }
-
-                    Stepper(value: scheduleEditBinding(\.nightTemperature), in: ControlRanges.kelvin, step: 100) {
-                        LabeledContent("Bedtime", value: "\(store.preferences.nightTemperature) K")
-                    }
-
-                    Stepper(value: scheduleEditBinding(\.transitionMinutes), in: ControlRanges.transitionMinutes, step: 5) {
-                        LabeledContent("Fade", value: "\(store.preferences.transitionMinutes) min")
+                Section("Transition") {
+                    Picker("Fade", selection: scheduleEditBinding(\.transitionMinutes)) {
+                        ForEach(fadeOptions, id: \.self) { minutes in
+                            Text(fadeLabel(minutes)).tag(minutes)
+                        }
                     }
                 }
 
                 Section("Location & Sun") {
-                    Picker("Schedule from", selection: preferenceBinding(\.scheduleSource)) {
+                    Picker("Schedule from", selection: scheduleSourceBinding) {
                         ForEach(ScheduleSource.allCases) { source in
                             Text(source.label).tag(source)
                         }
@@ -228,7 +204,7 @@ struct ColorScheduleView: View {
     }
 
     private var editingLabel: String {
-        store.preferences.colorMode == .manual ? "Manual" : selectedPhase.label
+        store.preferences.colorMode == .manual ? ColorMode.manual.label : selectedPhase.label
     }
 
     private var statusHeadline: String {
@@ -253,8 +229,10 @@ struct ColorScheduleView: View {
     }
 
     private var scheduleSummary: String {
-        let wake = MinuteFormatting.label(for: store.preferences.coolStartMinutes)
-        let bed = MinuteFormatting.label(for: store.preferences.warmStartMinutes)
+        // Use the effective anchors so the summary matches the chart and steppers when following the
+        // sun (wake = today's sunrise), rather than the stored hand-set values underneath.
+        let wake = MinuteFormatting.label(for: effectivePreferences.startMinutes(for: .daytime))
+        let bed = MinuteFormatting.label(for: effectivePreferences.startMinutes(for: .bedtime))
         return "Wake \(wake), bedtime \(bed) (\(liveTemperature) K)"
     }
 
@@ -330,10 +308,11 @@ struct ColorScheduleView: View {
         }
     }
 
-    /// Like `preferenceBinding`, but editing the value also adopts the clock schedule (Warmth on,
-    /// mode → Schedule). Touching any schedule control — a curve dot, wake/bedtime, a phase
-    /// temperature, the fade — means the user wants the schedule, mirroring how dragging the time
-    /// line switches to it. Used only for schedule-shape controls, not Manual/location settings.
+    /// Like `preferenceBinding`, but editing the value also adopts the automatic schedule (Warmth on,
+    /// mode → Automatic). Touching a schedule shape — a phase temperature or the fade — means the user
+    /// wants the schedule, mirroring how dragging the time line switches to it. Used for the shape
+    /// controls that aren't time anchors (those use `timeAnchorBinding`, which additionally pins the
+    /// source to Set times); not for the Fixed-warmth or location settings.
     private func scheduleEditBinding<Value>(
         _ keyPath: WritableKeyPath<AppPreferences, Value>
     ) -> Binding<Value> {
@@ -348,25 +327,91 @@ struct ColorScheduleView: View {
         }
     }
 
-    /// Like `scheduleEditBinding`, for the wake/bedtime time anchors: the new minute is clamped to
-    /// keep the daytime → sunset → bedtime order (so wake can't cross sunset, bedtime can't cross
-    /// it from the other side), mirroring the clamp the curve handles use.
-    private func phaseStartBinding(
-        for phase: ColorPhase,
-        _ keyPath: WritableKeyPath<AppPreferences, Int>
-    ) -> Binding<Int> {
+    /// A binding for a phase's start *time*, shared by the curve handle and the time stepper.
+    ///
+    /// Read returns the *effective* anchor: when the source is Sunrise & sunset, wake and sunset come
+    /// from the day's computed solar times (bedtime is always the set hour), so the chart, dots, and
+    /// steppers all show what's actually applied. Write commits the edit via `commitTimeEdit`, which
+    /// switches the source to Set times — hand-placing a time means the user is setting it, and a
+    /// solar source would otherwise recompute over it.
+    private func timeAnchorBinding(_ phase: ColorPhase) -> Binding<Int> {
         Binding {
-            store.preferences[keyPath: keyPath]
+            effectivePreferences.startMinutes(for: phase)
         } set: { newValue in
+            commitTimeEdit(phase, rawMinute: newValue)
+        }
+    }
+
+    /// The preferences as the schedule actually applies them today: solar-adjusted when the source is
+    /// Sunrise & sunset (and the coordinates parse), otherwise the stored values verbatim.
+    private var effectivePreferences: AppPreferences {
+        ColorSchedule.solarAdjustedPreferences(store.preferences)
+    }
+
+    /// Commit a phase time edit (from a dragged dot or a stepper). If we were following the sun, first
+    /// freeze today's computed sunrise/sunset into the anchors so the other dots don't jump, then pin
+    /// the source to Set times with this edit applied — clamped to keep daytime → sunset → bedtime
+    /// order. Stays on the Automatic schedule (Warmth on); it never flips the mode to Fixed.
+    private func commitTimeEdit(_ phase: ColorPhase, rawMinute: Int) {
+        store.updateGlobalPreferences { preferences in
+            if preferences.scheduleSource == .solar {
+                let solar = ColorSchedule.solarAdjustedPreferences(preferences)
+                preferences.coolStartMinutes = solar.coolStartMinutes
+                preferences.sunsetStartMinutes = solar.sunsetStartMinutes
+                preferences.scheduleSource = .manualTimes
+            }
+            let clamped = ColorSchedule.clampedStartMinute(rawMinute, for: phase, preferences: preferences)
+            preferences.setStartMinutes(clamped, for: phase)
+            preferences.gammaEnabled = true
+            preferences.colorMode = .clock
+        }
+    }
+
+    /// The "Schedule from" binding. Switching from Sunrise & sunset to Set times freezes the times
+    /// currently shown (today's solar values) into the anchors, so the chart doesn't jump — it keeps
+    /// what you see rather than restoring an older hand-set value.
+    private var scheduleSourceBinding: Binding<ScheduleSource> {
+        Binding {
+            store.preferences.scheduleSource
+        } set: { newSource in
             store.updateGlobalPreferences { preferences in
-                preferences[keyPath: keyPath] = ColorSchedule.clampedStartMinute(
-                    newValue,
-                    for: phase,
-                    preferences: preferences
-                )
-                preferences.gammaEnabled = true
-                preferences.colorMode = .clock
+                if newSource == .manualTimes, preferences.scheduleSource == .solar {
+                    let solar = ColorSchedule.solarAdjustedPreferences(preferences)
+                    preferences.coolStartMinutes = solar.coolStartMinutes
+                    preferences.sunsetStartMinutes = solar.sunsetStartMinutes
+                }
+                preferences.scheduleSource = newSource
             }
         }
+    }
+
+    /// One of the three time steppers under the chart (Wake / Sunset / Bedtime). Shows the effective
+    /// time and nudges it in 15-min steps; editing routes through `timeAnchorBinding`.
+    private func timeStepper(_ phase: ColorPhase, title: String, tint: Color) -> some View {
+        Stepper(value: timeAnchorBinding(phase), in: ControlRanges.minuteOfDay, step: 15) {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(.callout)
+                    .foregroundStyle(tint.opacity(0.9))
+                Text(MinuteFormatting.label(for: effectivePreferences.startMinutes(for: phase)))
+                    .font(.title3)
+                    .foregroundStyle(tint)
+                    .monospacedDigit()
+            }
+            .lineLimit(1)
+            .fixedSize()
+        }
+    }
+
+    /// Discrete fade durations for the Fade menu. The stored value is always included so a value set
+    /// before the menu existed (the old stepper used 5-min steps, e.g. 50 min) still shows selected.
+    private var fadeOptions: [Int] {
+        let base = [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
+        let current = store.preferences.transitionMinutes
+        return base.contains(current) ? base : (base + [current]).sorted()
+    }
+
+    private func fadeLabel(_ minutes: Int) -> String {
+        minutes == 0 ? "Instant" : "\(minutes) min"
     }
 }

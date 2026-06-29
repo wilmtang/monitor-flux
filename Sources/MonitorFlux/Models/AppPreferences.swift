@@ -12,9 +12,9 @@ enum ColorMode: String, CaseIterable, Codable, Identifiable, Sendable {
         case .off:
             "Off"
         case .manual:
-            "Manual"
+            "Fixed"
         case .clock:
-            "Schedule"
+            "Automatic"
         }
     }
 }
@@ -29,7 +29,7 @@ enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .manualTimes:
-            "Manual times"
+            "Set times"
         case .solar:
             "Sunrise & sunset"
         }
@@ -201,6 +201,11 @@ struct AppPreferences: Codable, Equatable, Sendable {
     /// Show the developer-facing Diagnostics pane in the sidebar. Off by default (also reachable
     /// via ⌘⇧D); a toggle in General turns it on for people who want it.
     var showDiagnostics = false
+    /// Index into the settings window's zoom ladder (⌘+ / ⌘- / ⌘0). Maps to `Self.uiScales`;
+    /// `Self.fontSizeStepRange` bounds it and `Self.defaultFontSizeStep` is 100% (⌘0 resets here).
+    /// Persisted so the chosen size is remembered. macOS doesn't honor Dynamic Type for these views,
+    /// so the window scales the whole content geometrically (see `uiScale`).
+    var fontSizeStep = AppPreferences.defaultFontSizeStep
     var latitude = "47.6"
     var longitude = "-122.3"
     var displayPreferences: [String: DisplayPreferences] = [:]
@@ -212,6 +217,19 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var displayOrder: [String] = []
 
     static let defaults = AppPreferences()
+
+    /// The settings window's zoom ladder: the geometric scale at each `fontSizeStep`. Index 3 is
+    /// 100%. The bounds are deliberate — far enough to matter, short of breaking the layout.
+    static let uiScales: [Double] = [0.8, 0.9, 0.95, 1.0, 1.15, 1.3, 1.5]
+    /// Valid range for `fontSizeStep`, derived from `uiScales` so the two can't drift apart.
+    static let fontSizeStepRange = 0...(uiScales.count - 1)
+    /// The 100% step; ⌘0 resets `fontSizeStep` here.
+    static let defaultFontSizeStep = 3
+
+    /// The geometric zoom factor for the current step (defensively clamped to the ladder).
+    var uiScale: Double {
+        AppPreferences.uiScales[fontSizeStep.clamped(to: AppPreferences.fontSizeStepRange)]
+    }
 
     enum CodingKeys: String, CodingKey {
         case gammaEnabled
@@ -230,6 +248,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case keyboardControlEnabled
         case hasSeenOnboarding
         case showDiagnostics
+        case fontSizeStep
         case latitude
         case longitude
         case displayPreferences
@@ -249,6 +268,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         copy.coolStartMinutes = copy.coolStartMinutes.clamped(to: ControlRanges.minuteOfDay)
         copy.sunsetStartMinutes = copy.sunsetStartMinutes.clamped(to: ControlRanges.minuteOfDay)
         copy.transitionMinutes = copy.transitionMinutes.clamped(to: ControlRanges.transitionMinutes)
+        copy.fontSizeStep = copy.fontSizeStep.clamped(to: Self.fontSizeStepRange)
         copy.displayPreferences = copy.displayPreferences.mapValues { $0.normalized() }
         return copy
     }
@@ -279,6 +299,8 @@ struct AppPreferences: Codable, Equatable, Sendable {
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         showDiagnostics = try container.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? false
+        fontSizeStep = (try container.decodeIfPresent(Int.self, forKey: .fontSizeStep) ?? AppPreferences.defaultFontSizeStep)
+            .clamped(to: AppPreferences.fontSizeStepRange)
         latitude = try container.decodeIfPresent(String.self, forKey: .latitude) ?? "47.6"
         longitude = try container.decodeIfPresent(String.self, forKey: .longitude) ?? "-122.3"
         displayPreferences = try container.decodeIfPresent(
@@ -307,6 +329,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
         try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(showDiagnostics, forKey: .showDiagnostics)
+        try container.encode(fontSizeStep, forKey: .fontSizeStep)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)
@@ -408,6 +431,17 @@ extension AppPreferences {
             sunsetStartMinutes
         case .bedtime:
             warmStartMinutes
+        }
+    }
+
+    mutating func setStartMinutes(_ value: Int, for phase: ColorPhase) {
+        switch phase {
+        case .daytime:
+            coolStartMinutes = value
+        case .sunset:
+            sunsetStartMinutes = value
+        case .bedtime:
+            warmStartMinutes = value
         }
     }
 

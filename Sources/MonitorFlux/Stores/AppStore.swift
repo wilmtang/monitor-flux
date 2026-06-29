@@ -508,6 +508,19 @@ final class AppStore: ObservableObject {
         refreshActivationPolicy()
     }
 
+    // Settings-window zoom (⌘+ / ⌘- / ⌘0), VS Code–style: the window keeps its size and the content
+    // scales (see ContentView). `fontSizeStep` isn't part of the color signature, so the didSet
+    // persists it without any gamma recompute/flicker.
+    func increaseFontSize() { setFontSizeStep(preferences.fontSizeStep + 1) }
+    func decreaseFontSize() { setFontSizeStep(preferences.fontSizeStep - 1) }
+    func resetFontSize() { setFontSizeStep(AppPreferences.defaultFontSizeStep) }
+
+    private func setFontSizeStep(_ step: Int) {
+        updateGlobalPreferences {
+            $0.fontSizeStep = step.clamped(to: AppPreferences.fontSizeStepRange)
+        }
+    }
+
     /// The app launches as a menu-bar accessory (no Dock icon). It shows a Dock icon
     /// when the user enables "Show in Dock", or temporarily while a standard window is
     /// open so the window can become key and front even in accessory mode.
@@ -560,7 +573,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private static let mainWindowDefaultSize = NSSize(width: 880, height: 600)
+    private static let mainWindowDefaultSize = NSSize(width: 800, height: 600)
 
     private func makeMainWindow() -> MainWindow {
         // A hosting *controller* (not a bare NSHostingView) is what renders a
@@ -568,13 +581,13 @@ final class AppStore: ObservableObject {
         // `sizingOptions` must stay (clearing them renders the columns blank). Those
         // options size the window to SwiftUI's fitting height, though, which for a tall
         // detail pane is enormous — that was the off-screen "blank window". Pinning an
-        // ideal size on the root bounds the fitting height to 880x600 so the window opens
+        // ideal size on the root bounds the fitting height to 800x600 so the window opens
         // and reopens at a sane size, while `maxWidth/Height: .infinity` still lets the
         // user resize it. Detail panes scroll internally (see ColorScheduleView).
         let root = ContentView()
             .environmentObject(self)
             .frame(
-                minWidth: 720, idealWidth: Self.mainWindowDefaultSize.width, maxWidth: .infinity,
+                minWidth: 620, idealWidth: Self.mainWindowDefaultSize.width, maxWidth: .infinity,
                 minHeight: 500, idealHeight: Self.mainWindowDefaultSize.height, maxHeight: .infinity
             )
         let controller = NSHostingController(rootView: root)
@@ -582,7 +595,7 @@ final class AppStore: ObservableObject {
         window.title = "MonitorFlux"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(Self.mainWindowDefaultSize)
-        window.contentMinSize = NSSize(width: 720, height: 500)
+        window.contentMinSize = NSSize(width: 620, height: 500)
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.center()

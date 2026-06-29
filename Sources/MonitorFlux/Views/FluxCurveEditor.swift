@@ -212,7 +212,7 @@ struct FluxCurveEditor: View {
                         update(handle, location: value.location, size: size)
                     }
             )
-            .accessibilityLabel("\(phaseLabel(for: handle)) color handle")
+            .accessibilityLabel("\(phaseLabel(for: handle)) color handle, \(MinuteFormatting.label(for: startMinute(for: handle)))")
     }
 
     private func color(for handle: FluxCurveHandle) -> Color {
@@ -234,6 +234,18 @@ struct FluxCurveEditor: View {
             "Sunset"
         case .night:
             "Bedtime"
+        }
+    }
+
+    /// The minute-of-day anchor a handle sits on — its horizontal position, shown in its time pill.
+    private func startMinute(for handle: FluxCurveHandle) -> Int {
+        switch handle {
+        case .day:
+            coolStartMinutes
+        case .sunset:
+            sunsetStartMinutes
+        case .night:
+            warmStartMinutes
         }
     }
 

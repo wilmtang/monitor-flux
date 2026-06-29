@@ -92,10 +92,10 @@ struct QuickControlsView: View {
         .background(popupCardBackground())
     }
 
-    /// Compact mode control that replaces the old Off/Manual/Schedule segmented picker: a chip
-    /// showing the current state ("Auto · schedule" on a schedule, else "Manual"/"Off") that opens
-    /// a menu to switch. Keeps the popup calm — the warmth slider stays the hero and the mode is a
-    /// quiet status you can tap.
+    /// Compact mode control that replaces the old Off/Fixed/Automatic segmented picker: a chip
+    /// showing the current state ("Automatic" on a schedule, else "Fixed"/"Off") that opens a menu to
+    /// switch. Keeps the popup calm — the warmth slider stays the hero and the mode is a quiet status
+    /// you can tap.
     private var modeChip: some View {
         Menu {
             Picker("Mode", selection: modeBinding) {
@@ -132,9 +132,9 @@ struct QuickControlsView: View {
         case .off:
             return ("power", "Off", Color.secondary)
         case .manual:
-            return ("hand.point.up.left.fill", "Manual", Color.orange)
+            return ("hand.point.up.left.fill", "Fixed", Color.orange)
         case .clock:
-            return ("clock.fill", "Auto · schedule", Color.blue)
+            return ("clock.fill", "Automatic", Color.blue)
         }
     }
 
@@ -143,7 +143,8 @@ struct QuickControlsView: View {
     /// in the popup shares the same track length and left/right edges. (The warm↔cool motif lives
     /// in the in-track thermometer glyph, the "K" readout, and the Warmth schedule view; the old
     /// flanking flame/snowflake were what made this track shorter than the brightness ones.)
-    /// Dragging is an immediate "set it now" override → Manual.
+    /// Dragging on a schedule re-warms the current phase (stays Automatic); off a schedule it's a
+    /// "set it now" override → Fixed warmth.
     private var warmthRow: some View {
         HStack(spacing: 10) {
             MonitorSlider(
@@ -155,8 +156,15 @@ struct QuickControlsView: View {
                 let rounded = Int((newValue / 100.0).rounded()) * 100
                 store.updateGlobalPreferences { preferences in
                     preferences.gammaEnabled = true
-                    preferences.colorMode = .manual
-                    preferences.manualTemperature = rounded
+                    if preferences.colorMode == .clock {
+                        // On a schedule: warm/cool the phase that's active right now and stay
+                        // Automatic — don't yank the whole schedule into Fixed.
+                        let phase = ColorSchedule.currentPhase(preferences: preferences)
+                        preferences.setTemperature(rounded, for: phase)
+                    } else {
+                        preferences.colorMode = .manual
+                        preferences.manualTemperature = rounded
+                    }
                 }
             }
             Text("\(ambienceTemperature) K")
