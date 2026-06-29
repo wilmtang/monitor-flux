@@ -65,6 +65,8 @@ struct ContentView: View {
                     }
                 }
         }
+        .font(.system(size: store.preferences.settingsFontSize))
+        .dynamicTypeSize(store.preferences.settingsDynamicTypeSize)
         .onAppear {
             if selection == nil {
                 selection = .general
@@ -103,6 +105,19 @@ struct ContentView: View {
             Button("Show Diagnostics") { selection = .diagnostics }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
                 .hidden()
+
+            Button("Increase text size") { store.increaseFontSize() }
+                .keyboardShortcut("+", modifiers: .command)
+                .hidden()
+            Button("Increase text size") { store.increaseFontSize() }
+                .keyboardShortcut("=", modifiers: .command)
+                .hidden()
+            Button("Decrease text size") { store.decreaseFontSize() }
+                .keyboardShortcut("-", modifiers: .command)
+                .hidden()
+            Button("Reset text size") { store.resetFontSize() }
+                .keyboardShortcut("0", modifiers: .command)
+                .hidden()
         }
     }
 
@@ -131,5 +146,17 @@ struct ContentView: View {
                 ContentUnavailableView("Display unavailable", systemImage: "display.trianglebadge.exclamationmark")
             }
         }
+    }
+}
+
+private extension AppPreferences {
+    var settingsDynamicTypeSize: DynamicTypeSize {
+        let sizes: [DynamicTypeSize] = [.xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge]
+        return sizes[fontSizeStep.clamped(to: Self.fontSizeStepRange)]
+    }
+
+    var settingsFontSize: CGFloat {
+        let sizes: [CGFloat] = [11, 12, 13, 14, 16, 18, 21]
+        return sizes[fontSizeStep.clamped(to: Self.fontSizeStepRange)]
     }
 }

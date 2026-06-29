@@ -62,6 +62,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
         XCTAssertFalse(appPreferences.showInDock)
         XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)
+        XCTAssertEqual(appPreferences.fontSizeStep, AppPreferences.defaultFontSizeStep)
     }
 
     func testDisplayPreferencesClampDecodedValues() throws {
@@ -92,7 +93,8 @@ final class PreferencesMigrationTests: XCTestCase {
           "nightTemperature": 0,
           "warmStartMinutes": 9999,
           "coolStartMinutes": -30,
-          "transitionMinutes": 999
+          "transitionMinutes": 999,
+          "fontSizeStep": 99
         }
         """.data(using: .utf8)!
 
@@ -104,6 +106,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.warmStartMinutes, ControlRanges.minuteOfDay.upperBound)
         XCTAssertEqual(preferences.coolStartMinutes, ControlRanges.minuteOfDay.lowerBound)
         XCTAssertEqual(preferences.transitionMinutes, ControlRanges.transitionMinutes.upperBound)
+        XCTAssertEqual(preferences.fontSizeStep, AppPreferences.fontSizeStepRange.upperBound)
     }
 
     func testLegacyGlobalShortcutHotkeysDecodeAsKeyboardBindings() throws {

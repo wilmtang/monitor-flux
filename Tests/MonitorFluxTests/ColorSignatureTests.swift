@@ -33,6 +33,14 @@ final class ColorSignatureTests: XCTestCase {
         )
     }
 
+    func testFontSizeStepDoesNotAffectColorSignature() {
+        let before = preferencesWithDisplay()
+        var after = before
+        after.fontSizeStep = AppPreferences.fontSizeStepRange.upperBound
+
+        XCTAssertEqual(before.colorSignature, after.colorSignature)
+    }
+
     func testManualTemperatureChangesColorSignature() {
         var before = preferencesWithDisplay()
         before.manualTemperature = 4000

@@ -43,6 +43,9 @@ pkill -x MonitorFlux || true
   `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch. The
   sidebar is collapsible by dragging the divider, so `ContentView` binds `columnVisibility` and
   adds a toolbar sidebar toggle (⌃⌘S) — otherwise a collapsed sidebar can't be brought back.
+- **Window text size** (`⌘+`/`⌘-`/`⌘0`, persisted as `AppPreferences.fontSizeStep`): use
+  root `.font` + `dynamicTypeSize` on `ContentView`. Do NOT restore the old `GeometryReader` +
+  `.scaleEffect` zoom; it visually scaled the split view after layout and broke hit testing.
 - `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
   (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
   unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level

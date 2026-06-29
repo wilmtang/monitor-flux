@@ -108,6 +108,8 @@ for warmth.
   the built-in backlight) from software gamma brightness and the day/night brightness schedule,
   with warmth enablement on top. **AirPlay/wireless** displays get a stripped-down pane — overlay
   dimming only — because they have no hardware controls and ignore gamma.
+- The settings window supports **⌘+ / ⌘− / ⌘0** to zoom its text. The chosen size is remembered,
+  and zoom uses SwiftUI semantic text sizing rather than visual scaling so controls stay clickable.
 
 ## Keyboard control
 

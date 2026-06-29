@@ -508,6 +508,16 @@ final class AppStore: ObservableObject {
         refreshActivationPolicy()
     }
 
+    func increaseFontSize() { setFontSizeStep(preferences.fontSizeStep + 1) }
+    func decreaseFontSize() { setFontSizeStep(preferences.fontSizeStep - 1) }
+    func resetFontSize() { setFontSizeStep(AppPreferences.defaultFontSizeStep) }
+
+    private func setFontSizeStep(_ step: Int) {
+        updateGlobalPreferences {
+            $0.fontSizeStep = step.clamped(to: AppPreferences.fontSizeStepRange)
+        }
+    }
+
     /// The app launches as a menu-bar accessory (no Dock icon). It shows a Dock icon
     /// when the user enables "Show in Dock", or temporarily while a standard window is
     /// open so the window can become key and front even in accessory mode.
