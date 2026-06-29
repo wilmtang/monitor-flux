@@ -108,9 +108,6 @@ for warmth.
   the built-in backlight) from software gamma brightness and the day/night brightness schedule,
   with warmth enablement on top. **AirPlay/wireless** displays get a stripped-down pane — overlay
   dimming only — because they have no hardware controls and ignore gamma.
-- The settings window supports **⌘+ / ⌘− / ⌘0** to zoom its contents (VS Code–style: the window
-  keeps its size and everything inside scales, since macOS doesn't apply Dynamic Type here). The
-  chosen size is remembered.
 
 ## Keyboard control
 

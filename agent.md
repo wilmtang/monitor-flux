@@ -41,12 +41,6 @@ pkill -x MonitorFlux || true
   to the tall detail pane (that produced an off-screen ~880x3305 "blank" window). Detail
   panes scroll internally (`ColorScheduleView` is a `ScrollView`). Default content size is
   `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch.
-- **Window text size** (`⌘+`/`⌘-`/`⌘0`, persisted as `AppPreferences.fontSizeStep`): macOS
-  ignores SwiftUI `.dynamicTypeSize` for these views, so `ContentView` zooms VS Code–style —
-  the window keeps its size and the content scales via a `GeometryReader` + `.scaleEffect`
-  (lay out at window÷scale, scale up to fill). Shortcuts are hidden `.keyboardShortcut` buttons
-  (same pattern as ⌘⇧D); `fontSizeStep` is excluded from `ColorSignature` so changing it never
-  rewrites gamma.
 - `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
   (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
   unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level
