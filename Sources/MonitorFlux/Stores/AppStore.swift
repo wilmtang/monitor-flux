@@ -125,6 +125,13 @@ final class AppStore: ObservableObject {
     init() {
         safeMode = ProcessInfo.processInfo.environment["MONITORFLUX_SAFE_MODE"] == "1"
         preferences = PreferencesStore.load().normalized()
+        // Test hook: `MONITORFLUX_ZOOM_STEP=N` opens the window at a given zoom step
+        // (0…8) without persisting it, so a screenshot run can verify zoom rendering
+        // at a non-default scale. In-memory only; the saved preference is untouched.
+        if let raw = ProcessInfo.processInfo.environment["MONITORFLUX_ZOOM_STEP"],
+           let step = Int(raw) {
+            preferences.fontSizeStep = step.clamped(to: AppPreferences.fontSizeStepRange)
+        }
         refreshDisplays()
         startTimer()
 
@@ -590,14 +597,19 @@ final class AppStore: ObservableObject {
                 minHeight: 500, idealHeight: Self.mainWindowDefaultSize.height, maxHeight: .infinity
             )
         let hosting = NSHostingController(rootView: root)
+        // We size the hosting view manually (ZoomContainerView gives it a scaled
+        // frame). Clearing sizingOptions stops it from also propagating its SwiftUI
+        // content size up through Auto Layout, which only fights the manual frame.
+        hosting.sizingOptions = []
 
-        // ZoomContainerView lays the hosting view out at bounds/scale, applies a CALayer
-        // transform to scale it back up visually, and overrides hitTest to map click
-        // coordinates through the inverse scale — so every click lands on the visible
-        // control regardless of zoom level. ZoomWrapperViewController owns the container
-        // as its view and keeps hosting as a child VC so the NavigationSplitView VC
-        // hierarchy requirement is satisfied without NSHostingController being the
-        // direct contentViewController (which would fight ZoomContainerView's sizing).
+        // ZoomContainerView scales the hosting view with a CALayer transform while
+        // keeping it in a normal 1:1 coordinate system (SwiftUI loops if its parent
+        // has a scaled bounds), and overrides hitTest to invert the same transform —
+        // so every click lands on the visible control regardless of zoom level.
+        // ZoomWrapperViewController owns the container as its view and keeps hosting
+        // as a child VC so the NavigationSplitView VC hierarchy requirement is
+        // satisfied without NSHostingController being the direct contentViewController
+        // (which would fight ZoomContainerView's sizing).
         let container = ZoomContainerView()
         container.install(hosting.view, scale: preferences.settingsZoomScale)
         zoomContainerView = container
