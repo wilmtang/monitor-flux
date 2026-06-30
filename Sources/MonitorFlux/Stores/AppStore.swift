@@ -583,13 +583,12 @@ final class AppStore: ObservableObject {
 
     private func makeMainWindow() -> MainWindow {
         // A hosting *controller* (not a bare NSHostingView) is what renders a
-        // NavigationSplitView's sidebar + detail correctly, and its default
-        // `sizingOptions` must stay (clearing them renders the columns blank). Those
-        // options size the window to SwiftUI's fitting height, though, which for a tall
-        // detail pane is enormous — that was the off-screen "blank window". Pinning an
-        // ideal size on the root bounds the fitting height to 800x600 so the window opens
-        // and reopens at a sane size, while `maxWidth/Height: .infinity` still lets the
-        // user resize it. Detail panes scroll internally (see ColorScheduleView).
+        // NavigationSplitView's sidebar + detail columns correctly. sizingOptions
+        // are cleared below so the hosting view doesn't propagate its content size
+        // up through Auto Layout, which would fight ZoomContainerView's manual
+        // sizing. The ideal-size frame modifier keeps the window at a sane 800×600
+        // on open, while `maxWidth/Height: .infinity` still lets the user resize.
+        // Detail panes scroll internally (see ColorScheduleView).
         let root = ContentView()
             .environmentObject(self)
             .frame(
@@ -602,10 +601,11 @@ final class AppStore: ObservableObject {
         // content size up through Auto Layout, which only fights the manual frame.
         hosting.sizingOptions = []
 
-        // ZoomContainerView scales the hosting view with a CALayer transform while
-        // keeping it in a normal 1:1 coordinate system (SwiftUI loops if its parent
-        // has a scaled bounds), and overrides hitTest to invert the same transform —
-        // so every click lands on the visible control regardless of zoom level.
+        // ZoomContainerView uses NSView bounds scaling to zoom the hosting view:
+        // the canvas fills the container at pixel size, but its bounds are set to
+        // frame/scale, so AppKit's native coordinate conversions, hit-testing, and
+        // event delivery all account for the zoom automatically — no hitTest
+        // override or CALayer transform needed.
         // ZoomWrapperViewController owns the container as its view and keeps hosting
         // as a child VC so the NavigationSplitView VC hierarchy requirement is
         // satisfied without NSHostingController being the direct contentViewController
