@@ -14,3 +14,8 @@ prototype-test/.swiftpm/
 
 prototype-test-2-fix/.build/
 prototype-test-2-fix/.swiftpm/
+
+prototype-zoom-matrix/.build/
+prototype-zoom-matrix/.swiftpm/
+prototype-swiftui-zoom/.build/
+prototype-swiftui-zoom/.swiftpm/
