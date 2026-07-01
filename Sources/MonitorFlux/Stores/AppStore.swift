@@ -103,7 +103,6 @@ final class AppStore: ObservableObject {
     /// Software dimming for AirPlay/virtual displays, which ignore gamma (see `ShadeController`).
     private let shadeController = ShadeController()
     private var mainWindow: MainWindow?
-    private var zoomContainerView: ZoomContainerView?
     private var onboardingWindow: NSWindow?
     private var timer: Timer?
     /// Trailing (coalesced) DDC writes per control, and the last time each one actually
@@ -524,7 +523,6 @@ final class AppStore: ObservableObject {
         updateGlobalPreferences {
             $0.fontSizeStep = step.clamped(to: AppPreferences.fontSizeStepRange)
         }
-        zoomContainerView?.setScale(preferences.settingsZoomScale)
     }
 
     /// The app launches as a menu-bar accessory (no Dock icon). It shows a Dock icon
@@ -583,41 +581,26 @@ final class AppStore: ObservableObject {
 
     private func makeMainWindow() -> MainWindow {
         // A hosting *controller* (not a bare NSHostingView) is what renders a
-        // NavigationSplitView's sidebar + detail columns correctly. sizingOptions
-        // are cleared below so the hosting view doesn't propagate its content size
-        // up through Auto Layout, which would fight ZoomContainerView's manual
-        // sizing. The ideal-size frame modifier keeps the window at a sane 800×600
-        // on open, while `maxWidth/Height: .infinity` still lets the user resize.
-        // Detail panes scroll internally (see ColorScheduleView).
+        // NavigationSplitView's sidebar + detail columns correctly, and its default
+        // sizingOptions must stay (clearing them blanks the columns). The ideal-size
+        // frame modifier keeps the window at a sane 800×600 on open, while
+        // `maxWidth/Height: .infinity` still lets the user resize. Detail panes
+        // scroll internally (see ColorScheduleView).
+        //
+        // Window zoom (⌘+/⌘-/⌘0) is semantic — ContentView scales fonts, Dynamic
+        // Type size, and control size from `fontSizeStep` — NOT a geometric
+        // transform. Every transform-based zoom (NSView bounds scaling, CALayer
+        // transforms, NSScrollView.magnification, .scaleEffect) breaks click routing
+        // for SwiftUI content hosted in a large NSHostingView; measured evidence in
+        // docs/ZOOM_PLAN.md and prototype-zoom-matrix/.
         let root = ContentView()
             .environmentObject(self)
             .frame(
                 minWidth: 620, idealWidth: Self.mainWindowDefaultSize.width, maxWidth: .infinity,
                 minHeight: 500, idealHeight: Self.mainWindowDefaultSize.height, maxHeight: .infinity
             )
-        let hosting = NSHostingController(rootView: root)
-        // We size the hosting view manually (ZoomContainerView gives it a scaled
-        // frame). Clearing sizingOptions stops it from also propagating its SwiftUI
-        // content size up through Auto Layout, which only fights the manual frame.
-        hosting.sizingOptions = []
-
-        // ZoomContainerView uses NSView bounds scaling to zoom the hosting view:
-        // the canvas fills the container at pixel size, but its bounds are set to
-        // frame/scale, so AppKit's native coordinate conversions, hit-testing, and
-        // event delivery all account for the zoom automatically — no hitTest
-        // override or CALayer transform needed.
-        // ZoomWrapperViewController owns the container as its view and keeps hosting
-        // as a child VC so the NavigationSplitView VC hierarchy requirement is
-        // satisfied without NSHostingController being the direct contentViewController
-        // (which would fight ZoomContainerView's sizing).
-        let container = ZoomContainerView()
-        container.install(hosting.view, scale: preferences.settingsZoomScale)
-        zoomContainerView = container
-
-        let wrapperVC = ZoomWrapperViewController(zoomView: container)
-        wrapperVC.addChild(hosting)
-
-        let window = MainWindow(contentViewController: wrapperVC)
+        let controller = NSHostingController(rootView: root)
+        let window = MainWindow(contentViewController: controller)
         window.title = "MonitorFlux"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(Self.mainWindowDefaultSize)

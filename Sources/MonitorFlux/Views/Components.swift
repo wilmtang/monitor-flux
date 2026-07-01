@@ -96,9 +96,9 @@ struct InfoButton: View {
         .help(title)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.headline)
+                Text(title).zoomFont(.headline)
                 Text(message)
-                    .font(.callout)
+                    .zoomFont(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -135,7 +135,7 @@ struct MonitorSlider: View {
                     .fill(Color.white.opacity(isEnabled ? 0.95 : 0.4))
                     .frame(width: knobX + height)
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .zoomFont(size: 12, weight: .semibold)
                     .foregroundStyle(.black.opacity(0.6))
                     .padding(.leading, 8)
                 Circle()
@@ -200,10 +200,10 @@ struct GammaConflictBanner: View {
                 .foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
-                    .font(.callout)
+                    .zoomFont(.callout)
                     .fontWeight(.semibold)
                 Text(detail)
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Open Display Settings…") {
@@ -212,7 +212,7 @@ struct GammaConflictBanner: View {
                     }
                 }
                 .buttonStyle(.link)
-                .font(.caption)
+                .zoomFont(.caption)
             }
             Spacer(minLength: 0)
             if let onClose {

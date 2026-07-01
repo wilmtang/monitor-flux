@@ -43,9 +43,17 @@ pkill -x MonitorFlux || true
   `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch. The
   sidebar is collapsible by dragging the divider, so `ContentView` binds `columnVisibility` and
   adds a toolbar sidebar toggle (⌃⌘S) — otherwise a collapsed sidebar can't be brought back.
-- **Window text size** (`⌘+`/`⌘-`/`⌘0`, persisted as `AppPreferences.fontSizeStep`): use
-  root `.font` + `dynamicTypeSize` on `ContentView`. Do NOT restore the old `GeometryReader` +
-  `.scaleEffect` zoom; it visually scaled the split view after layout and broke hit testing.
+- **Window zoom** (`⌘+`/`⌘-`/`⌘0`, persisted as `AppPreferences.fontSizeStep`): semantic
+  sizing only — root `.font(.system(size:))` + stepped `.controlSize` on `ContentView`,
+  explicit fonts on the sidebar rows/headers (the sidebar list style ignores the environment
+  font — the font must sit on the `Text` inside each `Label`), and `zoomFont(...)`
+  (`Support/ZoomFont.swift`) instead of fixed text styles like `.font(.caption)` in
+  settings-window views. Dynamic Type is inert on macOS (measured — pixel-identical A/B), so
+  don't reach for `.dynamicTypeSize`. NEVER reintroduce a geometric zoom: NSView bounds
+  scaling, CALayer transforms, `NSScrollView.magnification`, and `.scaleEffect` were each
+  tried and ALL break click routing for SwiftUI content in a large `NSHostingView` — sidebar
+  clicks surviving is a false positive (it's NSTableView-backed). Evidence + regression
+  harness: [docs/ZOOM_PLAN.md](docs/ZOOM_PLAN.md), `prototype-zoom-matrix/`.
 - `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
   (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
   unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level

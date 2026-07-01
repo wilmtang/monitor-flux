@@ -40,7 +40,7 @@ Open windows appear on the built-in screen (AGENTS.md rule) and quit at the end.
 | `bounds` | `NSView` bounds scaling — verbatim copy of the in-app `ZoomContainerView` |
 | `magnify` | `NSScrollView.magnification` wrapping the hosting view |
 | `scaleeffect` | pure SwiftUI `GeometryReader` + `.scaleEffect(anchor: .topLeading)` |
-| `semantic` | no geometric transform; root `.font(.system(size: 13*s))` + `.dynamicTypeSize` |
+| `semantic` | no geometric transform; root `.font(.system(size: 13*s))` (+ `.dynamicTypeSize`, later measured inert on macOS — the shipped fix uses explicit sidebar fonts and `zoomFont` instead) |
 | `sendevent` | visual-only `CALayer` scale + `ScalingWindow` transforming `sendEvent`/`nextEvent(matching:)`/`mouseLocationOutsideOfEventStream` |
 
 ## Results (2026-07-01, macOS 26)

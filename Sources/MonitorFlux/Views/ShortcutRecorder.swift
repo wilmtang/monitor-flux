@@ -81,7 +81,7 @@ struct ShortcutRecorder: View {
     private var shortcutLabel: some View {
         if isRecording {
             Text("Press keys…")
-                .font(.callout)
+                .zoomFont(.callout)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
@@ -97,7 +97,7 @@ struct ShortcutRecorder: View {
                 Image(systemName: "plus.circle")
                 Text("Record")
             }
-            .font(.callout)
+            .zoomFont(.callout)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
@@ -127,7 +127,7 @@ struct ShortcutRecorder: View {
     /// System Settings.
     private func keyCap(_ token: String) -> some View {
         Text(token)
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .zoomFont(size: 12, weight: .semibold, design: .rounded)
             .frame(minWidth: 18)
             .padding(.horizontal, 5)
             .padding(.vertical, 3)

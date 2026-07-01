@@ -62,7 +62,7 @@ struct DisplayDetailView: View {
                     .frame(width: 44, alignment: .trailing)
             }
             Text("Dimmed with a translucent overlay, since AirPlay/wireless displays have no hardware brightness and ignore gamma. It only goes darker, not brighter.")
-                .font(.caption)
+                .zoomFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } header: {
@@ -86,7 +86,7 @@ struct DisplayDetailView: View {
             Text(store.preferences.gammaEnabled
                 ? "Opt this display into the global warmth schedule and manual warmth changes."
                 : "Enable Warmth on the Schedule screen to warm individual displays.")
-                .font(.caption)
+                .zoomFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -100,14 +100,14 @@ struct DisplayDetailView: View {
                 if store.canUseNativeBrightness(display) {
                     nativeBacklightRow
                     Text("This is the **real backlight** — the same hardware level as macOS's own brightness control. To go **dimmer than the panel's hardware minimum** (e.g. a dark room), turn on Software dimming under Advanced.")
-                        .font(.caption)
+                        .zoomFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Label("No adjustable backlight", systemImage: "laptopcomputer")
                         .foregroundStyle(.secondary)
                     Text("This panel exposes no backlight API, so use the software (gamma) brightness below, or your keyboard's brightness keys.")
-                        .font(.caption)
+                        .zoomFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             } header: {
@@ -120,7 +120,7 @@ struct DisplayDetailView: View {
                 }
 
                 Text("The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced.")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
             } header: {
                 sectionHeader("Brightness", help: HelpText.ddc, helpTitle: "Monitor brightness (DDC/CI)")
@@ -140,11 +140,11 @@ struct DisplayDetailView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
+                            .zoomFont(size: 12, weight: .semibold)
                             .rotationEffect(.degrees(advancedExpanded ? 90 : 0))
                         Image(systemName: "slider.horizontal.3")
                         Text("Advanced")
-                            .font(.headline)
+                            .zoomFont(.headline)
                         Spacer(minLength: 0)
                     }
                     // Order matters: pad and stretch to full width *first*, then take the
@@ -185,7 +185,7 @@ struct DisplayDetailView: View {
                 Stepper(value: displayBinding(\.ddcDisplayIndex), in: ControlRanges.ddcDisplayIndex) {
                     LabeledContent("ddcctl display index", value: "\(displayPreferences.ddcDisplayIndex)")
                 }
-                .font(.body)
+                .zoomFont(.body)
             }
 
             advancedSliderRow(
@@ -309,7 +309,7 @@ struct DisplayDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Text(title)
-                    .font(.headline)
+                    .zoomFont(.headline)
                 InfoButton(title: helpTitle, message: help)
                 Spacer(minLength: 0)
             }
@@ -336,7 +336,7 @@ struct DisplayDetailView: View {
                 .frame(width: 18)
                 .accessibilityHidden(true)
             Text(title)
-                .font(.body.weight(.medium))
+                .zoomFont(.body, weight: .medium)
             Spacer(minLength: 16)
             Toggle(title, isOn: isOn)
                 .labelsHidden()
@@ -358,7 +358,7 @@ struct DisplayDetailView: View {
         HStack(spacing: 12) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
+                    .zoomFont(size: 13, weight: .medium)
                     .frame(width: 18)
                     .foregroundStyle(.secondary)
             } else {
@@ -367,7 +367,7 @@ struct DisplayDetailView: View {
                     .accessibilityHidden(true)
             }
             Text(title)
-                .font(.body)
+                .zoomFont(.body)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .frame(width: 168, alignment: .leading)
@@ -382,7 +382,8 @@ struct DisplayDetailView: View {
             .disabled(!isEnabled)
             .layoutPriority(1)
             Text("\(value)%")
-                .font(.body.monospacedDigit())
+                .monospacedDigit()
+                .zoomFont(.body)
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
@@ -435,7 +436,7 @@ struct DisplayDetailView: View {
 
     private func advancedCaption(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.caption)
+            .zoomFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.leading, 30)

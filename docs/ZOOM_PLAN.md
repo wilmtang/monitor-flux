@@ -3,6 +3,14 @@
 *2026-07-01 · produced with the automated test harness in
 [prototype-zoom-matrix/](../prototype-zoom-matrix/README.md)*
 
+**Status: Phase 1 implemented** (same day). `ZoomContainerView` deleted;
+semantic zoom shipped as: root `.font` + stepped `.controlSize` +
+`settingsZoomScale` environment on `ContentView`, explicit sidebar row/header
+fonts with a scaled-icon label style, scaled `navigationSplitViewColumnWidth`,
+and a `zoomFont` sweep over fixed text styles in all settings-window views
+(`Support/ZoomFont.swift`). Verified: 126 unit tests, smoke test, screenshots
+at 70 % / 100 % / 200 % on the General and Schedule panes.
+
 ## TL;DR
 
 Every geometric zoom mechanism available on macOS breaks click routing for
@@ -88,14 +96,19 @@ and the whole-window scale never worked).
 2. **Restore root modifiers on `ContentView`** (from `6087bb8`, extended to the
    current `fontSizeStepRange` 0…8, keeping `fontSizeStep` persistence, the
    hidden ⌘+/⌘−/⌘0 command buttons, and the −/+/Reset controls in the General
-   pane):
-   - `.font(.system(size: settingsFontSize))` — sizes ≈
-     `[11, 12, 13, 14.5, 16, 18, 20, 23, 26]`
-   - `.dynamicTypeSize(settingsDynamicTypeSize)` — steps ≈
-     `[.small, .medium, .large, .xLarge, .xxLarge, .xxxLarge, .accessibility1,
-     .accessibility2, .accessibility3]`
-     (dynamicTypeSize is what reaches the sidebar's text style — root `.font`
-     alone measurably does not scale sidebar rows)
+   pane): `.font(.system(size: settingsFontSize))` with sizes derived as
+   `13 × settingsZoomScale`.
+   **Correction (found during implementation):** `.dynamicTypeSize` is fully
+   inert on macOS 26 — an A/B build produced pixel-identical output — so it was
+   dropped. Two things that therefore need explicit treatment instead:
+   - the sidebar ignores the environment font; fonts must sit directly on the
+     `Text`/`Image` *inside* each `Label` (a `.font` on the Label itself is also
+     ignored) plus on section header text, with a custom label style that scales
+     the icon column so large glyphs don't collide with titles;
+   - fixed text styles (`.font(.caption)` etc.) stay small; all settings-window
+     views now use `zoomFont(...)` (`Support/ZoomFont.swift`), which scales the
+     same role via an environment `settingsZoomScale` (default 1.0, so shared
+     components render normally in the popup/onboarding).
 3. **Scale control chrome discretely**: `.controlSize(.large)` from step ≥ 5,
    `.extraLarge` from step ≥ 7 (macOS 14+), so switches/steppers/sliders grow
    with the text instead of staying miniature.

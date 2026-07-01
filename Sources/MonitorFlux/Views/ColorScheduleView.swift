@@ -25,13 +25,13 @@ struct ColorScheduleView: View {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(spacing: 16) {
                     Image(systemName: statusIcon.symbol)
-                        .font(.system(size: 30))
+                        .zoomFont(size: 30)
                         .foregroundStyle(statusIcon.color)
                         .frame(width: 44, height: 44)
                         .contentTransition(.symbolEffect(.replace))
 
                     Text(statusHeadline)
-                        .font(.title2)
+                        .zoomFont(.title2)
                         .fontWeight(.medium)
 
                     Spacer()
@@ -50,11 +50,11 @@ struct ColorScheduleView: View {
                         .disabled(!store.preferences.gammaEnabled || store.preferences.colorMode == .off)
                     HStack {
                         Text(editingLabel)
-                            .font(.callout)
+                            .zoomFont(.callout)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text("\(editedTemperature) K")
-                            .font(.callout)
+                            .zoomFont(.callout)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
@@ -76,13 +76,13 @@ struct ColorScheduleView: View {
                     }
 
                     Text("Pick a phase, then drag the slider above to set its warmth.")
-                        .font(.caption)
+                        .zoomFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
 
                 Text(scheduleSummary)
-                    .font(.title3)
+                    .zoomFont(.title3)
                     .foregroundStyle(.blue.opacity(0.72))
                     .frame(maxWidth: .infinity)
 
@@ -162,7 +162,7 @@ struct ColorScheduleView: View {
                         LabeledContent("Sunrise today", value: solarLabel(store.solarTimes?.sunriseMinutes))
                         LabeledContent("Sunset today", value: solarLabel(store.solarTimes?.sunsetMinutes))
                         Text("Computed on-device from your coordinates and today's date (no internet), so they shift a little each day and the schedule follows the real sun.")
-                            .font(.caption)
+                            .zoomFont(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -178,7 +178,7 @@ struct ColorScheduleView: View {
                     }
                     .help("Turns warmth off on every display and restores their original color — use this if colors look wrong or you want another color app to take over.")
                     Text("Turns warmth off everywhere and restores each display's original color tables (undoing any warming or software dimming).")
-                        .font(.caption)
+                        .zoomFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -252,19 +252,19 @@ struct ColorScheduleView: View {
             if let minute = store.schedulePreviewMinute {
                 // Make the temporary preview obvious and one-tap reversible.
                 HStack(spacing: 8) {
-                    Image(systemName: "eye.fill").font(.caption2)
+                    Image(systemName: "eye.fill").zoomFont(.caption2)
                     Text("Previewing \(MinuteFormatting.label(for: minute))")
-                        .font(.caption.weight(.medium))
+                        .zoomFont(.caption, weight: .medium)
                         .monospacedDigit()
                     Button("Reset") { store.clearSchedulePreview() }
                         .buttonStyle(.plain)
-                        .font(.caption.weight(.semibold))
+                        .zoomFont(.caption, weight: .semibold)
                         .foregroundStyle(.blue)
                 }
                 .foregroundStyle(.orange)
             } else {
                 Text("Drag the time line to preview · drag a dot to set its warmth")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -276,7 +276,7 @@ struct ColorScheduleView: View {
                 .fill(color)
                 .frame(width: 10, height: 10)
             Text("\(label) · \(kelvin) K")
-                .font(.caption)
+                .zoomFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -391,10 +391,10 @@ struct ColorScheduleView: View {
         Stepper(value: timeAnchorBinding(phase), in: ControlRanges.minuteOfDay, step: 15) {
             HStack(spacing: 5) {
                 Text(title)
-                    .font(.callout)
+                    .zoomFont(.callout)
                     .foregroundStyle(tint.opacity(0.9))
                 Text(MinuteFormatting.label(for: effectivePreferences.startMinutes(for: phase)))
-                    .font(.title3)
+                    .zoomFont(.title3)
                     .foregroundStyle(tint)
                     .monospacedDigit()
             }

@@ -10,34 +10,45 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
+            // The sidebar list style applies its own label/header fonts, ignoring both
+            // the root environment font and a .font() on the Label itself — the zoom
+            // font must sit directly on the Text/Image inside each label (deepest
+            // modifier wins) and on each section header.
             List(selection: $selection) {
                 Section {
-                    Label("General", systemImage: "gearshape")
+                    sidebarRow("General", systemImage: "gearshape")
                         .tag(AppSelection.general)
                 }
 
-                Section("Color") {
-                    Label("Schedule", systemImage: "sun.max")
+                Section {
+                    sidebarRow("Schedule", systemImage: "sun.max")
                         .tag(AppSelection.color)
+                } header: {
+                    Text("Color").font(sidebarSectionFont)
                 }
 
-                Section("Displays") {
+                Section {
                     ForEach(store.displays) { display in
-                        Label(display.name, systemImage: display.isBuiltIn ? "laptopcomputer" : "display")
+                        sidebarRow(display.name, systemImage: display.isBuiltIn ? "laptopcomputer" : "display")
                             .tag(AppSelection.display(display.key))
                     }
+                } header: {
+                    Text("Displays").font(sidebarSectionFont)
                 }
 
                 // Developer-facing; hidden unless turned on in General (or reached with ⌘⇧D).
                 if store.preferences.showDiagnostics {
                     Section {
-                        Label("Diagnostics", systemImage: "waveform.path.ecg")
+                        sidebarRow("Diagnostics", systemImage: "waveform.path.ecg")
                             .tag(AppSelection.diagnostics)
                     }
                 }
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 210, ideal: 240)
+            .navigationSplitViewColumnWidth(
+                min: (210 * store.preferences.settingsColumnScale).rounded(),
+                ideal: (240 * store.preferences.settingsColumnScale).rounded()
+            )
         } detail: {
             detailView
                 .toolbar {
@@ -65,6 +76,9 @@ struct ContentView: View {
                     }
                 }
         }
+        .font(.system(size: store.preferences.settingsFontSize))
+        .controlSize(store.preferences.settingsControlSize)
+        .environment(\.settingsZoomScale, store.preferences.settingsZoomScale)
         .onAppear {
             if selection == nil {
                 selection = .general
@@ -119,6 +133,23 @@ struct ContentView: View {
         }
     }
 
+    private func sidebarRow(_ title: String, systemImage: String) -> some View {
+        Label {
+            Text(title).font(sidebarRowFont)
+        } icon: {
+            Image(systemName: systemImage).font(sidebarRowFont)
+        }
+        .labelStyle(SidebarRowLabelStyle(fontSize: store.preferences.settingsFontSize))
+    }
+
+    private var sidebarRowFont: Font {
+        .system(size: store.preferences.settingsFontSize)
+    }
+
+    private var sidebarSectionFont: Font {
+        .system(size: (store.preferences.settingsFontSize * 11 / 13).rounded())
+    }
+
     /// Honor a pane requested from the menu-bar popup (which may be set before this window even
     /// exists), then clear it so it applies once.
     private func applyRequestedSelection() {
@@ -144,5 +175,53 @@ struct ContentView: View {
                 ContentUnavailableView("Display unavailable", systemImage: "display.trianglebadge.exclamationmark")
             }
         }
+    }
+}
+
+/// The system sidebar label style reserves a fixed-width icon column sized for
+/// default text; a zoomed 26pt symbol overflows it and visually touches the title.
+/// This style scales both the icon column and the icon–title gap with the zoom.
+private struct SidebarRowLabelStyle: LabelStyle {
+    let fontSize: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: (fontSize * 0.45).rounded()) {
+            configuration.icon
+                .frame(width: (fontSize * 1.35).rounded())
+            configuration.title
+        }
+    }
+}
+
+// MARK: - Semantic window zoom
+//
+// The window zoom (⌘+/⌘-/⌘0, "Window zoom" in General) is implemented purely as
+// SwiftUI sizing: scaled default font, explicit fonts where styles ignore the
+// environment (sidebar rows/headers, `zoomFont` for fixed text styles — Dynamic
+// Type is inert on macOS), and discrete control sizes. There is deliberately NO
+// geometric transform anywhere: every transform mechanism (NSView bounds scaling,
+// CALayer transforms, NSScrollView.magnification, .scaleEffect) breaks click
+// routing for SwiftUI content hosted in a large NSHostingView. Measured in
+// prototype-zoom-matrix/; analysis in docs/ZOOM_PLAN.md.
+private extension AppPreferences {
+    /// Body-text size derived from the zoom scale (13pt at 100%), half-point rounded.
+    var settingsFontSize: CGFloat {
+        (13 * settingsZoomScale * 2).rounded() / 2
+    }
+
+    /// Controls (switches, steppers, buttons) only come in discrete sizes; step them
+    /// alongside the text so they don't stay miniature at high zoom.
+    var settingsControlSize: ControlSize {
+        switch fontSizeStep.clamped(to: Self.fontSizeStepRange) {
+        case ...1: .small
+        case 2...4: .regular
+        case 5...6: .large
+        default: .extraLarge
+        }
+    }
+
+    /// Sidebar column widths track the text size so labels don't truncate at high zoom.
+    var settingsColumnScale: CGFloat {
+        settingsFontSize / 13
     }
 }

@@ -19,7 +19,7 @@ struct SettingsView: View {
                 LabeledContent("Login item", value: store.loginItemMessage)
                 if store.loginItemNeedsInstall {
                     Text("“Start at login” uses macOS's login-items service, which only registers an **installed** app. “Not available” means you're running a development build (launched from a build folder, not /Applications) — it works once the app is moved to Applications. Accessibility is different: it's granted to the running app by its signature, so it works either way.")
-                        .font(.caption)
+                        .zoomFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -29,7 +29,7 @@ struct SettingsView: View {
                     store.updateGlobalPreferences { $0.showDiagnostics = isOn }
                 })
                 Text("Adds a developer-facing Diagnostics pane (color pipeline, DDC, displays) to the sidebar. Also reachable with ⌘⇧D.")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 LabeledContent("Window zoom") {
@@ -56,8 +56,8 @@ struct SettingsView: View {
                             .disabled(store.preferences.fontSizeStep == AppPreferences.defaultFontSizeStep)
                     }
                 }
-                Text("Scales this settings window. Also ⌘+ / ⌘− / ⌘0.")
-                    .font(.caption)
+                Text("Scales this window's text and controls. Also ⌘+ / ⌘− / ⌘0.")
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -79,7 +79,7 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 2)
                 Text("Works when this toggle is on and Accessibility is granted. Brightness/contrast act on the external display under your pointer; Command + brightness targets the built-in display; warmth is global.")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -100,11 +100,11 @@ struct SettingsView: View {
                         )
                     }
                     Text(group.footnote)
-                        .font(.caption)
+                        .zoomFont(.caption)
                         .foregroundStyle(.secondary)
                     if index == 0 {
                         Text("Keyboard shortcuts (⌘⌥⌃⇧ combos) work anywhere and need no Accessibility permission. Media-key shortcuts (brightness/volume keys) require the keyboard control toggle and Accessibility.")
-                            .font(.caption)
+                            .zoomFont(.caption)
                             .foregroundStyle(.secondary)
                         if store.hasInactiveMediaBindings {
                             mediaBindingWarning
@@ -124,10 +124,10 @@ struct SettingsView: View {
                     }
                 })
                 Text("Master switch for warmth — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own controls and macOS color remain). On means each display follows its **own** Warmth and software-dimming settings on its Display screen. Same setting as \u{201C}Warmth\u{201D} on the Schedule screen; doesn't affect real backlight, the monitor's own DDC controls, or volume.")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                 Text("The built-in display has no DDC, so everything MonitorFlux changes on it — warmth and software dimming — goes through the color tables. With this off, the built-in display can't be adjusted here; only its real backlight brightness (the macOS brightness keys) still works.")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
@@ -152,12 +152,12 @@ struct SettingsView: View {
                 .foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 5) {
                 Text("Media-key shortcuts need Accessibility")
-                    .font(.callout)
+                    .zoomFont(.callout)
                     .fontWeight(.semibold)
                 Text(store.preferences.keyboardControlEnabled
                     ? "MonitorFlux doesn't have Accessibility permission, so it can't intercept media-key shortcuts. Grant it in System Settings; they will start when you return. (The normal-key shortcuts below work without this.)"
                     : "Turn on media-key shortcuts, then grant Accessibility so MonitorFlux can intercept those keys. (The normal-key shortcuts below work without this.)")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button(store.preferences.keyboardControlEnabled ? "Open Accessibility Settings…" : "Enable Keyboard Control…") {
@@ -168,7 +168,7 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.link)
-                .font(.caption)
+                .zoomFont(.caption)
             }
             Spacer(minLength: 0)
         }
@@ -183,17 +183,17 @@ struct SettingsView: View {
                 .foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 5) {
                 Text("Media-key shortcuts won't fire")
-                    .font(.callout)
+                    .zoomFont(.callout)
                     .fontWeight(.semibold)
                 Text("You have shortcuts assigned to brightness or volume keys, but keyboard control is turned off. Enable it above so the media-key tap can intercept those keys.")
-                    .font(.caption)
+                    .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Enable Keyboard Control…") {
                     store.setKeyboardControl(true)
                 }
                 .buttonStyle(.link)
-                .font(.caption)
+                .zoomFont(.caption)
             }
             Spacer(minLength: 0)
         }
@@ -205,10 +205,10 @@ struct SettingsView: View {
     private func keyHint(_ keys: String, _ action: String) -> some View {
         HStack(spacing: 6) {
             Text(keys)
-                .font(.caption.monospaced())
+                .zoomFont(.caption, design: .monospaced)
                 .foregroundStyle(.primary)
             Text("→ \(action)")
-                .font(.caption)
+                .zoomFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
