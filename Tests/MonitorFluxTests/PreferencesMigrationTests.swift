@@ -175,6 +175,40 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertNil(keys["gammaControlsEnabled"])
     }
 
+    func testDimmingModeResolutionIsBinaryOnTheBuiltIn() {
+        // Externals: unset defaults to Automatic (hybrid); explicit choices stick.
+        XCTAssertEqual(DimmingMode.resolved(nil, isBuiltIn: false), .automatic)
+        XCTAssertEqual(DimmingMode.resolved(.hardware, isBuiltIn: false), .hardware)
+        XCTAssertEqual(DimmingMode.resolved(.software, isBuiltIn: false), .software)
+        XCTAssertEqual(DimmingMode.resolved(.automatic, isBuiltIn: false), .automatic)
+
+        // Built-in: defaults to its real backlight. Only an explicit .software choice (the
+        // Advanced toggle) dims in software; unset, .hardware, and a legacy-migrated .automatic
+        // (from the old gammaControlsEnabled gate, which couldn't see the display kind) all
+        // resolve to hardware — the built-in never silently starts in software. Never hybrid.
+        XCTAssertEqual(DimmingMode.resolved(nil, isBuiltIn: true), .hardware)
+        XCTAssertEqual(DimmingMode.resolved(.hardware, isBuiltIn: true), .hardware)
+        XCTAssertEqual(DimmingMode.resolved(.software, isBuiltIn: true), .software)
+        XCTAssertEqual(DimmingMode.resolved(.automatic, isBuiltIn: true), .hardware)
+    }
+
+    func testLegacyGammaGateOnBuiltInResolvesToHardware() throws {
+        // The bug this guards: an old build seeded `gammaControlsEnabled: true` on the built-in
+        // (it has no DDC path), which the decoder migrates to `.automatic`. Resolved for the
+        // built-in that must land on hardware — the backlight — not software dimming.
+        let json = Data("""
+        {
+          "gammaControlsEnabled": true
+        }
+        """.utf8)
+
+        let preferences = try JSONDecoder().decode(DisplayPreferences.self, from: json)
+        XCTAssertEqual(preferences.dimmingMode, .automatic)
+        XCTAssertEqual(DimmingMode.resolved(preferences.dimmingMode, isBuiltIn: true), .hardware)
+        // An external with the same legacy gate still gets hybrid.
+        XCTAssertEqual(DimmingMode.resolved(preferences.dimmingMode, isBuiltIn: false), .automatic)
+    }
+
     func testDisplayPreferencesClampDecodedValues() throws {
         let json = """
         {

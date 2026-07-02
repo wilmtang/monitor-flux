@@ -85,6 +85,13 @@ enum HelpText {
     neutral; values above 100% boost a dim panel. Heavy use can cause slight banding.
     """
 
+    static let builtInDimmingChoice = """
+    Off, the Brightness slider drives the panel's real backlight — the same control as the \
+    keyboard brightness keys. On, it darkens the image in software (gamma) and leaves the \
+    backlight alone. Many panels dim their backlight by pulsing it (PWM), which flickers \
+    harder at low levels — software dimming avoids that for flicker-sensitive eyes.
+    """
+
     static let schedule = """
     Scheduled brightness/contrast ride the same day–night timeline as Warmth: hold the daytime \
     value, ease to the night value at sunset, back at wake. A manual change holds until the next phase.

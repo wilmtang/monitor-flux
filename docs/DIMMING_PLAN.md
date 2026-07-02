@@ -31,9 +31,9 @@ var dimmingMode: DimmingMode = .automatic
 
 | Mode (UI label) | DDC display | non-DDC external | AirPlay/virtual | Built-in |
 |---|---|---|---|---|
-| **Automatic** (default) | DDC first, software continues below DDC 0 | software only | overlay only | backlight first, software continues below backlight 0 |
-| **Monitor hardware** | DDC only (today's behavior) | slider disabled + "no hardware control" hint | n/a (hidden) | backlight only |
-| **Software dimming** | gamma only, DDC left alone | software only | overlay only | n/a (hidden — backlight always exists) |
+| **Automatic** (default) | DDC first, software continues below DDC 0 | software only | overlay only | n/a — the built-in is binary, never hybrid (see 2026-07-02 built-in revision) |
+| **Monitor hardware** | DDC only (today's behavior) | slider disabled + "no hardware control" hint | n/a (hidden) | backlight only (default) |
+| **Software dimming** | gamma only, DDC left alone | software only | overlay only | gamma only — backlight left exactly where it is |
 
 - Labels follow the de-jargon rule: "Automatic (recommended)" / "Monitor hardware" /
   "Software dimming"; DDC/gamma live in the ⓘ tooltip only.
@@ -103,7 +103,8 @@ seamless, holding at the floor does nothing further.
   caption becomes mode-aware, e.g. Automatic on a DDC panel: *"Uses the monitor's own
   brightness first; keep dragging below the notch to darken the image further in software."*
 - **"Dimming method" picker** directly under the slider (segmented, 3 options + ⓘ). Hidden
-  on AirPlay; on the built-in it offers Automatic / Monitor hardware only.
+  on AirPlay; the built-in has no picker — its binary hardware/software choice is the
+  Advanced "Use software dimming" toggle (2026-07-02 built-in revision).
 - **Advanced keeps** contrast/volume unchanged, plus the raw "Software brightness" slider as
   the power-user escape hatch — it's the only place that reaches the 100–150 "boost" range
   and the only place that can drive gamma independently of the mode. The "Use software
@@ -163,10 +164,11 @@ Deltas and judgment calls made while implementing the plan + the inline answers 
   software floor to 0. The **notch stays at 25%** either way — moving the everyday hardware
   zone's geometry because of a power-user toggle would cost more predictability than the
   deep-dim tail gains in track length.
-- **Answer 3 (built-in):** the Advanced "Use software dimming" toggle *is* the hybrid opt-in
-  (off ↔ `.hardware`, on ↔ `.automatic`); once on, the main slider covers backlight + software
-  zones and the separate Advanced software slider is gone for the built-in. The schedule still
-  never touches the built-in, even in the software zone.
+- **Answer 3 (built-in):** ~~the Advanced "Use software dimming" toggle *is* the hybrid opt-in
+  (off ↔ `.hardware`, on ↔ `.automatic`)~~ — superseded by the 2026-07-02 built-in revision
+  below: the toggle now flips between all-backlight and all-software (off ↔ `.hardware`,
+  on ↔ `.software`), never hybrid. Still no separate Advanced software slider for the
+  built-in, and the schedule still never touches it.
 - **Answer 4 (icon):** kept the sun→moon swap *plus* the dimmed fill — the fill alone reads as
   "disabled"; the moon names the state at the exact moment the backlight stops responding.
 - **The detail-pane hero is the same `MonitorSlider` as the popup** (not a native `Slider`
@@ -183,6 +185,63 @@ Deltas and judgment calls made while implementing the plan + the inline answers 
   in-memory preview-preferences copy only.
 - Dev hook: `MONITORFLUX_EXPAND_ADVANCED=1` opens the pane's Advanced disclosure on launch
   for screenshot verification.
+
+## Built-in revision (2026-07-02): binary, never hybrid
+
+Design change after using phases 1–4: the built-in panel does **not** get the hybrid slider
+or the handoff notch at all. Its dimming is a binary choice, flipped by the Advanced
+"Use software dimming" toggle:
+
+- **Toggle off (default)** ↔ `.hardware`: the Brightness slider is 100% the real backlight,
+  exactly like macOS's own control. Turning it off also clears any software dimming (≥100),
+  as before.
+- **Toggle on** ↔ `.software`: the Brightness slider is 100% software (gamma floor…100 —
+  the same floored track non-DDC externals use, including "Allow dimming to black"). The
+  backlight is **left exactly where it is**; the keyboard brightness keys still reach it
+  (bare media keys always fall through to macOS on the built-in), so backlight and image
+  dimming stay independently controllable.
+
+**Why:** some eyes are sensitive to low backlight levels — many panels dim the backlight by
+pulsing it (PWM), and the flicker gets harsher the lower the level. Those users want to park
+the backlight at a comfortable steady level and do *all* dimming in software; a hybrid track
+that drags the backlight down first is exactly wrong for them. This rationale is named in
+the toggle's caption and the ⓘ tooltip (`HelpText.builtInDimmingChoice`).
+
+Mechanics:
+
+- `DimmingMode.resolved(stored:isBuiltIn:)` owns the rule: on the built-in only an explicit
+  `.software` dims in software; `nil`/`.hardware`/`.automatic` all → `.hardware` (revised
+  2026-07-02 — see "Built-in default revision" below). A stored `.automatic` is never a real
+  built-in choice; it only comes from the old hybrid opt-in or the legacy
+  `gammaControlsEnabled: true` migration (which seeds `.automatic` without knowing the display
+  kind), so it resolves to the built-in's default (hardware) rather than silently starting the
+  built-in in software. `AppStore.reconcileBuiltInDimming()` then folds that legacy state into
+  an explicit hardware state on load — normalizing a migrated `.automatic` to `.hardware` and
+  clearing any stale sub-100 gamma a pre-backlight-API build left behind, so an upgraded
+  built-in can't come up dimmed with no way to lift it from the slider. Externals are unchanged.
+- `brightnessControlKind` therefore never returns `.hybrid` for the built-in: it's
+  `.hardwareOnly` or `.softwareOnly` (or `.softwareOnly` forced when there's no backlight
+  API). Media keys, custom hotkeys, the OSD, and both sliders inherit the routing.
+- The schedule still never drives the built-in (unchanged `allowBuiltIn` rules).
+- Externals keep the full three-mode picker and the hybrid notch; `HybridBrightness` math is
+  untouched.
+
+## Built-in default revision (2026-07-02): hardware, not software
+
+Follow-up after testing: the built-in must default to its **real backlight**, and it was
+coming up on **software** instead. Cause — the built-in has no DDC path, so an earlier build
+seeded the retired `gammaControlsEnabled: true` on it; the decoder migrates that to
+`.automatic`, and the original built-in rule resolved `.automatic` → `.software` ("closest
+surviving meaning of dim-past-the-backlight"). That reasoning is reversed here: on a laptop
+with a working backlight, the everyday default should be the backlight, not a gamma dim.
+
+- `DimmingMode.resolved` now maps the built-in's `nil`/`.hardware`/`.automatic` → `.hardware`;
+  only an explicit `.software` (the Advanced "Use software dimming" toggle) dims in software.
+- `AppStore.reconcileBuiltInDimming()` runs on each display refresh: for every built-in whose
+  slider drives the backlight (`.hardwareOnly`), it normalizes a legacy `.automatic` to
+  `.hardware` and clears any stale sub-100 gamma, so an upgraded panel can't stay dimmed with
+  no slider recourse. Built-ins with no backlight API (forced `.softwareOnly`) and explicit
+  `.software` built-ins are untouched, and externals are unchanged.
 
 ## Open questions - answered inline
 

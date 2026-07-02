@@ -37,13 +37,15 @@ enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
 }
 
 /// How a display's unified Brightness control dims it. `.automatic` drives the hardware
-/// backlight first (DDC, or the built-in backlight) and continues in software below the
-/// hardware minimum; `.hardware` uses only the real backlight; `.software` darkens the image
-/// via the color tables and leaves the hardware alone.
+/// backlight (DDC) first and continues in software below the hardware minimum — externals
+/// only; `.hardware` uses only the real backlight; `.software` darkens the image via the
+/// color tables and leaves the hardware alone.
 ///
-/// Stored optionally: `nil` means "unset", resolved per display kind by
-/// `AppStore.dimmingMode(for:)` — externals default to `.automatic` (hybrid), the built-in
-/// panel to `.hardware` (its hybrid slider stays an explicit opt-in).
+/// Stored optionally: `nil` means "unset", resolved per display kind by `resolved(_:isBuiltIn:)`
+/// — externals default to `.automatic` (hybrid), the built-in panel to `.hardware`. The
+/// built-in never dims hybrid: its choice is binary — all backlight or all software — so a
+/// user sensitive to low backlight levels can keep the backlight steady and dim purely in
+/// software (see docs/DIMMING_PLAN.md, built-in revision).
 enum DimmingMode: String, CaseIterable, Codable, Identifiable, Sendable {
     case automatic
     case hardware
@@ -60,6 +62,25 @@ enum DimmingMode: String, CaseIterable, Codable, Identifiable, Sendable {
             "Monitor hardware"
         case .software:
             "Software dimming"
+        }
+    }
+
+    /// The effective mode for a display, resolving the unset default per display kind and
+    /// the built-in's binary rule. The built-in defaults to its real backlight: only an
+    /// explicit `.software` (the Advanced "Use software dimming" toggle) dims it in software.
+    /// A stored `.automatic` is never a real built-in choice — it only comes from an old
+    /// hybrid opt-in or the legacy `gammaControlsEnabled` migration (which seeds `.automatic`
+    /// without knowing the display kind) — so it resolves to hardware, the built-in's default,
+    /// rather than silently starting the built-in in software.
+    static func resolved(_ stored: DimmingMode?, isBuiltIn: Bool) -> DimmingMode {
+        guard isBuiltIn else {
+            return stored ?? .automatic
+        }
+        switch stored {
+        case .none, .hardware, .automatic:
+            return .hardware
+        case .software:
+            return .software
         }
     }
 }

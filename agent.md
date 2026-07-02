@@ -78,9 +78,11 @@ pkill -x MonitorFlux || true
   notch and software (gamma, floored at 15% or 0 with "Allow dimming to black") below.
   `AppStore.brightnessControlKind(for:)` routes each display (hybrid / hardware-only /
   software-only / shade / unavailable) from its capabilities + per-display `DimmingMode`
-  (`nil` resolves: externals `.automatic`, built-in `.hardware`); the slider, media keys,
-  OSD fraction, and scheduled brightness targets all speak this scale via
-  `unifiedBrightness`/`setUnifiedBrightness`/`scheduledComponents`.
+  (resolved by `DimmingMode.resolved(_:isBuiltIn:)`: externals default `.automatic`, the
+  built-in defaults `.hardware` and is **binary** — all-backlight or all-software, never
+  hybrid, so flicker-sensitive users can park the backlight and dim purely in software);
+  the slider, media keys, OSD fraction, and scheduled brightness targets all speak this
+  scale via `unifiedBrightness`/`setUnifiedBrightness`/`scheduledComponents`.
 - `Support/SolarCalculator.swift`: pure NOAA sunrise/sunset from lat/long.
 - `Services/GammaTemperatureService.swift`: the only CoreGraphics gamma writer.
 - `Services/NativeDDCBackend.swift`: Intel IOKit IOFramebuffer DDC/CI writes.

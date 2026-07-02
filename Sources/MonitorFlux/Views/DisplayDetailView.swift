@@ -150,16 +150,16 @@ struct DisplayDetailView: View {
         let text: LocalizedStringKey
         switch store.brightnessControlKind(for: display) {
         case .hybrid:
-            text = display.isBuiltIn
-                ? "This is the **real backlight** first; keep dragging below the notch and MonitorFlux darkens the **image** in software, dimmer than the panel's hardware minimum."
-                : "Uses the monitor's **own brightness** first; keep dragging below the notch to darken the **image** further in software. Contrast and volume are under Advanced."
+            text = "Uses the monitor's **own brightness** first; keep dragging below the notch to darken the **image** further in software. Contrast and volume are under Advanced."
         case .hardwareOnly:
             text = display.isBuiltIn
-                ? "This is the **real backlight** — the same hardware level as macOS's own brightness control. To go **dimmer than the panel's hardware minimum** (e.g. a dark room), turn on Software dimming under Advanced."
+                ? "This is the **real backlight** — the same hardware level as macOS's own brightness control. To dim the **image** in software instead, leaving the backlight untouched, turn on Software dimming under Advanced."
                 : "The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced."
         case .softwareOnly:
             if display.isBuiltIn {
-                text = "This panel exposes no backlight API, so MonitorFlux darkens the **image** in software instead."
+                text = store.canUseNativeBrightness(display)
+                    ? "Darkens the **image** in software — the real **backlight stays put** (the keyboard brightness keys still control it). Switch back under Advanced."
+                    : "This panel exposes no backlight API, so MonitorFlux darkens the **image** in software instead."
             } else if store.canUseDDC(for: display) {
                 text = "Darkens the **image** in software; the monitor's own brightness is left alone."
             } else {
@@ -267,22 +267,23 @@ struct DisplayDetailView: View {
         }
     }
 
-    /// Software (gamma) dimming extras. The built-in keeps its opt-in toggle here (once on,
-    /// the main Brightness slider covers the whole range — no separate slider); externals
-    /// choose their method with the picker above, so this holds only the raw power-user
-    /// slider. Both get the dim-to-black floor override.
+    /// Software (gamma) dimming extras. The built-in keeps its binary toggle here — off, the
+    /// main Brightness slider is the real backlight; on, it dims purely in software and the
+    /// backlight stays put (no hybrid, no separate slider). Externals choose their method
+    /// with the picker above, so this holds only the raw power-user slider. Both get the
+    /// dim-to-black floor override.
     @ViewBuilder
     private var gammaContent: some View {
         if display.isBuiltIn {
-            advancedGroup("Software dimming", help: HelpText.softwareDimming, helpTitle: "Software dimming (gamma)") {
+            advancedGroup("Software dimming", help: HelpText.builtInDimmingChoice, helpTitle: "Software dimming (gamma)") {
                 if store.canUseNativeBrightness(display) {
                     advancedToggleRow(
                         "Use software dimming",
                         isOn: softwareDimmingBinding
                     )
                     advancedCaption(store.dimmingMode(for: display) == .hardware
-                        ? "Lets the Brightness slider above keep dimming **below the backlight's minimum** by darkening the image in software."
-                        : "The Brightness slider above now keeps dimming **below the backlight's minimum** — the stretch left of the notch darkens the image in software.")
+                        ? "Hands the Brightness slider above fully to software: it darkens the **image** and the real **backlight stays put**. Worth trying if dim screens strain your eyes — many panels dim their backlight by flickering it, and the flicker gets harsher the lower it goes; software dimming keeps the backlight steady at a comfortable level."
+                        : "The Brightness slider above now darkens the **image** in software, and the real **backlight stays put** at the level you set (the keyboard brightness keys still control it). Easier on eyes that are sensitive to low backlight flicker. Turn off to drive the backlight directly again.")
                 } else {
                     advancedCaption("This panel has no backlight control, so the Brightness slider above always dims in software.")
                 }
@@ -316,14 +317,14 @@ struct DisplayDetailView: View {
         }
     }
 
-    /// The built-in's software-dimming opt-in, expressed through the dimming mode: off means
-    /// backlight-only (which also clears any software dimming), on makes the main slider
-    /// hybrid — backlight first, software below the notch.
+    /// The built-in's binary dimming choice, expressed through the dimming mode: off means
+    /// backlight-only (which also clears any software dimming), on hands the whole slider
+    /// to software dimming — the backlight is left exactly where it is. Never hybrid.
     private var softwareDimmingBinding: Binding<Bool> {
         Binding {
             store.dimmingMode(for: display) != .hardware
         } set: { isOn in
-            store.setDimmingMode(isOn ? .automatic : .hardware, for: display)
+            store.setDimmingMode(isOn ? .software : .hardware, for: display)
         }
     }
 

@@ -425,6 +425,10 @@ private struct DisplayCardView: View {
         brightnessRow
         if !store.canUseNativeBrightness(display) {
             caption("Software dimming (built-in panel has no backlight control)")
+        } else if store.brightnessControlKind(for: display) == .softwareOnly {
+            // The user opted the built-in into all-software dimming: name the state, since
+            // the slider deliberately isn't moving the backlight here.
+            caption("Software dimming — the backlight stays put")
         }
     }
 

@@ -270,7 +270,11 @@ final class AppStore: ObservableObject {
         // The non-drag entry point for conflict detection (reconcileColor no longer does it). Runs
         // before the re-apply below so it reads the on-screen LUT, not the one we're about to write.
         refreshGammaConflictState()
-        if !seedMissingDisplayPreferences() {
+        let seeded = seedMissingDisplayPreferences()
+        // Fold any legacy built-in dimming state into the built-in's hardware default before
+        // re-applying color, so an upgraded built-in never comes up dimmed in software.
+        let reconciledBuiltInDim = reconcileBuiltInDimming()
+        if !seeded, !reconciledBuiltInDim {
             reconcileColor()
         }
         applyScheduledHardware()
@@ -452,11 +456,11 @@ final class AppStore: ObservableObject {
     }
 
     /// The display's dimming mode with the per-kind default resolved: externals default to
-    /// `.automatic` (hybrid — hardware first, software below the hardware floor), the
-    /// built-in panel to `.hardware` (backlight only; its hybrid slider is an explicit
-    /// opt-in via the Advanced software-dimming toggle).
+    /// `.automatic` (hybrid — hardware first, software below the hardware floor); the
+    /// built-in panel defaults to `.hardware` and only ever dims all-backlight or
+    /// all-software (the Advanced toggle flips between the two — no hybrid).
     func dimmingMode(for display: DisplayInfo) -> DimmingMode {
-        displayPreferences(for: display).dimmingMode ?? (display.isBuiltIn ? .hardware : .automatic)
+        DimmingMode.resolved(displayPreferences(for: display).dimmingMode, isBuiltIn: display.isBuiltIn)
     }
 
     func setDimmingMode(_ mode: DimmingMode, for display: DisplayInfo) {
@@ -490,9 +494,11 @@ final class AppStore: ObservableObject {
                 // No backlight API at all: software dimming is the only path.
                 return .softwareOnly
             }
-            // The built-in's hybrid slider is the Advanced software-dimming opt-in; hardware
-            // is its default (macOS's own domain).
-            return dimmingMode(for: display) == .hardware ? .hardwareOnly : .hybrid
+            // The built-in is binary — all backlight (default, macOS's own domain) or all
+            // software, flipped by the Advanced toggle. Never hybrid: a low-backlight-
+            // sensitive user picks software dimming exactly to keep the backlight steady,
+            // so the slider must not drive both.
+            return dimmingMode(for: display) == .software ? .softwareOnly : .hardwareOnly
         }
         let hasDDC = canUseDDC(for: display)
         switch dimmingMode(for: display) {
@@ -1687,6 +1693,55 @@ final class AppStore: ObservableObject {
             preferences = next.normalized()
         }
         return changed
+    }
+
+    /// Fold legacy built-in dimming state into the built-in's real default: the backlight.
+    ///
+    /// The built-in never dims hybrid and only dims in software when the user explicitly picks
+    /// it (`.software`). But old preferences can leave a built-in with a migrated `.automatic`
+    /// mode (from the retired `gammaControlsEnabled` gate, which couldn't see the display kind)
+    /// and/or a stale sub-100 `gammaBrightness` from a build that had no backlight API. Once the
+    /// backlight *is* controllable, that residual gamma would keep the screen dim with no way to
+    /// lift it from the Brightness slider. For every built-in whose slider now drives the
+    /// backlight (`.hardwareOnly`), normalize the mode to `.hardware` and clear any stale
+    /// software dim. Built-ins with no backlight API (still `.softwareOnly`) or an explicit
+    /// software choice are left untouched. Returns true when it cleared a dim — a color-affecting
+    /// change the `preferences` didSet already re-applied — so the caller can skip a redundant
+    /// `reconcileColor()`.
+    private func reconcileBuiltInDimming() -> Bool {
+        var next = preferences
+        var changed = false
+        var clearedGamma = false
+
+        for display in displays where display.isBuiltIn {
+            guard var displayPreferences = next.displayPreferences[display.key],
+                  brightnessControlKind(for: display) == .hardwareOnly
+            else {
+                continue
+            }
+            var displayChanged = false
+            // A built-in never stores `.automatic` as a real choice — normalize the legacy
+            // artifact so the persisted mode is honest.
+            if displayPreferences.dimmingMode == .automatic {
+                displayPreferences.dimmingMode = .hardware
+                displayChanged = true
+            }
+            // Hardware mode means the image isn't darkened in software (see `setDimmingMode`).
+            if displayPreferences.gammaBrightness < 100 {
+                displayPreferences.gammaBrightness = 100
+                displayChanged = true
+                clearedGamma = true
+            }
+            if displayChanged {
+                next.displayPreferences[display.key] = displayPreferences
+                changed = true
+            }
+        }
+
+        if changed {
+            preferences = next.normalized()
+        }
+        return clearedGamma
     }
 
     private func runDDCCommand(
