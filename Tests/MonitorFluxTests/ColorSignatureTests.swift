@@ -73,10 +73,21 @@ final class ColorSignatureTests: XCTestCase {
         var colorEnabled = before
         colorEnabled.displayPreferences[displayKey]?.colorEnabled = false
         XCTAssertNotEqual(before.colorSignature, colorEnabled.colorSignature)
+    }
 
-        var gammaControlsEnabled = before
-        gammaControlsEnabled.displayPreferences[displayKey]?.gammaControlsEnabled = false
-        XCTAssertNotEqual(before.colorSignature, gammaControlsEnabled.colorSignature)
+    func testDimmingRoutingFieldsDoNotAffectColorSignature() {
+        // The dimming mode and the dim-to-black floor only route the unified control — the
+        // gamma output is the gammaBrightness *value*, so changing them must not trigger a
+        // gamma recompute.
+        let before = preferencesWithDisplay()
+
+        var mode = before
+        mode.displayPreferences[displayKey]?.dimmingMode = .software
+        XCTAssertEqual(before.colorSignature, mode.colorSignature)
+
+        var floor = before
+        floor.displayPreferences[displayKey]?.dimToBlack = true
+        XCTAssertEqual(before.colorSignature, floor.colorSignature)
     }
 
     func testScheduleAnchorsChangeColorSignature() {

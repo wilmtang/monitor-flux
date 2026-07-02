@@ -41,12 +41,16 @@ final class GammaTemperatureService {
     private let tableSize = 256
 
     func apply(displays: [DisplayInfo], preferences: AppPreferences) -> GammaApplySummary {
-        guard preferences.gammaEnabled else {
+        // The plan is the single truth for what (if anything) gets written: software dimming
+        // applies even with the Warmth master off, so don't short-circuit on `gammaEnabled` —
+        // an all-neutral plan restores instead.
+        let adjustmentsByDisplay = GammaPlan.adjustments(displays: displays, preferences: preferences)
+        if adjustmentsByDisplay.isEmpty {
             restoreIfNeeded()
             return GammaApplySummary(
                 appliedCount: 0,
                 failedCount: 0,
-                message: "Gamma disabled"
+                message: preferences.gammaEnabled ? "Gamma neutral" : "Gamma disabled"
             )
         }
 
@@ -55,7 +59,6 @@ final class GammaTemperatureService {
         var applied = 0
         var skipped = 0
         var failed = 0
-        let adjustmentsByDisplay = GammaPlan.adjustments(displays: displays, preferences: preferences)
         let enabledDisplayIDs = Set(adjustmentsByDisplay.keys)
 
         // Restore only displays we previously adjusted that are no longer enabled,
@@ -83,15 +86,6 @@ final class GammaTemperatureService {
             } catch {
                 failed += 1
             }
-        }
-
-        if adjustmentsByDisplay.isEmpty {
-            restoreIfNeeded()
-            return GammaApplySummary(
-                appliedCount: 0,
-                failedCount: 0,
-                message: "Gamma neutral"
-            )
         }
 
         if failed == 0 {

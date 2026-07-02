@@ -9,10 +9,6 @@ struct DisplayDetailView: View {
         store.displayPreferences(for: display)
     }
 
-    private var gammaSlidersEnabled: Bool {
-        store.preferences.gammaEnabled && displayPreferences.gammaControlsEnabled
-    }
-
     var body: some View {
         Form {
             displaySection
@@ -222,29 +218,31 @@ struct DisplayDetailView: View {
         advancedGroup("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)") {
             advancedToggleRow(
                 "Use software dimming",
-                isOn: displayBinding(\.gammaControlsEnabled),
-                isEnabled: store.preferences.gammaEnabled
+                isOn: softwareDimmingBinding
             )
 
             advancedSliderRow(
                 title: "Software brightness",
                 icon: "sun.max",
                 value: displayPreferences.gammaBrightness,
-                range: ControlRanges.gammaBrightnessPercent,
-                isEnabled: gammaSlidersEnabled
+                range: ControlRanges.gammaBrightnessPercent
             ) { newValue in
                 store.updateDisplayPreferences(for: display) { displayPreferences in
                     displayPreferences.gammaBrightness = newValue
                 }
             }
 
-            if !store.preferences.gammaEnabled {
-                advancedCaption("Turn on Warmth on the Schedule screen to use this.")
-            } else if !displayPreferences.gammaControlsEnabled {
-                advancedCaption("Turn on “Use software dimming” to adjust software brightness.")
-            } else {
-                advancedCaption("Darkens the **image** with the color tables, stacked on top of the real backlight above — so the screen can go **below its hardware-minimum brightness**. It never touches the backlight itself; heavy use can cause slight banding.")
-            }
+            advancedCaption("Darkens the **image** with the color tables, stacked on top of the real backlight above — so the screen can go **below its hardware-minimum brightness**. It never touches the backlight itself; heavy use can cause slight banding.")
+        }
+    }
+
+    /// The legacy software-dimming opt-in, now expressed through the dimming mode: off means
+    /// hardware-only (which also clears any software dimming), on restores the hybrid default.
+    private var softwareDimmingBinding: Binding<Bool> {
+        Binding {
+            store.dimmingMode(for: display) != .hardware
+        } set: { isOn in
+            store.setDimmingMode(isOn ? .automatic : .hardware, for: display)
         }
     }
 

@@ -36,6 +36,34 @@ enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
+/// How a display's unified Brightness control dims it. `.automatic` drives the hardware
+/// backlight first (DDC, or the built-in backlight) and continues in software below the
+/// hardware minimum; `.hardware` uses only the real backlight; `.software` darkens the image
+/// via the color tables and leaves the hardware alone.
+///
+/// Stored optionally: `nil` means "unset", resolved per display kind by
+/// `AppStore.dimmingMode(for:)` — externals default to `.automatic` (hybrid), the built-in
+/// panel to `.hardware` (its hybrid slider stays an explicit opt-in).
+enum DimmingMode: String, CaseIterable, Codable, Identifiable, Sendable {
+    case automatic
+    case hardware
+    case software
+
+    var id: String { rawValue }
+
+    /// De-jargon UI label — DDC/gamma live only in the ⓘ tooltip.
+    var label: String {
+        switch self {
+        case .automatic:
+            "Automatic"
+        case .hardware:
+            "Monitor hardware"
+        case .software:
+            "Software dimming"
+        }
+    }
+}
+
 /// The three f.lux-style schedule phases. Each has its own color temperature,
 /// all sharing the same `ControlRanges.kelvin` min/max.
 enum ColorPhase: String, CaseIterable, Identifiable, Sendable {
@@ -59,7 +87,13 @@ enum ColorPhase: String, CaseIterable, Identifiable, Sendable {
 
 struct DisplayPreferences: Codable, Equatable, Sendable {
     var colorEnabled = true
-    var gammaControlsEnabled = true
+    /// How the unified Brightness control dims this display; nil = per-display-kind default
+    /// (see `DimmingMode`). Replaces the old `gammaControlsEnabled` gate: the software
+    /// brightness *value* now always applies, and the mode only routes the unified control.
+    var dimmingMode: DimmingMode?
+    /// Lets the unified Brightness control reach complete black (software floor 0 instead of
+    /// the 15% safety floor). Opt-in from Advanced; brightness-up keys still recover.
+    var dimToBlack = false
     var ddcDisplayIndex = 1
     var hardwareBrightness = 50
     var hardwareContrast = 70
@@ -82,6 +116,10 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case colorEnabled
+        case dimmingMode
+        case dimToBlack
+        /// Legacy (pre-dimming-mode) software-dimming opt-in gate; decoded for one release
+        /// to seed `dimmingMode`, never encoded.
         case gammaControlsEnabled
         case ddcDisplayIndex
         case hardwareBrightness
@@ -124,7 +162,8 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         colorEnabled = try container.decodeIfPresent(Bool.self, forKey: .colorEnabled) ?? true
-        gammaControlsEnabled = try container.decodeIfPresent(Bool.self, forKey: .gammaControlsEnabled) ?? true
+        dimmingMode = try container.decodeIfPresent(DimmingMode.self, forKey: .dimmingMode)
+        dimToBlack = try container.decodeIfPresent(Bool.self, forKey: .dimToBlack) ?? false
         ddcDisplayIndex = (try container.decodeIfPresent(Int.self, forKey: .ddcDisplayIndex) ?? 1)
             .clamped(to: ControlRanges.ddcDisplayIndex)
         hardwareBrightness = try container.decodeIfPresent(Int.self, forKey: .hardwareBrightness)
@@ -156,12 +195,27 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
             .clamped(to: ControlRanges.hardwarePercent)
         nightContrast = (try container.decodeIfPresent(Int.self, forKey: .nightContrast) ?? 65)
             .clamped(to: ControlRanges.hardwarePercent)
+        // Migrate the legacy `gammaControlsEnabled` gate (one release). An explicit `true`
+        // (seeded on panels with no hardware path, or hand-enabled) becomes `.automatic`; an
+        // explicit `false` leaves the mode unset — the per-display-kind default matches the
+        // old behavior — and resets any stale software-brightness value, because the gate is
+        // gone: a sub-100 value that was inert behind `false` must not start dimming on
+        // upgrade. Absent (fresh installs, new payloads) seeds nothing.
+        if dimmingMode == nil,
+           let legacyGate = try container.decodeIfPresent(Bool.self, forKey: .gammaControlsEnabled) {
+            if legacyGate {
+                dimmingMode = .automatic
+            } else if gammaBrightness < 100 {
+                gammaBrightness = 100
+            }
+        }
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(colorEnabled, forKey: .colorEnabled)
-        try container.encode(gammaControlsEnabled, forKey: .gammaControlsEnabled)
+        try container.encodeIfPresent(dimmingMode, forKey: .dimmingMode)
+        try container.encode(dimToBlack, forKey: .dimToBlack)
         try container.encode(ddcDisplayIndex, forKey: .ddcDisplayIndex)
         try container.encode(hardwareBrightness, forKey: .hardwareBrightness)
         try container.encode(hardwareContrast, forKey: .hardwareContrast)
@@ -401,12 +455,18 @@ extension AppPreferences {
             perDisplay: displayPreferences.mapValues { displayPreferences in
                 [
                     displayPreferences.colorEnabled ? 1 : 0,
-                    displayPreferences.gammaControlsEnabled ? 1 : 0,
                     displayPreferences.gammaBrightness,
                     displayPreferences.gammaContrast,
                 ]
             }
         )
+    }
+
+    /// True when MonitorFlux may currently be writing gamma tables: the Warmth master is on,
+    /// or some display carries a non-neutral software brightness (software dimming is plain
+    /// dimming, independent of the Warmth master). Gates gamma-conflict detection.
+    var mayWriteGamma: Bool {
+        gammaEnabled || displayPreferences.values.contains { $0.gammaBrightness != 100 }
     }
 
     /// The stored color temperature for a schedule phase.

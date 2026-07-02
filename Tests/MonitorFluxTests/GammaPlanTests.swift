@@ -11,6 +11,40 @@ final class GammaPlanTests: XCTestCase {
         XCTAssertTrue(GammaPlan.adjustments(displays: displays, preferences: preferences).isEmpty)
     }
 
+    func testSoftwareDimmingAppliesWithWarmthMasterOff() {
+        // Software dimming is plain dimming, not a color change — it must survive the Warmth
+        // master being off (the unified Brightness control relies on it), with no tint.
+        let display = makeDisplay(id: 1)
+        var displayPreferences = DisplayPreferences()
+        displayPreferences.gammaBrightness = 60
+
+        var preferences = AppPreferences.defaults
+        preferences.gammaEnabled = false
+        preferences.displayPreferences[display.key] = displayPreferences
+
+        let adjustment = GammaPlan.adjustments(displays: [display], preferences: preferences)[display.id]
+
+        XCTAssertNil(adjustment?.temperature)
+        XCTAssertEqual(adjustment?.brightnessPercent, 60)
+    }
+
+    func testDimmingModeDoesNotGateSoftwareBrightness() {
+        // The mode routes the unified control; the stored software-brightness value is the
+        // state and always applies (picking Hardware clears the value at the store layer).
+        let display = makeDisplay(id: 1)
+        var displayPreferences = DisplayPreferences()
+        displayPreferences.dimmingMode = .hardware
+        displayPreferences.gammaBrightness = 70
+
+        var preferences = AppPreferences.defaults
+        preferences.colorMode = .off
+        preferences.displayPreferences[display.key] = displayPreferences
+
+        let adjustment = GammaPlan.adjustments(displays: [display], preferences: preferences)[display.id]
+
+        XCTAssertEqual(adjustment?.brightnessPercent, 70)
+    }
+
     func testNeutralGammaPlansNoDisplayWrites() {
         let display = makeDisplay(id: 1)
         var preferences = AppPreferences.defaults

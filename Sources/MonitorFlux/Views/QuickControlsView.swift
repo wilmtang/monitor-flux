@@ -439,7 +439,6 @@ private struct DisplayCardView: View {
                 icon: "sun.max",
                 value: Double(preferences.gammaBrightness),
                 range: ControlRanges.gammaBrightnessPercent,
-                enabled: store.preferences.gammaEnabled,
                 readout: "\(preferences.gammaBrightness)%"
             ) { newValue in
                 store.updateDisplayPreferences(for: display) { displayPreferences in
@@ -506,7 +505,6 @@ private struct DisplayCardView: View {
                 icon: "sun.max",
                 value: Double(preferences.gammaBrightness),
                 range: ControlRanges.gammaBrightnessPercent,
-                enabled: store.preferences.gammaEnabled,
                 readout: "\(preferences.gammaBrightness)%"
             ) { newValue in
                 store.updateDisplayPreferences(for: display) { displayPreferences in

@@ -10,11 +10,12 @@ enum GammaPlan {
         displays: [DisplayInfo],
         preferences: AppPreferences
     ) -> [CGDirectDisplayID: GammaAdjustment] {
-        guard preferences.gammaEnabled else {
-            return [:]
-        }
-
-        let targetTemperature = ColorSchedule.targetTemperature(preferences: preferences)
+        // Warmth (temperature) rides the master switch; software *dimming* does not — it's
+        // plain dimming, not a color change, so the unified Brightness control keeps working
+        // with Warmth off.
+        let targetTemperature = preferences.gammaEnabled
+            ? ColorSchedule.targetTemperature(preferences: preferences)
+            : nil
         var result: [CGDirectDisplayID: GammaAdjustment] = [:]
         for display in displays {
             // AirPlay / virtual displays ignore gamma writes — leave them to the shade overlay.
@@ -25,9 +26,10 @@ enum GammaPlan {
                 .normalized()
             let adjustment = GammaAdjustment(
                 temperature: displayPreferences.colorEnabled ? targetTemperature : nil,
-                brightnessPercent: displayPreferences.gammaControlsEnabled
-                    ? displayPreferences.gammaBrightness
-                    : 100,
+                // The software-brightness value always applies; `DimmingMode` only routes the
+                // unified control (`.hardware` clears the value when selected, rather than
+                // gating it here — no hidden interactions).
+                brightnessPercent: displayPreferences.gammaBrightness,
                 // Software (gamma) contrast was removed: it only ever produced a banding-prone
                 // approximation, and the built-in panel — its only would-be user — has no real
                 // contrast control. Contrast is now a DDC (external monitor) hardware control only.

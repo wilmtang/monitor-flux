@@ -140,11 +140,15 @@ charts and preview scrub don't change — they just feed the unified setter, and
    = unified fraction.
 4. **Schedule:** scheduled targets interpret as unified in Automatic mode.
 
-## Open questions
+## Open questions - answered inline
 
 1. Handoff notch at 25% of track — feels right against gamma's real perceived range, but
    worth trying 20/30% on hardware.
+   1. My take: do as recommended
 2. Software floor 15% gamma — dark rooms may want lower; expose in Advanced or keep fixed?
+   1. My take: expose in advanced setting. User should be able to toggle a setting where the floor would set at 0% (complete dark). When this is toggled, the slider's hardware/software handoff notch position might need to change, use your UX judgement to decide whether the position need to change, if so what would be the position.
 3. Built-in: adopt Automatic as its default (replacing today's Advanced software-dimming
    toggle), or keep the built-in exactly as-is in v1 and hybrid-ify externals only?
+   1. keep the built-in exactly as-is in v1 and hybrid-ify externals only. And addtionally, remove the software dimming slider in advanced setting for built-in, so that once toggled the built-in screen's brightness is fully controlled by the main slider. Make the UX make sense.
 4. Popup icon swap sun→moon in the software zone: keep, or is the dimmed fill alone quieter?
+   1. Do as you recommmend as a role of UX designer

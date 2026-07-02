@@ -105,6 +105,76 @@ final class PreferencesMigrationTests: XCTestCase {
         )
     }
 
+    func testLegacySoftwareDimmingOptInSeedsAutomaticMode() throws {
+        // Pre-dimming-mode payloads gated software dimming behind `gammaControlsEnabled`.
+        // An explicit true (non-DDC panels, or hand-enabled) becomes Automatic, keeping the
+        // stored software-brightness value live.
+        let json = """
+        {
+          "gammaControlsEnabled": true,
+          "gammaBrightness": 80
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(DisplayPreferences.self, from: json)
+
+        XCTAssertEqual(preferences.dimmingMode, .automatic)
+        XCTAssertEqual(preferences.gammaBrightness, 80)
+    }
+
+    func testLegacyDisabledSoftwareDimmingResetsStaleGammaValue() throws {
+        // With the gate gone the value is the state: a sub-100 gamma that sat inert behind
+        // `gammaControlsEnabled: false` must not start dimming the screen on upgrade. The
+        // mode stays unset so the per-display-kind default applies.
+        let json = """
+        {
+          "gammaControlsEnabled": false,
+          "gammaBrightness": 60
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(DisplayPreferences.self, from: json)
+
+        XCTAssertNil(preferences.dimmingMode)
+        XCTAssertEqual(preferences.gammaBrightness, 100)
+    }
+
+    func testExplicitDimmingModeWinsOverLegacyGate() throws {
+        let json = """
+        {
+          "dimmingMode": "hardware",
+          "gammaControlsEnabled": true,
+          "gammaBrightness": 80
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(DisplayPreferences.self, from: json)
+
+        XCTAssertEqual(preferences.dimmingMode, .hardware)
+        XCTAssertEqual(preferences.gammaBrightness, 80)
+    }
+
+    func testDimmingModeDefaultsUnsetAndRoundTrips() throws {
+        // Fresh payloads carry neither key: the mode stays unset (resolved per display kind)
+        // and the floor stays at the safety default.
+        let empty = try JSONDecoder().decode(DisplayPreferences.self, from: Data("{}".utf8))
+        XCTAssertNil(empty.dimmingMode)
+        XCTAssertFalse(empty.dimToBlack)
+
+        var preferences = DisplayPreferences()
+        preferences.dimmingMode = .software
+        preferences.dimToBlack = true
+
+        let data = try JSONEncoder().encode(preferences)
+        let decoded = try JSONDecoder().decode(DisplayPreferences.self, from: data)
+        XCTAssertEqual(decoded.dimmingMode, .software)
+        XCTAssertTrue(decoded.dimToBlack)
+
+        // The legacy gate is decode-only — new payloads must not re-encode it.
+        let keys = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(keys["gammaControlsEnabled"])
+    }
+
     func testDisplayPreferencesClampDecodedValues() throws {
         let json = """
         {

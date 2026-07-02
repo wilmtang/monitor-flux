@@ -451,6 +451,31 @@ final class AppStore: ObservableObject {
         preferences.displayPreferences[display.key, default: DisplayPreferences()]
     }
 
+    /// The display's dimming mode with the per-kind default resolved: externals default to
+    /// `.automatic` (hybrid — hardware first, software below the hardware floor), the
+    /// built-in panel to `.hardware` (backlight only; its hybrid slider is an explicit
+    /// opt-in via the Advanced software-dimming toggle).
+    func dimmingMode(for display: DisplayInfo) -> DimmingMode {
+        displayPreferences(for: display).dimmingMode ?? (display.isBuiltIn ? .hardware : .automatic)
+    }
+
+    func setDimmingMode(_ mode: DimmingMode, for display: DisplayInfo) {
+        updateDisplayPreferences(for: display) { displayPreferences in
+            displayPreferences.dimmingMode = mode
+            // Hardware-only means the image isn't darkened in software: clear any software
+            // dimming (an Advanced >100 boost survives). Leaving it applied would keep the
+            // screen dim with no main-slider way to lift it.
+            if mode == .hardware {
+                displayPreferences.gammaBrightness = max(displayPreferences.gammaBrightness, 100)
+            }
+        }
+    }
+
+    /// The software floor (percent) for a display's unified brightness control.
+    func softwareDimmingFloor(for display: DisplayInfo) -> Int {
+        HybridBrightness.floorPercent(dimToBlack: displayPreferences(for: display).dimToBlack)
+    }
+
     /// The popup's display cards in the user's chosen order (drag-to-reorder). Displays not yet
     /// in `displayOrder` — freshly connected ones — follow the ordered set in detection order.
     var orderedDisplays: [DisplayInfo] {
@@ -819,10 +844,10 @@ final class AppStore: ObservableObject {
             return true
         }
         // No DDC path to the backlight — software-dim via gamma, the same fallback the popup
-        // shows for a non-DDC monitor. Only when gamma can actually take effect; otherwise let
-        // the key fall through to macOS rather than swallowing it into a no-op (the bug that made
-        // brightness keys feel dead on a monitor the DDC probe can't drive).
-        guard preferences.gammaEnabled, displayPreferences(for: target).gammaControlsEnabled else {
+        // shows for a non-DDC monitor. In hardware-only mode there's nothing to drive, so let
+        // the key fall through to macOS rather than swallowing it into a no-op (the bug that
+        // made brightness keys feel dead on a monitor the DDC probe can't drive).
+        guard dimmingMode(for: target) != .hardware else {
             return false
         }
         let next = (displayPreferences(for: target).gammaBrightness + delta)
@@ -1039,9 +1064,8 @@ final class AppStore: ObservableObject {
 
     /// Whether the display can dim its *real* backlight: the built-in panel through the native
     /// brightness API, or an external monitor through DDC (probed per-display on connect). When
-    /// false, software (gamma) dimming is the fallback rather than an optional extra — so this
-    /// drives both the default for `gammaControlsEnabled` and which brightness slider the popup
-    /// shows.
+    /// false, software (gamma) dimming is the fallback rather than an optional extra — it
+    /// drives which brightness slider the popup shows.
     func canUseHardwareBrightness(_ display: DisplayInfo) -> Bool {
         if display.isBuiltIn {
             return canUseNativeBrightness(display)
@@ -1196,6 +1220,12 @@ final class AppStore: ObservableObject {
         // and updates `colorMessage` from the gamma service.
         updateGlobalPreferences { preferences in
             preferences.gammaEnabled = false
+            // Software dimming is independent of the Warmth master, so the escape hatch must
+            // also neutralize it — otherwise the tables would stay darkened after "restore".
+            for key in preferences.displayPreferences.keys {
+                preferences.displayPreferences[key]?.gammaBrightness = 100
+                preferences.displayPreferences[key]?.gammaContrast = 100
+            }
         }
     }
 
@@ -1217,13 +1247,14 @@ final class AppStore: ObservableObject {
             colorMessage = "Safe mode — gamma not applied"
             return
         }
-        // Turning Warmth off clears the conflict banner immediately — that's cheap (no LUT read), so
-        // it stays here for a responsive feel. Detecting a *new* conflict is the expensive part (a
-        // per-display LUT read-back, plus a running-app scan on a hit) and must NOT run here: this
-        // method fires on every warmth/software-dim slider tick. `refreshGammaConflictState` does the
-        // detection on the 60s timer and on display refresh, where an occasional check is plenty — a
-        // foreign gamma app is a persistent condition, not one that appears between two drag frames.
-        if !preferences.gammaEnabled {
+        // Ending all gamma output (Warmth off and no software dimming) clears the conflict banner
+        // immediately — that's cheap (no LUT read), so it stays here for a responsive feel.
+        // Detecting a *new* conflict is the expensive part (a per-display LUT read-back, plus a
+        // running-app scan on a hit) and must NOT run here: this method fires on every
+        // warmth/software-dim slider tick. `refreshGammaConflictState` does the detection on the
+        // 60s timer and on display refresh, where an occasional check is plenty — a foreign gamma
+        // app is a persistent condition, not one that appears between two drag frames.
+        if !preferences.mayWriteGamma {
             gammaConflictDetected = false
             gammaConflictApps = []
         }
@@ -1243,7 +1274,7 @@ final class AppStore: ObservableObject {
     /// wasteful at slider-drag frequency. Must run *before* `gammaService.apply` re-asserts our table
     /// (which would mask the foreign change). A freshly-detected conflict un-dismisses the banner.
     private func refreshGammaConflictState() {
-        guard !safeMode, preferences.gammaEnabled else {
+        guard !safeMode, preferences.mayWriteGamma else {
             gammaConflictDetected = false
             gammaConflictApps = []
             return
@@ -1514,10 +1545,8 @@ final class AppStore: ObservableObject {
                 } else {
                     var displayPreferences = DisplayPreferences()
                     displayPreferences.ddcDisplayIndex = display.isBuiltIn ? 1 : externalIndex
-                    // Software dimming defaults OFF when the display can dim in hardware (native
-                    // backlight or DDC) — it's the fallback only for panels with no hardware path.
-                    // Existing, already-seeded displays keep whatever the user has set.
-                    displayPreferences.gammaControlsEnabled = !canUseHardwareBrightness(display)
+                    // `dimmingMode` stays unset: `dimmingMode(for:)` resolves the per-kind
+                    // default (externals hybrid, built-in hardware-only).
                     next.displayPreferences[display.key] = displayPreferences
                 }
                 changed = true

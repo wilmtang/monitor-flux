@@ -117,12 +117,7 @@ struct DiagnosticsView: View {
                     value: "Brightness \(preferences.hardwareBrightness)% · Contrast \(preferences.hardwareContrast)% · Volume \(preferences.hardwareVolume)%"
                 )
             }
-            LabeledContent(
-                "Software dimming",
-                value: preferences.gammaControlsEnabled
-                    ? "On · brightness \(preferences.gammaBrightness)%"
-                    : "Off"
-            )
+            LabeledContent("Dimming", value: dimmingLabel(display, preferences))
             LabeledContent("Warmth opt-in", value: preferences.colorEnabled ? "On" : "Off")
             LabeledContent("Scheduled", value: scheduledControlsLabel(preferences, isBuiltIn: display.isBuiltIn))
         }
@@ -191,6 +186,22 @@ struct DiagnosticsView: View {
             parts.append("offline")
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// One line summarizing how this display dims: the mode plus both live components,
+    /// e.g. "Automatic · DDC 70% · software 100%".
+    private func dimmingLabel(_ display: DisplayInfo, _ preferences: DisplayPreferences) -> String {
+        if display.isVirtual {
+            return "Software (overlay) · \(min(100, preferences.gammaBrightness))%"
+        }
+        let hardware: String = if display.isBuiltIn {
+            store.canUseNativeBrightness(display)
+                ? "backlight \(Int((store.nativeBrightnessValue(for: display) * 100).rounded()))%"
+                : "no backlight API"
+        } else {
+            "DDC \(preferences.hardwareBrightness)%"
+        }
+        return "\(store.dimmingMode(for: display).label) · \(hardware) · software \(preferences.gammaBrightness)%"
     }
 
     private func scheduledControlsLabel(_ preferences: DisplayPreferences, isBuiltIn: Bool) -> String {
@@ -314,7 +325,7 @@ struct DiagnosticsView: View {
                 lines.append("Speakers: \(store.displayHasDetectedAudio(display) ? "detected" : "none detected")")
                 lines.append("Hardware: brightness \(preferences.hardwareBrightness)%, contrast \(preferences.hardwareContrast)%, volume \(preferences.hardwareVolume)%")
             }
-            lines.append("Software dimming: \(preferences.gammaControlsEnabled ? "on, brightness \(preferences.gammaBrightness)%" : "off")")
+            lines.append("Dimming: \(dimmingLabel(display, preferences))")
             lines.append("Warmth opt-in: \(preferences.colorEnabled ? "on" : "off")")
             lines.append("Scheduled: \(scheduledControlsLabel(preferences, isBuiltIn: display.isBuiltIn))")
         }
