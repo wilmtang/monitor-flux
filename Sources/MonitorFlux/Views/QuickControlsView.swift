@@ -422,46 +422,31 @@ private struct DisplayCardView: View {
 
     @ViewBuilder
     private func builtInControls(_ preferences: DisplayPreferences) -> some View {
-        if store.canUseNativeBrightness(display) {
-            // Real backlight via DisplayServices.
-            let level = store.nativeBrightnessValue(for: display)
-            ControlRow(
-                icon: "sun.max",
-                value: level * 100,
-                range: ControlRanges.hardwarePercent,
-                readout: "\(Int((level * 100).rounded()))%"
-            ) { newValue in
-                store.setNativeBrightness(newValue / 100.0, for: display)
-            }
-        } else {
-            // No backlight API; fall back to software (gamma) dimming.
-            ControlRow(
-                icon: "sun.max",
-                value: Double(preferences.gammaBrightness),
-                range: ControlRanges.gammaBrightnessPercent,
-                readout: "\(preferences.gammaBrightness)%"
-            ) { newValue in
-                store.updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaBrightness = Int(newValue.rounded())
-                        .clamped(to: ControlRanges.gammaBrightnessPercent)
-                }
-            }
-            Text("Software dimming (built-in panel has no DDC)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+        brightnessRow
+        if !store.canUseNativeBrightness(display) {
+            caption("Software dimming (built-in panel has no backlight control)")
         }
     }
 
     @ViewBuilder
     private func externalControls(_ preferences: DisplayPreferences) -> some View {
-        if store.canUseHardwareBrightness(display) {
-            ControlRow(
-                icon: "sun.max",
-                value: Double(preferences.hardwareBrightness),
-                range: ControlRanges.hardwarePercent,
-                readout: "\(preferences.hardwareBrightness)%"
-            ) { store.setHardwareBrightness(Int($0.rounded()), for: display) }
+        brightnessRow
 
+        switch store.brightnessControlKind(for: display) {
+        case .shade:
+            caption("Overlay dimming (AirPlay — no hardware control)")
+        case .softwareOnly:
+            caption(store.canUseDDC(for: display)
+                ? "Software dimming"
+                : "Software dimming (no DDC on this display)")
+        case .unavailable:
+            caption("No hardware brightness control on this display")
+        case .hybrid, .hardwareOnly:
+            EmptyView()
+        }
+
+        // Contrast and volume are DDC-only, independent of how brightness dims.
+        if store.canUseDDC(for: display) {
             ControlRow(
                 icon: "circle.lefthalf.filled",
                 value: Double(preferences.hardwareContrast),
@@ -479,43 +464,34 @@ private struct DisplayCardView: View {
                     readout: "\(preferences.hardwareVolume)%"
                 ) { store.setHardwareVolume(Int($0.rounded()), for: display) }
             }
-        } else if display.isVirtual {
-            // AirPlay/virtual display: gamma is ignored here, so brightness rides a shade overlay
-            // (0–100%). It's plain dimming, not a color change, so it stays usable even when the
-            // Warmth master is off.
-            let level = min(100, preferences.gammaBrightness)
-            ControlRow(
-                icon: "sun.max",
-                value: Double(level),
-                range: ControlRanges.hardwarePercent,
-                readout: "\(level)%"
-            ) { newValue in
-                store.updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaBrightness = Int(newValue.rounded())
-                        .clamped(to: ControlRanges.hardwarePercent)
-                }
-            }
-            Text("Overlay dimming (AirPlay — no hardware control)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        } else {
-            // No DDC path to the real backlight — drive software (gamma) dimming instead, the
-            // same fallback a built-in panel with no brightness API gets.
-            ControlRow(
-                icon: "sun.max",
-                value: Double(preferences.gammaBrightness),
-                range: ControlRanges.gammaBrightnessPercent,
-                readout: "\(preferences.gammaBrightness)%"
-            ) { newValue in
-                store.updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaBrightness = Int(newValue.rounded())
-                        .clamped(to: ControlRanges.gammaBrightnessPercent)
-                }
-            }
-            Text("Software dimming (no DDC on this display)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
+    }
+
+    /// The one Brightness slider, on the unified 0…100 position scale for every path —
+    /// backlight, DDC, hybrid (with the handoff notch), software, or shade. Below the notch
+    /// the icon swaps sun → moon and the fill dims: the image is being darkened now, not the
+    /// backlight.
+    private var brightnessRow: some View {
+        let kind = store.brightnessControlKind(for: display)
+        let position = store.unifiedBrightness(for: display)
+        let notch = kind == .hybrid ? HybridBrightness.handoffFraction : nil
+        let inSoftwareZone = notch.map { position < $0 } ?? false
+        return ControlRow(
+            icon: inSoftwareZone ? "moon" : "sun.max",
+            value: position * 100,
+            range: ControlRanges.hardwarePercent,
+            enabled: kind != .unavailable,
+            notchFraction: notch,
+            readout: "\(Int((position * 100).rounded()))%"
+        ) { newValue in
+            store.setUnifiedBrightness(newValue / 100.0, for: display)
+        }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
     }
 }
 
@@ -527,6 +503,7 @@ private struct ControlRow: View {
     let value: Double
     let range: ClosedRange<Int>
     var enabled = true
+    var notchFraction: Double? = nil
     let readout: String
     let onChange: (Double) -> Void
 
@@ -537,6 +514,7 @@ private struct ControlRow: View {
                 value: value,
                 range: Double(range.lowerBound)...Double(range.upperBound),
                 isEnabled: enabled,
+                notchFraction: notchFraction,
                 onChange: onChange
             )
             Text(readout)

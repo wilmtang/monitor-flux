@@ -476,6 +476,111 @@ final class AppStore: ObservableObject {
         HybridBrightness.floorPercent(dimToBlack: displayPreferences(for: display).dimToBlack)
     }
 
+    // MARK: - Unified brightness (the one Brightness slider per display)
+
+    /// What a display's everyday Brightness slider drives, from its capabilities plus its
+    /// dimming mode — so the popup card, the detail pane, and the media keys all route the
+    /// same way.
+    func brightnessControlKind(for display: DisplayInfo) -> BrightnessControlKind {
+        if display.isVirtual {
+            return .shade
+        }
+        if display.isBuiltIn {
+            guard canUseNativeBrightness(display) else {
+                // No backlight API at all: software dimming is the only path.
+                return .softwareOnly
+            }
+            // The built-in's hybrid slider is the Advanced software-dimming opt-in; hardware
+            // is its default (macOS's own domain).
+            return dimmingMode(for: display) == .hardware ? .hardwareOnly : .hybrid
+        }
+        let hasDDC = canUseDDC(for: display)
+        switch dimmingMode(for: display) {
+        case .automatic:
+            return hasDDC ? .hybrid : .softwareOnly
+        case .hardware:
+            return hasDDC ? .hardwareOnly : .unavailable
+        case .software:
+            return .softwareOnly
+        }
+    }
+
+    /// The unified brightness position (0…1) — the single scale the everyday slider, the
+    /// media keys, the OSD, and (in Automatic mode) the schedule share.
+    func unifiedBrightness(for display: DisplayInfo) -> Double {
+        let displayPreferences = displayPreferences(for: display)
+        let floor = softwareDimmingFloor(for: display)
+        switch brightnessControlKind(for: display) {
+        case .hybrid:
+            return HybridBrightness.unified(hybridComponents(for: display), floor: floor)
+        case .hardwareOnly:
+            return display.isBuiltIn
+                ? nativeBrightnessValue(for: display)
+                : Double(displayPreferences.hardwareBrightness) / 100.0
+        case .softwareOnly:
+            return HybridBrightness.softwareOnlyFraction(
+                gamma: displayPreferences.gammaBrightness,
+                floor: floor
+            )
+        case .shade:
+            return Double(min(100, displayPreferences.gammaBrightness)) / 100.0
+        case .unavailable:
+            return Double(displayPreferences.hardwareBrightness) / 100.0
+        }
+    }
+
+    /// Drive a display's brightness to a unified position. On a hybrid track this maintains
+    /// the handoff invariant via `HybridBrightness.resolve`; components are only written when
+    /// they actually change, so a software-zone drag doesn't hammer DDC with repeated zeros
+    /// (and vice versa for gamma).
+    func setUnifiedBrightness(_ position: Double, for display: DisplayInfo) {
+        let floor = softwareDimmingFloor(for: display)
+        switch brightnessControlKind(for: display) {
+        case .hybrid:
+            let current = hybridComponents(for: display)
+            let next = HybridBrightness.resolve(targetUnified: position, current: current, floor: floor)
+            if next.hardware != current.hardware {
+                if display.isBuiltIn {
+                    setNativeBrightness(Double(next.hardware) / 100.0, for: display)
+                } else {
+                    setHardwareBrightness(next.hardware, for: display)
+                }
+            }
+            if next.gamma != current.gamma {
+                updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = next.gamma
+                }
+            }
+        case .hardwareOnly:
+            if display.isBuiltIn {
+                setNativeBrightness(position, for: display)
+            } else {
+                setHardwareBrightness(Int((position.clamped(to: 0...1) * 100).rounded()), for: display)
+            }
+        case .softwareOnly:
+            let gamma = HybridBrightness.softwareOnlyGamma(fraction: position, floor: floor)
+            updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences.gammaBrightness = gamma
+            }
+        case .shade:
+            let value = Int((position.clamped(to: 0...1) * 100).rounded())
+            updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences.gammaBrightness = value
+            }
+        case .unavailable:
+            break
+        }
+    }
+
+    /// Both dimming components as integer percents (the built-in backlight scaled to 0…100).
+    private func hybridComponents(for display: DisplayInfo) -> HybridBrightness.Components {
+        let displayPreferences = displayPreferences(for: display)
+        let hardware = display.isBuiltIn
+            ? Int((nativeBrightnessValue(for: display) * 100).rounded())
+            : displayPreferences.hardwareBrightness
+        return HybridBrightness.Components(hardware: hardware, gamma: displayPreferences.gammaBrightness)
+    }
+
     /// The popup's display cards in the user's chosen order (drag-to-reorder). Displays not yet
     /// in `displayOrder` — freshly connected ones — follow the ordered set in detection order.
     var orderedDisplays: [DisplayInfo] {
@@ -1636,6 +1741,22 @@ final class AppStore: ObservableObject {
         pendingDDCMessage = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
     }
+}
+
+/// What a display's everyday Brightness slider drives (see
+/// `AppStore.brightnessControlKind(for:)`), so the popup and the detail pane render the
+/// same track for the same display.
+enum BrightnessControlKind: Equatable {
+    /// Unified two-zone track: hardware above the handoff notch, software (gamma) below.
+    case hybrid
+    /// Hardware only — DDC 0–100, or the built-in backlight.
+    case hardwareOnly
+    /// Software only — the whole track maps to gamma floor…100.
+    case softwareOnly
+    /// AirPlay/virtual: the shade overlay, 0–100.
+    case shade
+    /// No working path (non-DDC external in Monitor-hardware mode): disabled slider + hint.
+    case unavailable
 }
 
 /// The detailed window. Subclassing `NSWindow` lets the smoke test show it on screen

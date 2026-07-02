@@ -73,6 +73,18 @@ enum HelpText {
     menu-bar slider and keyboard brightness keys use. Works on the built-in and Apple displays.
     """
 
+    static let dimmingMethod = """
+    Automatic uses the monitor's own brightness (DDC/CI) first and, below the notch, keeps \
+    darkening the image in software (gamma). Monitor hardware drives only the monitor's own \
+    control; Software dimming only darkens the image — it can't go brighter than the backlight.
+    """
+
+    static let softwareDimming = """
+    Software dimming darkens the image by editing macOS's color tables (gamma) — the real \
+    backlight doesn't change, so the screen can go below its hardware minimum. 100% is \
+    neutral; values above 100% boost a dim panel. Heavy use can cause slight banding.
+    """
+
     static let schedule = """
     Scheduled brightness/contrast ride the same day–night timeline as Warmth: hold the daytime \
     value, ease to the night value at sunset, back at wake. A manual change holds until the next phase.
@@ -131,12 +143,17 @@ struct InfoButton: View {
 }
 
 /// A continuous slider styled after MonitorControl: a rounded track, a white fill from the
-/// left, the control's icon inside at the leading edge, and a circular knob. No tick marks.
+/// left, the control's icon inside at the leading edge, and a circular knob. No tick marks —
+/// except the optional handoff notch of a hybrid (hardware + software) brightness track.
 struct MonitorSlider: View {
     let systemImage: String
     let value: Double
     let range: ClosedRange<Double>
     var isEnabled = true
+    /// When set, a quiet 1 pt handoff tick at this track fraction; below it the fill dims to
+    /// 55% white — the "image is being darkened now, not the backlight" look of the unified
+    /// brightness track's software zone.
+    var notchFraction: Double? = nil
     let onChange: (Double) -> Void
 
     private let height: CGFloat = 24
@@ -144,6 +161,16 @@ struct MonitorSlider: View {
     private var fraction: Double {
         guard range.upperBound > range.lowerBound else { return 0 }
         return ((value - range.lowerBound) / (range.upperBound - range.lowerBound)).clamped(to: 0...1)
+    }
+
+    /// The thumb sits below the handoff notch — the software (image-dimming) zone.
+    private var inSoftwareZone: Bool {
+        notchFraction.map { fraction < $0 } ?? false
+    }
+
+    private var fillOpacity: Double {
+        guard isEnabled else { return 0.4 }
+        return inSoftwareZone ? 0.55 : 0.95
     }
 
     var body: some View {
@@ -154,8 +181,17 @@ struct MonitorSlider: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.14))
                 Capsule()
-                    .fill(Color.white.opacity(isEnabled ? 0.95 : 0.4))
+                    .fill(Color.white.opacity(fillOpacity))
                     .frame(width: knobX + height)
+                if let notch = notchFraction {
+                    // Where the knob's center sits at the notch position — a segment-gap-like
+                    // tick (quiet, not a second thumb). Dark over the white fill, light over
+                    // the empty track.
+                    Capsule()
+                        .fill(fraction >= notch ? Color.black.opacity(0.28) : Color.white.opacity(0.45))
+                        .frame(width: 1, height: 10)
+                        .position(x: height / 2 + (width - height) * notch, y: height / 2)
+                }
                 Image(systemName: systemImage)
                     .zoomFont(size: 12, weight: .semibold)
                     .foregroundStyle(.black.opacity(0.6))

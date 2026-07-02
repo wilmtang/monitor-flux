@@ -3,7 +3,10 @@ import SwiftUI
 struct DisplayDetailView: View {
     @EnvironmentObject private var store: AppStore
     let display: DisplayInfo
-    @State private var advancedExpanded = false
+    /// Collapsed by default; `MONITORFLUX_EXPAND_ADVANCED=1` opens it on launch so UI
+    /// verification can screenshot the Advanced controls without a click (dev hook only).
+    @State private var advancedExpanded =
+        ProcessInfo.processInfo.environment["MONITORFLUX_EXPAND_ADVANCED"] == "1"
 
     private var displayPreferences: DisplayPreferences {
         store.displayPreferences(for: display)
@@ -33,16 +36,7 @@ struct DisplayDetailView: View {
     /// through the same software-brightness value the popup uses. 0–100%, darker-only.
     private var airplayBrightnessSection: some View {
         Section {
-            percentSliderRow(
-                title: "Brightness",
-                icon: "sun.max",
-                percent: Double(min(100, displayPreferences.gammaBrightness))
-            ) { newValue in
-                store.updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaBrightness = Int(newValue.rounded())
-                        .clamped(to: ControlRanges.hardwarePercent)
-                }
-            }
+            unifiedBrightnessRow
             Text("Dimmed with a translucent overlay, since AirPlay/wireless displays have no hardware brightness and ignore gamma. It only goes darker, not brighter.")
                 .zoomFont(.caption)
                 .foregroundStyle(.secondary)
@@ -74,52 +68,112 @@ struct DisplayDetailView: View {
         }
     }
 
-    /// The display's *real* brightness/contrast — the monitor's own DDC controls, or the
-    /// built-in backlight. Shown first because it's the everyday control.
+    /// The one Brightness slider — the everyday control, on the unified position scale for
+    /// every dimming path. Externals get the "Dimming method" picker directly beneath it.
     @ViewBuilder
     private var realControlsSection: some View {
         if display.isBuiltIn {
             Section {
-                if store.canUseNativeBrightness(display) {
-                    percentSliderRow(
-                        title: "Brightness",
-                        icon: "sun.max",
-                        percent: store.nativeBrightnessValue(for: display) * 100
-                    ) { newValue in
-                        store.setNativeBrightness(newValue / 100.0, for: display)
-                    }
-                    Text("This is the **real backlight** — the same hardware level as macOS's own brightness control. To go **dimmer than the panel's hardware minimum** (e.g. a dark room), turn on Software dimming under Advanced.")
-                        .zoomFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Label("No adjustable backlight", systemImage: "laptopcomputer")
-                        .foregroundStyle(.secondary)
-                    Text("This panel exposes no backlight API, so use the software (gamma) brightness below, or your keyboard's brightness keys.")
-                        .zoomFont(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                unifiedBrightnessRow
+                brightnessCaption
             } header: {
                 sectionHeader("Brightness", help: HelpText.backlight, helpTitle: "Backlight")
             }
         } else {
             Section {
-                percentSliderRow(
-                    title: "Brightness",
-                    icon: "sun.max",
-                    percent: Double(displayPreferences.hardwareBrightness),
-                    isEnabled: store.canUseDDC(for: display)
-                ) { newValue in
-                    store.setHardwareBrightness(Int(newValue.rounded()), for: display)
-                }
-
-                Text("The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced.")
-                    .zoomFont(.caption)
-                    .foregroundStyle(.secondary)
+                unifiedBrightnessRow
+                dimmingMethodRow
+                brightnessCaption
             } header: {
                 sectionHeader("Brightness", help: HelpText.ddc, helpTitle: "Monitor brightness (DDC/CI)")
             }
         }
+    }
+
+    /// The hero slider, driven by the unified brightness position — the same `MonitorSlider`
+    /// as the popup card, so the handoff notch, the dimmed software-zone fill, and the
+    /// sun → moon icon swap look identical in both places.
+    private var unifiedBrightnessRow: some View {
+        let kind = store.brightnessControlKind(for: display)
+        let position = store.unifiedBrightness(for: display)
+        let notch = kind == .hybrid ? HybridBrightness.handoffFraction : nil
+        let inSoftwareZone = notch.map { position < $0 } ?? false
+        return HStack(spacing: 10) {
+            Text("Brightness")
+                .lineLimit(1)
+                .frame(width: 108, alignment: .leading)
+            MonitorSlider(
+                systemImage: inSoftwareZone ? "moon" : "sun.max",
+                value: position * 100,
+                range: 0...100,
+                isEnabled: kind != .unavailable,
+                notchFraction: notch
+            ) { newValue in
+                store.setUnifiedBrightness(newValue / 100.0, for: display)
+            }
+            Text("\(Int((position * 100).rounded()))%")
+                .monospacedDigit()
+                .frame(width: 44, alignment: .trailing)
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// Segmented per-display choice of *how* the slider dims — externals only (the built-in
+    /// keeps its Advanced software-dimming opt-in, and AirPlay has no choice to make).
+    private var dimmingMethodRow: some View {
+        HStack(spacing: 6) {
+            Text("Dimming method")
+                .zoomFont(.body)
+            InfoButton(title: "Dimming method", message: HelpText.dimmingMethod)
+            Spacer(minLength: 12)
+            Picker("Dimming method", selection: dimmingModeBinding) {
+                ForEach(DimmingMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+        }
+    }
+
+    private var dimmingModeBinding: Binding<DimmingMode> {
+        Binding {
+            store.dimmingMode(for: display)
+        } set: { newMode in
+            store.setDimmingMode(newMode, for: display)
+        }
+    }
+
+    /// Mode-aware explanation under the hero slider.
+    private var brightnessCaption: some View {
+        let text: LocalizedStringKey
+        switch store.brightnessControlKind(for: display) {
+        case .hybrid:
+            text = display.isBuiltIn
+                ? "This is the **real backlight** first; keep dragging below the notch and MonitorFlux darkens the **image** in software, dimmer than the panel's hardware minimum."
+                : "Uses the monitor's **own brightness** first; keep dragging below the notch to darken the **image** further in software. Contrast and volume are under Advanced."
+        case .hardwareOnly:
+            text = display.isBuiltIn
+                ? "This is the **real backlight** — the same hardware level as macOS's own brightness control. To go **dimmer than the panel's hardware minimum** (e.g. a dark room), turn on Software dimming under Advanced."
+                : "The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced."
+        case .softwareOnly:
+            if display.isBuiltIn {
+                text = "This panel exposes no backlight API, so MonitorFlux darkens the **image** in software instead."
+            } else if store.canUseDDC(for: display) {
+                text = "Darkens the **image** in software; the monitor's own brightness is left alone."
+            } else {
+                text = "This connection doesn't expose the monitor's own brightness (no DDC), so MonitorFlux darkens the **image** in software."
+            }
+        case .unavailable:
+            text = "This connection doesn't expose the monitor's own brightness (no DDC). Choose Automatic or Software dimming to dim the image instead."
+        case .shade:
+            text = "" // AirPlay renders its own section.
+        }
+        return Text(text)
+            .zoomFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Software dimming + scheduling, collapsed by default so the everyday real brightness /
@@ -213,31 +267,58 @@ struct DisplayDetailView: View {
         }
     }
 
-    /// Software (gamma) dimming — separate from the real backlight above.
+    /// Software (gamma) dimming extras. The built-in keeps its opt-in toggle here (once on,
+    /// the main Brightness slider covers the whole range — no separate slider); externals
+    /// choose their method with the picker above, so this holds only the raw power-user
+    /// slider. Both get the dim-to-black floor override.
+    @ViewBuilder
     private var gammaContent: some View {
-        advancedGroup("Software dimming", help: HelpText.gamma, helpTitle: "Software dimming (gamma)") {
-            advancedToggleRow(
-                "Use software dimming",
-                isOn: softwareDimmingBinding
-            )
-
-            advancedSliderRow(
-                title: "Software brightness",
-                icon: "sun.max",
-                value: displayPreferences.gammaBrightness,
-                range: ControlRanges.gammaBrightnessPercent
-            ) { newValue in
-                store.updateDisplayPreferences(for: display) { displayPreferences in
-                    displayPreferences.gammaBrightness = newValue
+        if display.isBuiltIn {
+            advancedGroup("Software dimming", help: HelpText.softwareDimming, helpTitle: "Software dimming (gamma)") {
+                if store.canUseNativeBrightness(display) {
+                    advancedToggleRow(
+                        "Use software dimming",
+                        isOn: softwareDimmingBinding
+                    )
+                    advancedCaption(store.dimmingMode(for: display) == .hardware
+                        ? "Lets the Brightness slider above keep dimming **below the backlight's minimum** by darkening the image in software."
+                        : "The Brightness slider above now keeps dimming **below the backlight's minimum** — the stretch left of the notch darkens the image in software.")
+                } else {
+                    advancedCaption("This panel has no backlight control, so the Brightness slider above always dims in software.")
                 }
+                dimToBlackRows
             }
-
-            advancedCaption("Darkens the **image** with the color tables, stacked on top of the real backlight above — so the screen can go **below its hardware-minimum brightness**. It never touches the backlight itself; heavy use can cause slight banding.")
+        } else {
+            advancedGroup("Software dimming", help: HelpText.softwareDimming, helpTitle: "Software dimming (gamma)") {
+                advancedSliderRow(
+                    title: "Software brightness",
+                    icon: "sun.max",
+                    value: displayPreferences.gammaBrightness,
+                    range: ControlRanges.gammaBrightnessPercent
+                ) { newValue in
+                    store.updateDisplayPreferences(for: display) { displayPreferences in
+                        displayPreferences.gammaBrightness = newValue
+                    }
+                }
+                advancedCaption("The raw image-darkening level — 100% is neutral, and the Brightness slider drives it automatically below the notch. This is the only control that reaches the **100–150% boost** range, and it works in every dimming method. Heavy use can cause slight banding.")
+                dimToBlackRows
+            }
         }
     }
 
-    /// The legacy software-dimming opt-in, now expressed through the dimming mode: off means
-    /// hardware-only (which also clears any software dimming), on restores the hybrid default.
+    /// The floor override for the unified slider: complete black instead of the 15% safety
+    /// floor. Hidden while the slider has no software zone to floor (hardware-only modes).
+    @ViewBuilder
+    private var dimToBlackRows: some View {
+        if [.hybrid, .softwareOnly].contains(store.brightnessControlKind(for: display)) {
+            advancedToggleRow("Allow dimming to black", isOn: displayBinding(\.dimToBlack))
+            advancedCaption("Lets the very bottom of the Brightness slider turn the screen **completely black** instead of stopping at a faintly readable level. Brightness-up keys and the slider still recover it.")
+        }
+    }
+
+    /// The built-in's software-dimming opt-in, expressed through the dimming mode: off means
+    /// backlight-only (which also clears any software dimming), on makes the main slider
+    /// hybrid — backlight first, software below the notch.
     private var softwareDimmingBinding: Binding<Bool> {
         Binding {
             store.dimmingMode(for: display) != .hardware
@@ -435,37 +516,6 @@ struct DisplayDetailView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.leading, 30)
-    }
-
-    /// The compact icon–label–slider–% row every everyday brightness control uses (real
-    /// backlight, DDC brightness, AirPlay shade), so they line up column-for-column.
-    private func percentSliderRow(
-        title: String,
-        icon: String,
-        percent: Double,
-        isEnabled: Bool = true,
-        onChange: @escaping (Double) -> Void
-    ) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .frame(width: 18)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .lineLimit(1)
-                .frame(width: 80, alignment: .leading)
-            Slider(
-                value: Binding {
-                    percent
-                } set: { newValue in
-                    onChange(newValue)
-                },
-                in: 0...100
-            )
-            .disabled(!isEnabled)
-            Text("\(Int(percent.rounded()))%")
-                .monospacedDigit()
-                .frame(width: 44, alignment: .trailing)
-        }
     }
 
     /// Like `displayBinding`, but re-applies the schedule after the change so toggling it on
