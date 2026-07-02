@@ -5,7 +5,9 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("General") {
+            // No header on the first section: the pane is already titled "General" in the
+            // window's title bar, and repeating it directly underneath reads as a stutter.
+            Section {
                 Toggle("Show in Dock", isOn: Binding {
                     store.preferences.showInDock
                 } set: { isOn in
@@ -143,63 +145,35 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
+        .navigationTitle("General")
     }
 
     private var accessibilityWarning: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Media-key shortcuts need Accessibility")
-                    .zoomFont(.callout)
-                    .fontWeight(.semibold)
-                Text(store.preferences.keyboardControlEnabled
-                    ? "MonitorFlux doesn't have Accessibility permission, so it can't intercept media-key shortcuts. Grant it in System Settings; they will start when you return. (The normal-key shortcuts below work without this.)"
-                    : "Turn on media-key shortcuts, then grant Accessibility so MonitorFlux can intercept those keys. (The normal-key shortcuts below work without this.)")
-                    .zoomFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(store.preferences.keyboardControlEnabled ? "Open Accessibility Settings…" : "Enable Keyboard Control…") {
-                    if store.preferences.keyboardControlEnabled {
-                        store.requestAccessibility()
-                    } else {
-                        store.setKeyboardControl(true)
-                    }
+        WarningCard(
+            title: "Media-key shortcuts need Accessibility",
+            message: store.preferences.keyboardControlEnabled
+                ? "MonitorFlux doesn't have Accessibility permission, so it can't intercept media-key shortcuts. Grant it in System Settings; they will start when you return. (The normal-key shortcuts below work without this.)"
+                : "Turn on media-key shortcuts, then grant Accessibility so MonitorFlux can intercept those keys. (The normal-key shortcuts below work without this.)"
+        ) {
+            Button(store.preferences.keyboardControlEnabled ? "Open Accessibility Settings…" : "Enable Keyboard Control…") {
+                if store.preferences.keyboardControlEnabled {
+                    store.requestAccessibility()
+                } else {
+                    store.setKeyboardControl(true)
                 }
-                .buttonStyle(.link)
-                .zoomFont(.caption)
             }
-            Spacer(minLength: 0)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.yellow.opacity(0.25)))
     }
 
     private var mediaBindingWarning: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Media-key shortcuts won't fire")
-                    .zoomFont(.callout)
-                    .fontWeight(.semibold)
-                Text("You have shortcuts assigned to brightness or volume keys, but keyboard control is turned off. Enable it above so the media-key tap can intercept those keys.")
-                    .zoomFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Enable Keyboard Control…") {
-                    store.setKeyboardControl(true)
-                }
-                .buttonStyle(.link)
-                .zoomFont(.caption)
+        WarningCard(
+            title: "Media-key shortcuts won't fire",
+            message: "You have shortcuts assigned to brightness or volume keys, but keyboard control is turned off. Enable it above so the media-key tap can intercept those keys."
+        ) {
+            Button("Enable Keyboard Control…") {
+                store.setKeyboardControl(true)
             }
-            Spacer(minLength: 0)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.yellow.opacity(0.25)))
     }
 
     private func keyHint(_ keys: String, _ action: String) -> some View {

@@ -77,8 +77,9 @@ final class DisplayService {
         persistentID: String
     ) -> DisplayInfo {
         let bounds = CGDisplayBounds(id)
-        let size = "\(Int(bounds.width)) x \(Int(bounds.height))"
-        let origin = "(\(Int(bounds.origin.x)), \(Int(bounds.origin.y)))"
+        // User-facing resolution ("3440 × 1440", like System Settings) — the frame origin is
+        // developer detail that read as noise next to it.
+        let size = "\(Int(bounds.width)) × \(Int(bounds.height))"
         // `CGDisplayMirrorsDisplay` returns the mirror master, or `kCGNullDirectDisplay` (0) when
         // this display isn't mirroring another — map that to nil so `effectiveID` falls back to self.
         let mirrored = CGDisplayMirrorsDisplay(id)
@@ -86,7 +87,7 @@ final class DisplayService {
             id: id,
             name: name,
             persistentID: persistentID,
-            frameDescription: "\(size) @ \(origin)",
+            frameDescription: size,
             isBuiltIn: CGDisplayIsBuiltin(id) != 0,
             isOnline: CGDisplayIsOnline(id) != 0,
             isVirtual: CoreDisplayInfo.isVirtual(id),

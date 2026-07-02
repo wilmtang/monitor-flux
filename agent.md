@@ -39,7 +39,9 @@ pkill -x MonitorFlux || true
   default `sizingOptions` MUST stay (clearing them also blanks the columns), and the root
   view is `.frame(idealWidth:idealHeight:)`-pinned so the controller doesn't size the window
   to the tall detail pane (that produced an off-screen ~880x3305 "blank" window). Detail
-  panes scroll internally (`ColorScheduleView` is a `ScrollView`). Default content size is
+  panes scroll internally (every pane is a full-bleed grouped `Form` — no extra `.padding()`
+  around it, and `ColorScheduleView`'s hero rides in the form as its first section so its
+  edges align with the cards below). Default content size is
   `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch. The
   sidebar is collapsible by dragging the divider, so `ContentView` binds `columnVisibility` and
   adds a toolbar sidebar toggle (⌃⌘S) — otherwise a collapsed sidebar can't be brought back.

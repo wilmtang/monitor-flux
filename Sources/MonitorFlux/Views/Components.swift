@@ -161,6 +161,49 @@ struct MonitorSlider: View {
     }
 }
 
+/// The one inline warning treatment: yellow triangle, semibold title, secondary detail, and
+/// optional link-style actions on a tinted card. Every in-window warning (Accessibility,
+/// media-key bindings, gamma conflicts) renders through this so they all read the same.
+struct WarningCard<Actions: View>: View {
+    let title: String
+    let message: String
+    /// When set, shows a dismiss button in the top-right corner.
+    var onClose: (() -> Void)? = nil
+    var closeHelp: String = "Dismiss"
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .zoomFont(.callout)
+                    .fontWeight(.semibold)
+                Text(message)
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                actions
+                    .buttonStyle(.link)
+                    .zoomFont(.caption)
+            }
+            Spacer(minLength: 0)
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(closeHelp)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.yellow.opacity(0.25)))
+    }
+}
+
 /// Warns that gamma is a shared, single-owner resource: Night Shift and other color apps
 /// will fight MonitorFlux. Links straight to the Displays settings pane.
 struct GammaConflictBanner: View {
@@ -195,37 +238,17 @@ struct GammaConflictBanner: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .zoomFont(.callout)
-                    .fontWeight(.semibold)
-                Text(detail)
-                    .zoomFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Open Display Settings…") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.displays") {
-                        NSWorkspace.shared.open(url)
-                    }
+        WarningCard(
+            title: title,
+            message: detail,
+            onClose: onClose,
+            closeHelp: "Dismiss. Reappears only if another app warms the screen again."
+        ) {
+            Button("Open Display Settings…") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.displays") {
+                    NSWorkspace.shared.open(url)
                 }
-                .buttonStyle(.link)
-                .zoomFont(.caption)
-            }
-            Spacer(minLength: 0)
-            if let onClose {
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Dismiss. Reappears only if another app warms the screen again.")
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.yellow.opacity(0.25)))
     }
 }

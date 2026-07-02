@@ -7,7 +7,7 @@ struct DiagnosticsView: View {
         Form {
             Section("Color Pipeline") {
                 LabeledContent("Owner", value: "MonitorFlux")
-                LabeledContent("Current", value: store.currentTemperature.map { "\($0) K" } ?? "Off")
+                LabeledContent("Current", value: store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
                 LabeledContent("Gamma", value: store.colorMessage)
                 LabeledContent("Gamma enabled", value: store.preferences.gammaEnabled ? "Yes" : "No")
 
@@ -31,7 +31,6 @@ struct DiagnosticsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
         .navigationTitle("Diagnostics")
     }
 }

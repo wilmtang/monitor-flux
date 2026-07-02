@@ -30,36 +30,22 @@ struct DisplayDetailView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
         .navigationTitle(display.name)
     }
 
     /// The only control an AirPlay/virtual display supports: overlay (“shade”) dimming, written
     /// through the same software-brightness value the popup uses. 0–100%, darker-only.
     private var airplayBrightnessSection: some View {
-        let level = min(100, displayPreferences.gammaBrightness)
-        return Section {
-            HStack(spacing: 10) {
-                Image(systemName: "sun.max")
-                    .frame(width: 18)
-                    .foregroundStyle(.secondary)
-                Text("Brightness")
-                    .lineLimit(1)
-                    .frame(width: 80, alignment: .leading)
-                Slider(
-                    value: Binding {
-                        Double(level)
-                    } set: { newValue in
-                        store.updateDisplayPreferences(for: display) { displayPreferences in
-                            displayPreferences.gammaBrightness = Int(newValue.rounded())
-                                .clamped(to: ControlRanges.hardwarePercent)
-                        }
-                    },
-                    in: 0...100
-                )
-                Text("\(level)%")
-                    .monospacedDigit()
-                    .frame(width: 44, alignment: .trailing)
+        Section {
+            percentSliderRow(
+                title: "Brightness",
+                icon: "sun.max",
+                percent: Double(min(100, displayPreferences.gammaBrightness))
+            ) { newValue in
+                store.updateDisplayPreferences(for: display) { displayPreferences in
+                    displayPreferences.gammaBrightness = Int(newValue.rounded())
+                        .clamped(to: ControlRanges.hardwarePercent)
+                }
             }
             Text("Dimmed with a translucent overlay, since AirPlay/wireless displays have no hardware brightness and ignore gamma. It only goes darker, not brighter.")
                 .zoomFont(.caption)
@@ -82,7 +68,7 @@ struct DisplayDetailView: View {
         Section("Warmth") {
             Toggle("Warm this display", isOn: displayBinding(\.colorEnabled))
                 .disabled(!store.preferences.gammaEnabled)
-            LabeledContent("Current", value: store.currentTemperature.map { "\($0) K" } ?? "Off")
+            LabeledContent("Current", value: store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
             Text(store.preferences.gammaEnabled
                 ? "Opt this display into the global warmth schedule and manual warmth changes."
                 : "Enable Warmth on the Schedule screen to warm individual displays.")
@@ -98,7 +84,13 @@ struct DisplayDetailView: View {
         if display.isBuiltIn {
             Section {
                 if store.canUseNativeBrightness(display) {
-                    nativeBacklightRow
+                    percentSliderRow(
+                        title: "Brightness",
+                        icon: "sun.max",
+                        percent: store.nativeBrightnessValue(for: display) * 100
+                    ) { newValue in
+                        store.setNativeBrightness(newValue / 100.0, for: display)
+                    }
                     Text("This is the **real backlight** — the same hardware level as macOS's own brightness control. To go **dimmer than the panel's hardware minimum** (e.g. a dark room), turn on Software dimming under Advanced.")
                         .zoomFont(.caption)
                         .foregroundStyle(.secondary)
@@ -115,8 +107,13 @@ struct DisplayDetailView: View {
             }
         } else {
             Section {
-                hardwareSliderRow(title: "Brightness", icon: "sun.max", value: displayPreferences.hardwareBrightness) {
-                    store.setHardwareBrightness($0, for: display)
+                percentSliderRow(
+                    title: "Brightness",
+                    icon: "sun.max",
+                    percent: Double(displayPreferences.hardwareBrightness),
+                    isEnabled: store.canUseDDC(for: display)
+                ) { newValue in
+                    store.setHardwareBrightness(Int(newValue.rounded()), for: display)
                 }
 
                 Text("The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced.")
@@ -409,8 +406,10 @@ struct DisplayDetailView: View {
             accessibilityName: name
         )
         .background(
+            // Semantic fill so the card reads in both appearances — flat white was
+            // invisible against a light window background.
             RoundedRectangle(cornerRadius: 6)
-                .fill(.white.opacity(0.16))
+                .fill(.quaternary)
         )
         .padding(.bottom, 2)
     }
@@ -442,33 +441,14 @@ struct DisplayDetailView: View {
             .padding(.leading, 30)
     }
 
-    private var nativeBacklightRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sun.max")
-                .frame(width: 18)
-                .foregroundStyle(.secondary)
-            Text("Brightness")
-                .lineLimit(1)
-                .frame(width: 80, alignment: .leading)
-            Slider(
-                value: Binding {
-                    store.nativeBrightnessValue(for: display) * 100
-                } set: { newValue in
-                    store.setNativeBrightness(newValue / 100.0, for: display)
-                },
-                in: 0...100
-            )
-            Text("\(Int((store.nativeBrightnessValue(for: display) * 100).rounded()))%")
-                .monospacedDigit()
-                .frame(width: 44, alignment: .trailing)
-        }
-    }
-
-    private func hardwareSliderRow(
+    /// The compact icon–label–slider–% row every everyday brightness control uses (real
+    /// backlight, DDC brightness, AirPlay shade), so they line up column-for-column.
+    private func percentSliderRow(
         title: String,
         icon: String,
-        value: Int,
-        setter: @escaping (Int) -> Void
+        percent: Double,
+        isEnabled: Bool = true,
+        onChange: @escaping (Double) -> Void
     ) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
@@ -478,11 +458,15 @@ struct DisplayDetailView: View {
                 .lineLimit(1)
                 .frame(width: 80, alignment: .leading)
             Slider(
-                value: Binding { Double(value) } set: { setter(Int($0.rounded())) },
-                in: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound)
+                value: Binding {
+                    percent
+                } set: { newValue in
+                    onChange(newValue)
+                },
+                in: 0...100
             )
-            .disabled(!store.canUseDDC(for: display))
-            Text("\(value)%")
+            .disabled(!isEnabled)
+            Text("\(Int(percent.rounded()))%")
                 .monospacedDigit()
                 .frame(width: 44, alignment: .trailing)
         }

@@ -1220,7 +1220,7 @@ final class AppStore: ObservableObject {
         // Preview the scheduled brightness/contrast at this time too, so the *whole* schedule
         // shows on screen — not just the warmth.
         previewScheduledHardware(atMinute: minute)
-        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(temperature) K"
+        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(KelvinFormatting.label(for: temperature))"
     }
 
     /// During a scrub preview, drive each DDC external display's scheduled brightness/contrast to

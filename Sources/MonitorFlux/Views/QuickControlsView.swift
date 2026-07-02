@@ -43,7 +43,7 @@ struct QuickControlsView: View {
             Text("MonitorFlux")
                 .font(.headline)
             Spacer()
-            Text(store.currentTemperature.map { "\($0) K" } ?? "Off")
+            Text(store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -167,7 +167,7 @@ struct QuickControlsView: View {
                     }
                 }
             }
-            Text("\(ambienceTemperature) K")
+            Text(KelvinFormatting.label(for: ambienceTemperature))
                 .font(.callout)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)

@@ -5,9 +5,51 @@ struct ColorScheduleView: View {
     @State private var selectedPhase: ColorPhase = .daytime
 
     var body: some View {
-        ScrollView {
-            content
+        // One grouped form for the whole pane: the hero (slider + curve) is the first card,
+        // so its edges line up with the setting cards below at every window width — no
+        // hand-tuned padding to drift out of sync — and the pane has a single scroll view
+        // instead of a Form nested inside a ScrollView.
+        Form {
+            Section {
+                hero
+                    .listRowInsets(EdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18))
+            }
+
+            Section {
+                HStack(spacing: 8) {
+                    Text("Warmth")
+                    InfoButton(title: "What is gamma?", message: HelpText.gamma)
+                    Spacer()
+                    Toggle("Warmth", isOn: preferenceBinding(\.gammaEnabled))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+            }
+
+            Section("Transition") {
+                Picker("Fade", selection: scheduleEditBinding(\.transitionMinutes)) {
+                    ForEach(fadeOptions, id: \.self) { minutes in
+                        Text(fadeLabel(minutes)).tag(minutes)
+                    }
+                }
+            }
+
+            locationSection
+
+            Section {
+                Button {
+                    store.disableColorAndRestore()
+                } label: {
+                    Label("Turn off warmth & reset colors", systemImage: "arrow.uturn.backward.circle")
+                }
+                .help("Turns warmth off on every display and restores their original color — use this if colors look wrong or you want another color app to take over.")
+                Text("Turns warmth off everywhere and restores each display's original color tables (undoing any warming or software dimming).")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .formStyle(.grouped)
         .navigationTitle("Schedule")
         // A scrub preview is a temporary, exploratory state — never let it persist past this
         // screen. Reset it whenever the Schedule pane is (re)loaded or left, so the screen always
@@ -20,170 +62,142 @@ struct ColorScheduleView: View {
         .onDisappear { store.clearSchedulePreview() }
     }
 
-    private var content: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 16) {
-                    Image(systemName: statusIcon.symbol)
-                        .zoomFont(size: 30)
-                        .foregroundStyle(statusIcon.color)
-                        .frame(width: 44, height: 44)
-                        .contentTransition(.symbolEffect(.replace))
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 16) {
+                Image(systemName: statusIcon.symbol)
+                    .zoomFont(size: 30)
+                    .foregroundStyle(statusIcon.color)
+                    .frame(width: 44, height: 44)
+                    .contentTransition(.symbolEffect(.replace))
 
-                    Text(statusHeadline)
-                        .zoomFont(.title2)
-                        .fontWeight(.medium)
+                Text(statusHeadline)
+                    .zoomFont(.title2)
+                    .fontWeight(.medium)
 
-                    Spacer()
+                Spacer()
 
-                    Picker("Mode", selection: preferenceBinding(\.colorMode)) {
-                        ForEach(ColorMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 250)
-                }
-
-                VStack(spacing: 10) {
-                    Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound))
-                        .disabled(!store.preferences.gammaEnabled || store.preferences.colorMode == .off)
-                    HStack {
-                        Text(editingLabel)
-                            .zoomFont(.callout)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(editedTemperature) K")
-                            .zoomFont(.callout)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
+                Picker("Mode", selection: preferenceBinding(\.colorMode)) {
+                    ForEach(ColorMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
                     }
                 }
+                .labelsHidden()
+                .fixedSize()
+            }
 
-                VStack(spacing: 4) {
-                    Picker("Phase", selection: $selectedPhase) {
-                        ForEach(ColorPhase.allCases) { phase in
-                            Text(phase.label).tag(phase)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 380)
-                    .disabled(store.preferences.colorMode != .clock)
-                    // Switching phases is a fresh editing intent, so drop any scrub preview and
-                    // snap the time line back to "now" — the same reset we do on enter/leave.
-                    .onChange(of: selectedPhase) { _, _ in
-                        store.clearSchedulePreview()
-                    }
+            // One row — phase label, slider, Kelvin readout — the same shape as System
+            // Settings' Night Shift color-temperature row. The form gives the slider the
+            // standard compact trailing track; the label and readout anchor the row's edges.
+            HStack(spacing: 12) {
+                Text(editingLabel)
+                    .zoomFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound))
+                    .layoutPriority(1)
+                    .disabled(!store.preferences.gammaEnabled || store.preferences.colorMode == .off)
+                Text(KelvinFormatting.label(for: editedTemperature))
+                    .zoomFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize()
+            }
 
-                    Text("Pick a phase, then drag the slider above to set its warmth.")
-                        .zoomFont(.caption)
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 4) {
+                Picker("Phase", selection: $selectedPhase) {
+                    ForEach(ColorPhase.allCases) { phase in
+                        Text(phase.label).tag(phase)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .frame(width: 380)
+                .disabled(store.preferences.colorMode != .clock)
+                // Switching phases is a fresh editing intent, so drop any scrub preview and
+                // snap the time line back to "now" — the same reset we do on enter/leave.
+                .onChange(of: selectedPhase) { _, _ in
+                    store.clearSchedulePreview()
+                }
+
+                Text("Pick a phase, then drag the slider above to set its warmth.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+
+            Text(scheduleSummary)
+                .zoomFont(.title3)
+                .foregroundStyle(.blue.opacity(0.72))
                 .frame(maxWidth: .infinity)
 
-                Text(scheduleSummary)
-                    .zoomFont(.title3)
-                    .foregroundStyle(.blue.opacity(0.72))
-                    .frame(maxWidth: .infinity)
+            FluxCurveEditor(
+                dayTemperature: scheduleEditBinding(\.dayTemperature),
+                sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
+                nightTemperature: scheduleEditBinding(\.nightTemperature),
+                warmStartMinutes: timeAnchorBinding(.bedtime),
+                coolStartMinutes: timeAnchorBinding(.daytime),
+                sunsetStartMinutes: timeAnchorBinding(.sunset),
+                transitionMinutes: store.preferences.transitionMinutes,
+                previewMinute: store.schedulePreviewMinute,
+                onPreview: { store.previewScheduleColor(atMinute: $0) }
+            )
+            .background(
+                // Semantic fill so the card reads in both appearances — flat white was
+                // invisible against a light window background.
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(.quaternary)
+            )
 
-                FluxCurveEditor(
-                    dayTemperature: scheduleEditBinding(\.dayTemperature),
-                    sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
-                    nightTemperature: scheduleEditBinding(\.nightTemperature),
-                    warmStartMinutes: timeAnchorBinding(.bedtime),
-                    coolStartMinutes: timeAnchorBinding(.daytime),
-                    sunsetStartMinutes: timeAnchorBinding(.sunset),
-                    transitionMinutes: store.preferences.transitionMinutes,
-                    previewMinute: store.schedulePreviewMinute,
-                    onPreview: { store.previewScheduleColor(atMinute: $0) }
+            curveLegend
+
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                timeStepper(.daytime, title: "Wake", tint: .blue)
+                Spacer(minLength: 8)
+                timeStepper(.sunset, title: "Sunset", tint: .orange)
+                Spacer(minLength: 8)
+                timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
+            }
+
+            if store.showsGammaConflictBanner {
+                GammaConflictBanner(
+                    appNames: store.gammaConflictApps,
+                    onClose: { store.dismissGammaConflictBanner() }
                 )
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.white.opacity(0.16))
-                )
+            }
+        }
+    }
 
-                curveLegend
-
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    timeStepper(.daytime, title: "Wake", tint: .blue)
-                    Spacer(minLength: 8)
-                    timeStepper(.sunset, title: "Sunset", tint: .orange)
-                    Spacer(minLength: 8)
-                    timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
-                }
-
-                if store.showsGammaConflictBanner {
-                    GammaConflictBanner(
-                        appNames: store.gammaConflictApps,
-                        onClose: { store.dismissGammaConflictBanner() }
-                    )
-                }
-
-                Divider()
-
-                HStack(spacing: 14) {
-                    Toggle("Warmth", isOn: preferenceBinding(\.gammaEnabled))
-                    InfoButton(title: "What is gamma?", message: HelpText.gamma)
-                    Spacer()
+    private var locationSection: some View {
+        Section("Location & Sun") {
+            Picker("Schedule from", selection: scheduleSourceBinding) {
+                ForEach(ScheduleSource.allCases) { source in
+                    Text(source.label).tag(source)
                 }
             }
-            .padding(34)
+            .pickerStyle(.segmented)
 
-            Form {
-                Section("Transition") {
-                    Picker("Fade", selection: scheduleEditBinding(\.transitionMinutes)) {
-                        ForEach(fadeOptions, id: \.self) { minutes in
-                            Text(fadeLabel(minutes)).tag(minutes)
-                        }
-                    }
-                }
-
-                Section("Location & Sun") {
-                    Picker("Schedule from", selection: scheduleSourceBinding) {
-                        ForEach(ScheduleSource.allCases) { source in
-                            Text(source.label).tag(source)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    HStack {
-                        TextField("Latitude", text: preferenceBinding(\.latitude))
-                        TextField("Longitude", text: preferenceBinding(\.longitude))
-                    }
-
-                    Button {
-                        store.requestLocation()
-                    } label: {
-                        Label("Use my location", systemImage: "location")
-                    }
-                    LabeledContent("Location access", value: store.locationStatus)
-
-                    if store.preferences.scheduleSource == .solar {
-                        LabeledContent("Sunrise today", value: solarLabel(store.solarTimes?.sunriseMinutes))
-                        LabeledContent("Sunset today", value: solarLabel(store.solarTimes?.sunsetMinutes))
-                        Text("Computed on-device from your coordinates and today's date (no internet), so they shift a little each day and the schedule follows the real sun.")
-                            .zoomFont(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    LabeledContent("Warmth", value: store.colorMessage)
-                }
-
-                Section {
-                    Button {
-                        store.disableColorAndRestore()
-                    } label: {
-                        Label("Turn off warmth & reset colors", systemImage: "arrow.uturn.backward.circle")
-                    }
-                    .help("Turns warmth off on every display and restores their original color — use this if colors look wrong or you want another color app to take over.")
-                    Text("Turns warmth off everywhere and restores each display's original color tables (undoing any warming or software dimming).")
-                        .zoomFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            HStack {
+                TextField("Latitude", text: preferenceBinding(\.latitude))
+                TextField("Longitude", text: preferenceBinding(\.longitude))
             }
-            .formStyle(.grouped)
+
+            Button {
+                store.requestLocation()
+            } label: {
+                Label("Use my location", systemImage: "location")
+            }
+            LabeledContent("Location access", value: store.locationStatus)
+
+            if store.preferences.scheduleSource == .solar {
+                LabeledContent("Sunrise today", value: solarLabel(store.solarTimes?.sunriseMinutes))
+                LabeledContent("Sunset today", value: solarLabel(store.solarTimes?.sunsetMinutes))
+                Text("Computed on-device from your coordinates and today's date (no internet), so they shift a little each day and the schedule follows the real sun.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            LabeledContent("Warmth", value: store.colorMessage)
         }
     }
 
@@ -214,7 +228,7 @@ struct ColorScheduleView: View {
         guard store.preferences.colorMode != .off else {
             return "Warmth is off"
         }
-        return liveTemperature >= 5200 ? "The sun is up-go outside!" : "Warming down for the night"
+        return liveTemperature >= 5200 ? "The sun is up — go outside!" : "Warming down for the night"
     }
 
     /// A glyph that mirrors the headline: a sun by day, a warm moon at night, dimmed when
@@ -233,7 +247,7 @@ struct ColorScheduleView: View {
         // sun (wake = today's sunrise), rather than the stored hand-set values underneath.
         let wake = MinuteFormatting.label(for: effectivePreferences.startMinutes(for: .daytime))
         let bed = MinuteFormatting.label(for: effectivePreferences.startMinutes(for: .bedtime))
-        return "Wake \(wake), bedtime \(bed) (\(liveTemperature) K)"
+        return "Wake \(wake), bedtime \(bed) (\(KelvinFormatting.label(for: liveTemperature)))"
     }
 
     private func solarLabel(_ minutes: Int?) -> String {
@@ -275,7 +289,7 @@ struct ColorScheduleView: View {
             Circle()
                 .fill(color)
                 .frame(width: 10, height: 10)
-            Text("\(label) · \(kelvin) K")
+            Text("\(label) · \(KelvinFormatting.label(for: kelvin))")
                 .zoomFont(.caption)
                 .foregroundStyle(.secondary)
         }
