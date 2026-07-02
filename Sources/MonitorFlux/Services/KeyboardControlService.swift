@@ -216,9 +216,11 @@ private func mediaKeyTapCallback(
     let commandHeld = flags.contains(.maskCommand)
 
     // ⌥ is part of the binding lookup (fine adjustments bind ⌥ variants). An ⌥ combo that
-    // matches nothing still falls through to macOS below — ⌥ + brightness keeps opening
-    // Displays settings, and ⌥⇧ + brightness stays the native built-in fine step — because
-    // `handle` only swallows keys with an active binding.
+    // matches nothing still falls through to macOS below, because `handle` only swallows keys
+    // with an active binding. With fine adjustments OFF that's every ⌥ combo — ⌥ + brightness
+    // keeps opening Displays settings and ⌥⇧ + brightness stays the native built-in fine step.
+    // With them ON, those combos are bound and swallowed: ⌥⇧ + brightness becomes the *warmth*
+    // fine step, mirroring ⇧ + brightness = warmth.
     // Act on key-down; swallow the matching key-up only if we owned the down, so a key we
     // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.
     let handled = MainActor.assumeIsolated {

@@ -520,11 +520,39 @@ final class AppStore: ObservableObject {
 
     func importPreferences(from data: Data) throws {
         let imported = try PreferencesStore.importData(data)
+        let loginItemChanged = preferences.startAtLogin != imported.startAtLogin
         schedulePreviewMinute = nil
         preferences = imported
         pendingPreferencesSave?.cancel()
         pendingPreferencesSave = nil
         PreferencesStore.save(imported)
+
+        // Assigning `preferences` re-applies gamma/shades via didSet, and refreshDisplays()
+        // below restores DDC values — but the media-key tap, the Carbon/media bindings, the
+        // Dock policy, and the login item all hold state *outside* the struct, so their
+        // appliers must re-run or the imported toggles silently don't take effect.
+        refreshHotKeys()
+        if !safeMode {
+            if preferences.keyboardControlEnabled {
+                keyboardStatus = keyboardService.start() ? "Active" : "Needs Accessibility permission"
+            } else {
+                keyboardService.stop()
+                keyboardStatus = "Off"
+            }
+            accessibilityTrusted = keyboardService.hasAccessibilityPermission
+        }
+        refreshActivationPolicy()
+        // Only touch the login item when the imported value differs — re-registering
+        // unconditionally would replace the friendly "install the app first" status with a
+        // raw service error on development builds.
+        if loginItemChanged {
+            do {
+                try LoginItemService.setEnabled(imported.startAtLogin)
+                loginItemMessage = LoginItemService.statusLabel()
+            } catch {
+                loginItemMessage = error.localizedDescription
+            }
+        }
         refreshDisplays()
     }
 

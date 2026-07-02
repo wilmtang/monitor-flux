@@ -251,8 +251,10 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .brightnessDown, .builtInBrightnessDown: return "Brightness down"
         case .contrastUp: return "Contrast up"
         case .contrastDown: return "Contrast down"
-        case .colorWarmer: return "Color warmer"
-        case .colorCooler: return "Color cooler"
+        // "Warmth", not "Color": every other surface (popup card, Schedule pane, key hints)
+        // calls this control Warmth, so the shortcut rows use the same word.
+        case .colorWarmer: return "Warmth warmer"
+        case .colorCooler: return "Warmth cooler"
         case .volumeUp: return "Volume up"
         case .volumeDown: return "Volume down"
         default: return baseAction.label
