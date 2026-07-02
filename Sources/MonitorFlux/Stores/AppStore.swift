@@ -922,43 +922,29 @@ final class AppStore: ObservableObject {
         guard let target = displayUnderCursor() else {
             return false
         }
+        // Bare media keys leave the built-in panel to macOS (and a built-in with no backlight
+        // API falls through too — `adjustBuiltInBrightness` is its custom-hotkey path).
         if target.isBuiltIn {
             guard allowBuiltIn, canUseNativeBrightness(target) else {
                 return false
             }
-            let next = (nativeBrightnessValue(for: target) + Double(delta) / 100.0).clamped(to: 0...1)
-            setNativeBrightness(next, for: target)
-            osd.show(.brightness, fraction: next, onDisplay: target.id)
-            return true
         }
-        // External with a DDC path: drive the real backlight over DDC.
-        if canUseDDC(for: target) {
-            let current = displayPreferences(for: target).hardwareBrightness
-            let next = (current + delta).clamped(to: ControlRanges.hardwarePercent)
-            setHardwareBrightness(next, for: target)
-            osd.show(.brightness, fraction: percentFraction(next), onDisplay: target.id)
-            return true
-        }
-        // AirPlay/virtual display: gamma is a no-op, so dim via the shade overlay. Independent of
-        // the Warmth master, and clamped to 0–100% (a shade only darkens). Driven through the
-        // shared software-brightness value, which `reconcileShades` pushes to the overlay.
-        if target.isVirtual {
-            let next = (displayPreferences(for: target).gammaBrightness + delta).clamped(to: 0...100)
-            updateDisplayPreferences(for: target) { $0.gammaBrightness = next }
-            osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: target.id)
-            return true
-        }
-        // No DDC path to the backlight — software-dim via gamma, the same fallback the popup
-        // shows for a non-DDC monitor. In hardware-only mode there's nothing to drive, so let
-        // the key fall through to macOS rather than swallowing it into a no-op (the bug that
-        // made brightness keys feel dead on a monitor the DDC probe can't drive).
-        guard dimmingMode(for: target) != .hardware else {
+        return stepUnifiedBrightness(by: delta, for: target)
+    }
+
+    /// Step a display's brightness by `delta` points of the unified track and flash the OSD
+    /// at the new position — so the keys walk the exact scale the slider shows: DDC (or the
+    /// backlight) first, seamlessly across the notch into software dimming, holding at the
+    /// floor. Returns false when the display has no adjustable path (non-DDC panel in
+    /// Monitor-hardware mode), so the key falls through to macOS instead of being swallowed
+    /// into a no-op.
+    private func stepUnifiedBrightness(by delta: Int, for display: DisplayInfo) -> Bool {
+        guard brightnessControlKind(for: display) != .unavailable else {
             return false
         }
-        let next = (displayPreferences(for: target).gammaBrightness + delta)
-            .clamped(to: ControlRanges.gammaBrightnessPercent)
-        updateDisplayPreferences(for: target) { $0.gammaBrightness = next }
-        osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: target.id)
+        let next = (unifiedBrightness(for: display) + Double(delta) / 100.0).clamped(to: 0...1)
+        setUnifiedBrightness(next, for: display)
+        osd.show(.brightness, fraction: next, onDisplay: display.id)
         return true
     }
 
@@ -1126,23 +1112,15 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Built-in-set brightness: the real backlight (or software gamma if no backlight API).
+    /// Built-in-set brightness: the unified walk over the backlight (continuing below its
+    /// minimum in software when the hybrid opt-in is on), or software-only when the panel
+    /// has no backlight API. Custom-hotkey-driven, so touching the backlight is fine.
     @discardableResult
     func adjustBuiltInBrightness(by delta: Int) -> Bool {
         guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
             return false
         }
-        if canUseNativeBrightness(builtIn) {
-            let next = (nativeBrightnessValue(for: builtIn) + Double(delta) / 100.0).clamped(to: 0...1)
-            setNativeBrightness(next, for: builtIn)
-            osd.show(.brightness, fraction: next, onDisplay: builtIn.id)
-        } else {
-            let next = (displayPreferences(for: builtIn).gammaBrightness + delta)
-                .clamped(to: ControlRanges.gammaBrightnessPercent)
-            updateDisplayPreferences(for: builtIn) { $0.gammaBrightness = next }
-            osd.show(.brightness, fraction: Double(next) / 100.0, onDisplay: builtIn.id)
-        }
-        return true
+        return stepUnifiedBrightness(by: delta, for: builtIn)
     }
 
     private func displayUnderCursor() -> DisplayInfo? {
