@@ -42,7 +42,8 @@ pkill -x MonitorFlux || true
   panes scroll internally (every pane is a full-bleed grouped `Form` — no extra `.padding()`
   around it, and `ColorScheduleView`'s hero rides in the form as its first section so its
   edges align with the cards below). Default content size is
-  `mainWindowDefaultSize` (800×600); narrow on purpose so the grouped forms don't stretch. The
+  `mainWindowDefaultSize` (800×600) — a comfortable default, not a constraint: the grouped
+  forms cap and center their own content width, so wider windows stay well-formed. The
   sidebar is collapsible by dragging the divider, so `ContentView` binds `columnVisibility` and
   adds a toolbar sidebar toggle (⌃⌘S) — otherwise a collapsed sidebar can't be brought back.
 - **Window zoom** (`⌘+`/`⌘-`/`⌘0`, persisted as `AppPreferences.fontSizeStep`): semantic
@@ -69,7 +70,7 @@ pkill -x MonitorFlux || true
 - `Models/`: persisted app/display preferences and navigation selection. Three
   color phases (Daytime/Sunset/Bedtime) via `ColorPhase`; `ScheduleSource`.
 - `Stores/AppStore.swift`: main actor state owner and mutation gateway. Owns the
-  `LocationService` and debounces live DDC slider writes.
+  `LocationService` and throttles live DDC slider writes (`scheduleDDC`).
 - `Services/GammaPlan.swift`: pure gamma intent planning.
 - `Support/GammaCompositor.swift`: pure math for warmth + brightness + contrast.
 - `Support/SolarCalculator.swift`: pure NOAA sunrise/sunset from lat/long.
@@ -102,7 +103,9 @@ pkill -x MonitorFlux || true
   lift and siblings spring aside). The gesture lives on the card grip in `QuickControlsView` and
   reads the global coordinate space (not local — the grip rides the lifted card, which would feed back).
 - `Views/Components.swift`: shared `MonitorSlider` (MonitorControl-style, no tick
-  marks), `InfoButton` (jargon explainers), and `GammaConflictBanner`.
+  marks), `InfoButton` (jargon explainers), `WarningCard` (the one inline warning
+  treatment — every in-window warning renders through it), and `GammaConflictBanner`
+  (built on `WarningCard`).
 - `Views/`: SwiftUI window, the `QuickControlsView` menu-bar popup (drag-to-reorder cards;
   the Warmth card mirrors the display cards), settings, and per-display controls. AirPlay/virtual
   displays get a stripped-down detail pane (overlay dimming only — no warmth/DDC/gamma/schedule,
@@ -146,8 +149,10 @@ pkill -x MonitorFlux || true
 - Do not make Homebrew tools required. `ddcctl` is fallback only, and it is
   Intel-only — on Apple Silicon `Arm64DDCBackend` (IOAVService) is the real path.
 - The menu bar popup is `QuickControlsView` with `.menuBarExtraStyle(.window)` and
-  live sliders (MonitorControl-style). Debounce DDC writes from continuous drags
-  (see `AppStore.scheduleDDCApply`) so a drag doesn't flood the I2C bus.
+  live sliders (MonitorControl-style). Continuous drags go through the 45 ms
+  leading-edge throttle in `AppStore.scheduleDDC` (a trailing write settles on the
+  final value), so the monitor tracks the drag without flooding the I2C bus. Don't
+  regress it to a trailing-only debounce — that only updates the monitor on release.
 - Keep DDC writes off the main thread; gamma writes stay routed through the single
   `GammaTemperatureService` writer.
 - Use `MonitorSlider` (not a stepped SwiftUI `Slider`) for the popup; a `step:` on a
@@ -226,21 +231,27 @@ When a change is UI, hold it to this bar — and screenshot it before calling it
   `.hudWindow` vibrancy as flat gray (no blur) — judge the OSD with `_shot_crop.swift` over a real
   `screencapture` instead.
 - **Launch hooks (env vars), set under `MONITORFLUX_SAFE_MODE=1`:**
-  - `MONITORFLUX_OPEN_MAIN=1|reopen`, `MONITORFLUX_SELECT=general|color|display|diagnostics`
-    (or `display:<name substring>`, e.g. `display:AirPlay`, to target a specific display pane)
+  - `MONITORFLUX_OPEN_MAIN=1|reopen|activate` (`activate` opens the window key/active — the only
+    way window-scoped shortcuts like ⌘+/⌘−/⌘0 and ⌘⇧D can fire; it steals focus, so verification
+    only), `MONITORFLUX_SELECT=general|color|display|diagnostics`
+    (or `display:<name substring>`, e.g. `display:AirPlay`, to target a specific display pane),
+    `MONITORFLUX_ZOOM_STEP=N` (0…8, in-memory only) to render at a non-default zoom
   - `MONITORFLUX_OPEN_POPUP=1` opens the menu-bar popup ~1s after launch (it has no public "show"
-    API) so it can be captured by id; pair with `MONITORFLUX_FAKE_DISPLAYS=N` for mock cards
-    (even index = DDC, odd = non-DDC, index 2 = AirPlay/virtual) to exercise multi-display paths
-    on a built-in-only Mac. **Dismiss the popup / `pkill -x MonitorFlux` when done** so it doesn't
-    sit over the user's screen.
+    API) so it can be captured by id. **Needs an activating launch** — `open -n`, not `-gn`; when
+    backgrounded the popup panel never appears. Pair with `MONITORFLUX_FAKE_DISPLAYS=N` for mock
+    cards (even index = DDC, odd = non-DDC, index 2 = AirPlay/virtual) to exercise multi-display
+    paths on a built-in-only Mac. **Dismiss the popup / `pkill -x MonitorFlux` when done** so it
+    doesn't sit over the user's screen.
   - `MONITORFLUX_SHOW_OSD=brightness|color` (+ `MONITORFLUX_OSD_HOLD=1` holds it and forces the
-    custom panel, since the native bezel can't be held or captured by id), `MONITORFLUX_SHOW_ONBOARDING=1`.
+    custom panel, since the native bezel can't be held or captured by id),
+    `MONITORFLUX_SHOW_ONBOARDING=1` (+ `MONITORFLUX_ONBOARDING_PAGE=0|1` to open on a specific card).
 - To drive a SwiftUI button in a test, use accessibility **`AXPress`** (find it by its `help`
   string — SwiftUI buttons often expose no AX title), not synthetic coordinate clicks (they
   miss). For shortcut recording, `AXPress` the Record button then `keystroke` the combo.
 - **Don't spam GUI launches.** Each `open` pops the window onto the user's screen and (for the
-  activating path) steals focus. Batch verification into one launch; the smoke/test hooks use a
-  non-activating window for this reason. Reuse a running instance instead of relaunching.
+  activating path) steals focus. Batch verification into one launch; the main-window test hooks
+  use a non-activating window for this reason (the popup and `OPEN_MAIN=activate` hooks are the
+  exceptions — they need an activating launch). Reuse a running instance instead of relaunching.
 
 ## Before Handing Off
 

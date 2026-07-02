@@ -6,12 +6,14 @@ import CoreGraphics
 /// shortcuts to the app. Requires Accessibility permission, since taps that swallow HID events
 /// are privileged.
 ///
-/// Two delivery paths are normalized onto the same media-key codes:
-/// - Volume (and brightness on older Macs) arrives in an `NSSystemDefined` aux-button event,
-///   with the key code in `data1`.
-/// - On modern Apple silicon the dedicated brightness keys arrive as ordinary `keyDown`/`keyUp`
-///   events (virtual key codes 144/145, Fn flag set), *not* as `NSSystemDefined` — so the tap
-///   has to watch the keyboard event types too, or brightness keys are never seen.
+/// Two delivery paths are normalized onto the same media-key codes — which one fires depends on
+/// the keyboard, not just the Mac:
+/// - Volume — and brightness from **external USB keyboards** — arrives in an `NSSystemDefined`
+///   aux-button event, with the key code in `data1`.
+/// - The **built-in keyboard** (modern Apple silicon) sends its dedicated brightness keys as
+///   ordinary `keyDown`/`keyUp` events (virtual key codes 144/145, Fn flag set), *not* as
+///   `NSSystemDefined` — so the tap has to watch the keyboard event types too, or built-in
+///   brightness keys are never seen.
 enum MediaKey {
     static let soundUp = 0
     static let soundDown = 1
@@ -20,9 +22,10 @@ enum MediaKey {
 
     static let managed: Set<Int> = [soundUp, soundDown, brightnessUp, brightnessDown]
 
-    /// Virtual key codes the dedicated brightness keys emit as plain `keyDown`/`keyUp` events on
-    /// modern Apple silicon (Fn flag set). Mapped onto the brightness media-key codes so the
-    /// binding lookup, OSD, and DDC routing are identical regardless of how macOS delivered the key.
+    /// Virtual key codes the **built-in keyboard's** dedicated brightness keys emit as plain
+    /// `keyDown`/`keyUp` events (modern Apple silicon, Fn flag set); external USB keyboards send
+    /// `NSSystemDefined` instead. Mapped onto the brightness media-key codes so the binding
+    /// lookup, OSD, and DDC routing are identical regardless of how macOS delivered the key.
     static let brightnessUpVirtualKeyCode = 144
     static let brightnessDownVirtualKeyCode = 145
 
