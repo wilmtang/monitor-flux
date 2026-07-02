@@ -162,6 +162,49 @@ final class HybridBrightnessTests: XCTestCase {
         )
     }
 
+    // MARK: Scheduled-target routing
+
+    func testScheduledTargetInAutomaticSplitsAcrossTheNotch() {
+        // Above the notch: hardware carries it, gamma stays neutral.
+        let day = HybridBrightness.scheduledComponents(target: 90, mode: .automatic, hasHardwareControl: true)
+        XCTAssertEqual(day.hardware, 87)
+        XCTAssertEqual(day.gamma, 100)
+
+        // A 20% night target lands in the software zone — hardware at its floor, the image
+        // darkened in software — instead of clamping at DDC 0 (the old dead stop).
+        let night = HybridBrightness.scheduledComponents(target: 20, mode: .automatic, hasHardwareControl: true)
+        XCTAssertEqual(night.hardware, 0)
+        XCTAssertEqual(night.gamma, 83)
+    }
+
+    func testScheduledTargetInHardwareModeClampsToHardwareZone() {
+        let components = HybridBrightness.scheduledComponents(target: 20, mode: .hardware, hasHardwareControl: true)
+        XCTAssertEqual(components.hardware, 20)
+        XCTAssertNil(components.gamma)
+    }
+
+    func testScheduledTargetInSoftwareModeRidesTheFlooredTrack() {
+        let components = HybridBrightness.scheduledComponents(target: 40, mode: .software, hasHardwareControl: true)
+        XCTAssertNil(components.hardware)
+        XCTAssertEqual(components.gamma, 49)
+
+        // A 0% night target stops at the safety floor, never black…
+        let floor = HybridBrightness.scheduledComponents(target: 0, mode: .software, hasHardwareControl: true)
+        XCTAssertEqual(floor.gamma, self.floor)
+        // …unless the display opted into dimming to black.
+        let black = HybridBrightness.scheduledComponents(target: 0, mode: .software, hasHardwareControl: true, floor: 0)
+        XCTAssertEqual(black.gamma, 0)
+    }
+
+    func testScheduledTargetWithoutHardwareControlIsSoftwareOnlyRegardlessOfMode() {
+        // Non-DDC panels have no hardware path; every mode falls back to the software track.
+        for mode in DimmingMode.allCases {
+            let components = HybridBrightness.scheduledComponents(target: 40, mode: mode, hasHardwareControl: false)
+            XCTAssertNil(components.hardware, "\(mode)")
+            XCTAssertEqual(components.gamma, 49, "\(mode)")
+        }
+    }
+
     // MARK: Software-only track (non-DDC / Software mode)
 
     func testSoftwareOnlyTrackMapsFloorToFullRange() {

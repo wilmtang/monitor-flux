@@ -140,6 +140,50 @@ charts and preview scrub don't change — they just feed the unified setter, and
    = unified fraction.
 4. **Schedule:** scheduled targets interpret as unified in Automatic mode.
 
+## Implementation decisions (2026-07-02, shipped in phases 1–4)
+
+Deltas and judgment calls made while implementing the plan + the inline answers below:
+
+- **The `gammaControlsEnabled` gate is gone entirely** — the software-brightness *value* is
+  the state and always applies; `dimmingMode` only routes the unified control. Picking
+  "Monitor hardware" *clears* software dimming (to ≥100) instead of hiding it behind a gate,
+  so there are no invisible mixed states. Migration: explicit legacy `true` → `.automatic`;
+  explicit `false` → mode left unset **and a stale sub-100 gamma value reset to 100** (it was
+  inert behind the gate; it must not start dimming on upgrade).
+- **`dimmingMode` is stored optional** — `nil` resolves per display kind
+  (`AppStore.dimmingMode(for:)`): externals → `.automatic`, built-in → `.hardware`. That keeps
+  the built-in exactly as-is by default (answer 3) while new externals get hybrid.
+- **Software dimming is decoupled from the Warmth master.** It's plain dimming, not a color
+  change — without this, the unified slider's software zone (and scheduled dimming on non-DDC
+  panels) would go dead whenever Warmth is off. Warmth still gates the temperature only.
+  Conflict detection now keys on "may write gamma" (warmth on *or* any dimming active), and
+  Diagnostics' "Disable Gamma and Restore" also neutralizes per-display dimming so it still
+  fully restores.
+- **Answer 2 (floor):** per-display **"Allow dimming to black"** toggle in Advanced sets the
+  software floor to 0. The **notch stays at 25%** either way — moving the everyday hardware
+  zone's geometry because of a power-user toggle would cost more predictability than the
+  deep-dim tail gains in track length.
+- **Answer 3 (built-in):** the Advanced "Use software dimming" toggle *is* the hybrid opt-in
+  (off ↔ `.hardware`, on ↔ `.automatic`); once on, the main slider covers backlight + software
+  zones and the separate Advanced software slider is gone for the built-in. The schedule still
+  never touches the built-in, even in the software zone.
+- **Answer 4 (icon):** kept the sun→moon swap *plus* the dimmed fill — the fill alone reads as
+  "disabled"; the moon names the state at the exact moment the backlight stops responding.
+- **The detail-pane hero is the same `MonitorSlider` as the popup** (not a native `Slider`
+  with an overlay): the native track's inset is version-dependent, so a tick overlaid on it
+  can't be trusted to sit on the track — and one control everywhere is the plan's point.
+- **Mixed-state drag semantics** (in `HybridBrightness.resolve`): upward through the notch
+  renormalizes gamma → 100 and only ever *lifts* hardware (`max`); downward from a mixed state
+  holds the hardware and eases gamma, so nothing visibly snaps. The Advanced-only >100 boost
+  is preserved by unified moves in the hardware zone.
+- **Scheduled software-only targets ride the floored track** (`softwareOnlyGamma`), so a 0%
+  night target stops at the floor instead of black (previously reachable on non-DDC panels),
+  and the slider position matches the target percent. The scrub preview sends the DDC
+  component through `previewHardwareDDC` (no persist) and previews the gamma component via the
+  in-memory preview-preferences copy only.
+- Dev hook: `MONITORFLUX_EXPAND_ADVANCED=1` opens the pane's Advanced disclosure on launch
+  for screenshot verification.
+
 ## Open questions - answered inline
 
 1. Handoff notch at 25% of track — feels right against gamma's real perceived range, but

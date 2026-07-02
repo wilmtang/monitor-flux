@@ -73,6 +73,14 @@ pkill -x MonitorFlux || true
   `LocationService` and throttles live DDC slider writes (`scheduleDDC`).
 - `Services/GammaPlan.swift`: pure gamma intent planning.
 - `Support/GammaCompositor.swift`: pure math for warmth + brightness + contrast.
+- `Support/HybridBrightness.swift`: pure math for the **unified brightness** scale — one
+  0…1 position per display covering hardware (DDC/backlight) above the fixed 25% handoff
+  notch and software (gamma, floored at 15% or 0 with "Allow dimming to black") below.
+  `AppStore.brightnessControlKind(for:)` routes each display (hybrid / hardware-only /
+  software-only / shade / unavailable) from its capabilities + per-display `DimmingMode`
+  (`nil` resolves: externals `.automatic`, built-in `.hardware`); the slider, media keys,
+  OSD fraction, and scheduled brightness targets all speak this scale via
+  `unifiedBrightness`/`setUnifiedBrightness`/`scheduledComponents`.
 - `Support/SolarCalculator.swift`: pure NOAA sunrise/sunset from lat/long.
 - `Services/GammaTemperatureService.swift`: the only CoreGraphics gamma writer.
 - `Services/NativeDDCBackend.swift`: Intel IOKit IOFramebuffer DDC/CI writes.
@@ -145,7 +153,9 @@ pkill -x MonitorFlux || true
   `updateGlobalPreferences`/`updateDisplayPreferences` (they skip equal values), and coalesce
   chatty status text through `reportDDCStatus` instead of assigning `ddcMessage` per write.
   Redundant publishes at mouse-event rate were the original slider-lag bug.
-- Keep hardware DDC separate from gamma controls in naming, state, and UI.
+- Keep hardware DDC separate from gamma in naming and state. The unified Brightness control
+  is the one deliberate blend of the two, and it goes through `HybridBrightness` +
+  `AppStore.setUnifiedBrightness` only — never mix DDC and gamma ad hoc in a view or feature.
 - Do not make Homebrew tools required. `ddcctl` is fallback only, and it is
   Intel-only — on Apple Silicon `Arm64DDCBackend` (IOAVService) is the real path.
 - The menu bar popup is `QuickControlsView` with `.menuBarExtraStyle(.window)` and
@@ -235,7 +245,8 @@ When a change is UI, hold it to this bar — and screenshot it before calling it
     way window-scoped shortcuts like ⌘+/⌘−/⌘0 and ⌘⇧D can fire; it steals focus, so verification
     only), `MONITORFLUX_SELECT=general|color|display|diagnostics`
     (or `display:<name substring>`, e.g. `display:AirPlay`, to target a specific display pane),
-    `MONITORFLUX_ZOOM_STEP=N` (0…8, in-memory only) to render at a non-default zoom
+    `MONITORFLUX_ZOOM_STEP=N` (0…8, in-memory only) to render at a non-default zoom,
+    `MONITORFLUX_EXPAND_ADVANCED=1` to open the display pane's Advanced disclosure on launch
   - `MONITORFLUX_OPEN_POPUP=1` opens the menu-bar popup ~1s after launch (it has no public "show"
     API) so it can be captured by id. **Needs an activating launch** — `open -n`, not `-gn`; when
     backgrounded the popup panel never appears. Pair with `MONITORFLUX_FAKE_DISPLAYS=N` for mock

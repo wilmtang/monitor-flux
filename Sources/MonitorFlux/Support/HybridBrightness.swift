@@ -91,6 +91,35 @@ enum HybridBrightness {
         )
     }
 
+    // MARK: Scheduled targets
+
+    /// Route a scheduled brightness target (0…100, the day/night slider value) to its
+    /// components on a wired display — the target is a *unified position*, so a 20% night
+    /// target on a monitor whose DDC 0 is still bright lands in the software zone instead of
+    /// clamping at DDC 0. `nil` means the schedule leaves that component alone: Monitor
+    /// hardware clamps to the hardware zone, Software dimming (and panels with no hardware
+    /// path) ride the software-only track. Virtual displays (shade) don't come through here.
+    static func scheduledComponents(
+        target: Int,
+        mode: DimmingMode,
+        hasHardwareControl: Bool,
+        floor: Int = defaultFloorPercent
+    ) -> (hardware: Int?, gamma: Int?) {
+        let fraction = Double(target.clamped(to: 0...100)) / 100.0
+        guard hasHardwareControl else {
+            return (nil, softwareOnlyGamma(fraction: fraction, floor: floor))
+        }
+        switch mode {
+        case .automatic:
+            let components = split(unified: fraction, floor: floor)
+            return (components.hardware, components.gamma)
+        case .hardware:
+            return (target.clamped(to: 0...100), nil)
+        case .software:
+            return (nil, softwareOnlyGamma(fraction: fraction, floor: floor))
+        }
+    }
+
     // MARK: Software-only track (non-DDC externals, Software mode)
 
     /// Track fraction → gamma percent when the whole track is the software component.

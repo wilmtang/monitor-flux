@@ -1422,6 +1422,33 @@ final class AppStore: ObservableObject {
         var previewPreferences = preferences
         previewPreferences.colorMode = .manual
         previewPreferences.manualTemperature = temperature
+        // Preview the *software* component of scheduled brightness too — written only into
+        // this local copy, so the preview never touches stored prefs (the DDC component rides
+        // `previewHardwareDDC`'s transient path below). Ending the preview restores the live
+        // gamma via the normal reconcile.
+        for display in displays where !display.isBuiltIn && !display.isVirtual {
+            let displayPreferences = displayPreferences(for: display)
+            guard displayPreferences.scheduleBrightness else {
+                continue
+            }
+            let target = ColorSchedule.scheduledHardwareLevel(
+                dayValue: displayPreferences.dayBrightness,
+                sunsetValue: displayPreferences.sunsetBrightness,
+                nightValue: displayPreferences.nightBrightness,
+                preferences: effective,
+                minuteOfDay: minute
+            )
+            let (_, gamma) = HybridBrightness.scheduledComponents(
+                target: target,
+                mode: dimmingMode(for: display),
+                hasHardwareControl: canUseDDC(for: display),
+                floor: softwareDimmingFloor(for: display)
+            )
+            if let gamma {
+                previewPreferences.displayPreferences[display.key, default: DisplayPreferences()]
+                    .gammaBrightness = gamma
+            }
+        }
         _ = gammaService.apply(displays: displays, preferences: previewPreferences)
         // Preview the scheduled brightness/contrast at this time too, so the *whole* schedule
         // shows on screen — not just the warmth.
@@ -1446,7 +1473,17 @@ final class AppStore: ObservableObject {
                     preferences: effective,
                     minuteOfDay: minute
                 )
-                previewHardwareDDC(.brightness, value: target, label: "brightness", for: display)
+                // Send only the DDC component of the unified target (the software component
+                // previews through the gamma path in `applySchedulePreview`).
+                let (hardware, _) = HybridBrightness.scheduledComponents(
+                    target: target,
+                    mode: dimmingMode(for: display),
+                    hasHardwareControl: canUseDDC(for: display),
+                    floor: softwareDimmingFloor(for: display)
+                )
+                if let hardware {
+                    previewHardwareDDC(.brightness, value: hardware, label: "brightness", for: display)
+                }
             }
             if displayPreferences.scheduleContrast {
                 let target = ColorSchedule.scheduledHardwareLevel(
@@ -1573,33 +1610,39 @@ final class AppStore: ObservableObject {
     }
 
     private func applyScheduledBrightness(_ value: Int, for display: DisplayInfo) {
-        if display.isBuiltIn {
-            // The built-in backlight is macOS-managed (auto-brightness / ambient sensor). Forcing
-            // a scheduled level onto it fights macOS and jumps the brightness on every launch,
-            // so leave the real backlight to macOS. Only software-dim built-ins that expose no
-            // backlight API at all.
-            guard !canUseNativeBrightness(display) else {
-                return
-            }
-            applyScheduledSoftwareBrightness(value, for: display)
-        } else if canUseDDC(for: display) {
-            setHardwareBrightness(value, for: display)
-        } else {
-            // External display with no DDC path to its backlight (some USB-C / DisplayLink docks,
-            // and AirPlay/virtual screens): fall back to software dimming, exactly as the live
-            // brightness slider does (QuickControlsView). Without this the schedule would mutate
-            // stored prefs but never actually change the screen.
-            applyScheduledSoftwareBrightness(value, for: display)
+        // The built-in backlight is macOS-managed (auto-brightness / ambient sensor). Forcing
+        // a scheduled level onto it fights macOS and jumps the brightness on every launch, so
+        // the schedule never drives it — not even the software zone of a hybrid opt-in. Only
+        // built-ins with no backlight API at all fall through to software dimming below.
+        if display.isBuiltIn, canUseNativeBrightness(display) {
+            return
         }
-    }
-
-    /// Software (gamma / shade) dimming for the schedule — the fallback when a display has no real
-    /// backlight to drive. The `gammaBrightness` write rides the normal didSet → reconcileColor /
-    /// reconcileShades path, dimming wired panels via the color tables and AirPlay/virtual screens
-    /// via the shade overlay.
-    private func applyScheduledSoftwareBrightness(_ value: Int, for display: DisplayInfo) {
-        updateDisplayPreferences(for: display) { displayPreferences in
-            displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.gammaBrightnessPercent)
+        // AirPlay/virtual screens dim via the shade overlay (its own never-black cap lives in
+        // ShadeController); the write rides the normal didSet → reconcileShades path.
+        if display.isVirtual {
+            updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences.gammaBrightness = value.clamped(to: ControlRanges.hardwarePercent)
+            }
+            return
+        }
+        // Wired panel: the target is a *unified* position, routed per dimming mode — DDC plus
+        // the software zone in Automatic (a 20% night target lands below the notch instead of
+        // clamping at DDC 0), DDC only in Monitor hardware, the floored software-only track in
+        // Software dimming and on panels with no DDC path. The canonical split also heals any
+        // mixed state the schedule encounters. Gamma rides didSet → reconcileColor.
+        let (hardware, gamma) = HybridBrightness.scheduledComponents(
+            target: value,
+            mode: dimmingMode(for: display),
+            hasHardwareControl: canUseDDC(for: display),
+            floor: softwareDimmingFloor(for: display)
+        )
+        if let hardware {
+            setHardwareBrightness(hardware, for: display)
+        }
+        if let gamma {
+            updateDisplayPreferences(for: display) { displayPreferences in
+                displayPreferences.gammaBrightness = gamma
+            }
         }
     }
 

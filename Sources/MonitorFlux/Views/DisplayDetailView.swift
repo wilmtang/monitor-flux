@@ -365,9 +365,19 @@ struct DisplayDetailView: View {
                     }
                 }
 
-                advancedCaption("Eases the real brightness/contrast from the daytime value to the night value on the **same day–night timeline as Warmth** (set on the Schedule screen — wake, bedtime, and fade). A manual change holds until the next phase.")
+                advancedCaption(scheduleCaption)
             }
         }
+    }
+
+    /// The schedule explainer, with the unified-target hint when this display's scheduled
+    /// brightness can continue below the hardware minimum (Automatic dimming on a DDC panel).
+    private var scheduleCaption: LocalizedStringKey {
+        let base = "Eases the real brightness/contrast from the daytime value to the night value on the **same day–night timeline as Warmth** (set on the Schedule screen — wake, bedtime, and fade). A manual change holds until the next phase."
+        if store.brightnessControlKind(for: display) == .hybrid, !display.isBuiltIn {
+            return LocalizedStringKey(base + " A brightness target below the notch keeps dimming the image in software.")
+        }
+        return LocalizedStringKey(base)
     }
 
     private func sectionHeader(_ title: String, help: String, helpTitle: String) -> some View {
