@@ -17,10 +17,20 @@ enum PreferencesStore {
 
     static func save(_ preferences: AppPreferences) {
         do {
-            let data = try JSONEncoder().encode(preferences.normalized())
+            let data = try exportData(preferences)
             UserDefaults.standard.set(data, forKey: key)
         } catch {
             assertionFailure("Failed to encode preferences: \(error)")
         }
+    }
+
+    static func exportData(_ preferences: AppPreferences) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(preferences.normalized())
+    }
+
+    static func importData(_ data: Data) throws -> AppPreferences {
+        try JSONDecoder().decode(AppPreferences.self, from: data).normalized()
     }
 }

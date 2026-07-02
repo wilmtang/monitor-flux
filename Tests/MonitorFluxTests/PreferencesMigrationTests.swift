@@ -184,4 +184,26 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.hotkeys["brightnessUp"], .keyboard(GlobalShortcut(keyCode: 30, carbonModifiers: 4352)))
         XCTAssertEqual(decoded.hotkeys["contrastUp"], .disabled)
     }
+
+    func testPreferencesStoreExportImportRoundTripsNormalizedJSON() throws {
+        var prefs = AppPreferences()
+        prefs.gammaEnabled = false
+        prefs.displayPreferences["external"] = {
+            var display = DisplayPreferences()
+            display.hardwareBrightness = 42
+            display.gammaBrightness = 999
+            return display
+        }()
+
+        let data = try PreferencesStore.exportData(prefs)
+        let imported = try PreferencesStore.importData(data)
+
+        XCTAssertEqual(imported.gammaEnabled, false)
+        XCTAssertEqual(imported.displayPreferences["external"]?.hardwareBrightness, 42)
+        XCTAssertEqual(
+            imported.displayPreferences["external"]?.gammaBrightness,
+            ControlRanges.gammaBrightnessPercent.upperBound
+        )
+        XCTAssertThrowsError(try PreferencesStore.importData(Data("not json".utf8)))
+    }
 }

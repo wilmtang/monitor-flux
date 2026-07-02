@@ -514,6 +514,20 @@ final class AppStore: ObservableObject {
         PreferencesStore.save(preferences)
     }
 
+    func exportedPreferencesData() throws -> Data {
+        try PreferencesStore.exportData(preferences)
+    }
+
+    func importPreferences(from data: Data) throws {
+        let imported = try PreferencesStore.importData(data)
+        schedulePreviewMinute = nil
+        preferences = imported
+        pendingPreferencesSave?.cancel()
+        pendingPreferencesSave = nil
+        PreferencesStore.save(imported)
+        refreshDisplays()
+    }
+
     func setStartAtLogin(_ isEnabled: Bool) {
         do {
             try LoginItemService.setEnabled(isEnabled)
