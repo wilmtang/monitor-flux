@@ -98,6 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch ProcessInfo.processInfo.environment["MONITORFLUX_SHOW_OSD"] {
         case "1", "brightness":
             store?.showSampleOSD(fraction: osdFraction ?? 0.7)
+        case "contrast":
+            store?.showSampleOSD(.contrast, fraction: osdFraction ?? 0.7)
         case "color":
             // Warm end of the range, so the warmth-tinted glyph/bar is visible in a screenshot.
             store?.showSampleOSD(.color, fraction: osdFraction ?? 0.12)
