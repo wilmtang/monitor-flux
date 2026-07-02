@@ -62,6 +62,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
         XCTAssertFalse(appPreferences.showInDock)
         XCTAssertFalse(appPreferences.fineAdjustmentsEnabled)
+        XCTAssertFalse(appPreferences.hideNoExternalsHint)
         XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)
         XCTAssertEqual(appPreferences.fontSizeStep, AppPreferences.defaultFontSizeStep)
     }

@@ -18,8 +18,11 @@ struct QuickControlsView: View {
                 DisplayCardsList(displays: store.orderedDisplays)
                 // Only the built-in panel is present: name what the user would gain by plugging
                 // a monitor in, instead of leaving the area looking like nothing's missing.
-                if !store.displays.contains(where: { !$0.isBuiltIn }) {
-                    emptyHint("No external monitors detected — connect one to control its brightness, contrast, and volume here.")
+                // Once read it's noise, so its ✕ hides it for good.
+                if !store.displays.contains(where: { !$0.isBuiltIn }), !store.preferences.hideNoExternalsHint {
+                    emptyHint("No external monitors detected — connect one to control its brightness, contrast, and volume here.") {
+                        store.updateGlobalPreferences { $0.hideNoExternalsHint = true }
+                    }
                 }
             }
 
@@ -205,8 +208,9 @@ struct QuickControlsView: View {
     }
 
     /// A calm, card-styled empty state — a display glyph plus a sentence naming what the user
-    /// gains by connecting a monitor — instead of a bare line or an empty area.
-    private func emptyHint(_ text: String) -> some View {
+    /// gains by connecting a monitor — instead of a bare line or an empty area. `onClose`
+    /// (the WarningCard pattern) adds a quiet ✕ in the top-right for hints worth silencing.
+    private func emptyHint(_ text: String, onClose: (() -> Void)? = nil) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "display")
                 .foregroundStyle(.tertiary)
@@ -214,6 +218,15 @@ struct QuickControlsView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.borderless)
+                .help("Don't show this again")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)

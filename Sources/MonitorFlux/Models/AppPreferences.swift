@@ -279,6 +279,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
     /// Show the developer-facing Diagnostics pane in the sidebar. Off by default (also reachable
     /// via ⌘⇧D); a toggle in General turns it on for people who want it.
     var showDiagnostics = false
+    /// The popup's "No external monitors detected" hint was dismissed with its ✕ — never show
+    /// it again. It's onboarding for what plugging a monitor in unlocks; once read, it's noise.
+    var hideNoExternalsHint = false
     /// Settings-window text zoom (⌘+ / ⌘- / ⌘0). This drives SwiftUI semantic text sizing,
     /// not a post-layout scale transform, so hit testing stays aligned with the UI.
     var fontSizeStep = AppPreferences.defaultFontSizeStep
@@ -320,6 +323,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case fineAdjustmentsEnabled
         case hasSeenOnboarding
         case showDiagnostics
+        case hideNoExternalsHint
         case fontSizeStep
         case latitude
         case longitude
@@ -372,6 +376,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         fineAdjustmentsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fineAdjustmentsEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         showDiagnostics = try container.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? false
+        hideNoExternalsHint = try container.decodeIfPresent(Bool.self, forKey: .hideNoExternalsHint) ?? false
         fontSizeStep = (try container.decodeIfPresent(Int.self, forKey: .fontSizeStep) ?? AppPreferences.defaultFontSizeStep)
             .clamped(to: AppPreferences.fontSizeStepRange)
         latitude = try container.decodeIfPresent(String.self, forKey: .latitude) ?? "47.6"
@@ -403,6 +408,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(fineAdjustmentsEnabled, forKey: .fineAdjustmentsEnabled)
         try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(showDiagnostics, forKey: .showDiagnostics)
+        try container.encode(hideNoExternalsHint, forKey: .hideNoExternalsHint)
         try container.encode(fontSizeStep, forKey: .fontSizeStep)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
