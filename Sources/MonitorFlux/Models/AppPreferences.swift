@@ -195,6 +195,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var startAtLogin = false
     var showInDock = false
     var keyboardControlEnabled = false
+    /// Master switch for the small-step (⌥) shortcut variants. Off by default: the fine
+    /// shortcuts neither fire nor appear in Settings, and ⌥ + media keys stay with macOS.
+    var fineAdjustmentsEnabled = false
     /// Whether the first-run onboarding has been shown. False on a fresh install; set true the
     /// first time the welcome sheet appears so it never pops again.
     var hasSeenOnboarding = false
@@ -239,6 +242,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case startAtLogin
         case showInDock
         case keyboardControlEnabled
+        case fineAdjustmentsEnabled
         case hasSeenOnboarding
         case showDiagnostics
         case fontSizeStep
@@ -290,6 +294,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
         showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
+        fineAdjustmentsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fineAdjustmentsEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         showDiagnostics = try container.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? false
         fontSizeStep = (try container.decodeIfPresent(Int.self, forKey: .fontSizeStep) ?? AppPreferences.defaultFontSizeStep)
@@ -320,6 +325,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(startAtLogin, forKey: .startAtLogin)
         try container.encode(showInDock, forKey: .showInDock)
         try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
+        try container.encode(fineAdjustmentsEnabled, forKey: .fineAdjustmentsEnabled)
         try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(showDiagnostics, forKey: .showDiagnostics)
         try container.encode(fontSizeStep, forKey: .fontSizeStep)

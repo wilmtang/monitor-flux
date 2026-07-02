@@ -61,8 +61,48 @@ final class PreferencesMigrationTests: XCTestCase {
         let appPreferences = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
         XCTAssertFalse(appPreferences.showInDock)
+        XCTAssertFalse(appPreferences.fineAdjustmentsEnabled)
         XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)
         XCTAssertEqual(appPreferences.fontSizeStep, AppPreferences.defaultFontSizeStep)
+    }
+
+    func testMediaBindingsSavedBeforeOptionExistedStillDecode() throws {
+        // Media bindings persisted before the `option` field must decode with option = false.
+        // A synthesized decoder would throw on the missing key — and because `decodeHotkeys`
+        // falls back to the legacy format on any error, that would silently wipe every custom
+        // shortcut the user recorded.
+        let json = """
+        {
+          "hotkeys": {
+            "contrastUp": {"media": {"_0": {"keyCode": 2, "control": true, "shift": false, "command": false}}}
+          }
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: json)
+
+        XCTAssertEqual(
+            preferences.hotkeys["contrastUp"],
+            .media(MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true))
+        )
+        XCTAssertEqual(preferences.hotkeys["contrastUp"]?.asMedia?.option, false)
+    }
+
+    func testOptionMediaBindingRoundTrips() throws {
+        var prefs = AppPreferences()
+        prefs.fineAdjustmentsEnabled = true
+        prefs.hotkeys["brightnessUpFine"] = .media(
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true, option: true)
+        )
+
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
+
+        XCTAssertTrue(decoded.fineAdjustmentsEnabled)
+        XCTAssertEqual(
+            decoded.hotkeys["brightnessUpFine"],
+            .media(MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true, option: true))
+        )
     }
 
     func testDisplayPreferencesClampDecodedValues() throws {

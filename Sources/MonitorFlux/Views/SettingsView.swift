@@ -77,17 +77,34 @@ struct SettingsView: View {
                     keyHint("⌃ Control + brightness", "contrast (external monitor)")
                     keyHint("⌘ Command + brightness", "built-in brightness")
                     keyHint("⇧ Shift + brightness down/up", "warmth warmer / cooler")
+                    if store.preferences.fineAdjustmentsEnabled {
+                        keyHint("⌥ Option + any combo above", "the same control, in small steps")
+                    }
                     keyHint("Volume keys", "macOS system volume unless recorded below")
                 }
                 .padding(.vertical, 2)
                 Text("Works when this toggle is on and Accessibility is granted. Brightness/contrast act on the external display under your pointer; Command + brightness targets the built-in display; warmth is global.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("Fine adjustments", isOn: Binding {
+                    store.preferences.fineAdjustmentsEnabled
+                } set: { isOn in
+                    store.setFineAdjustments(isOn)
+                })
+                Text("Hold ⌥ Option with any MonitorFlux shortcut to adjust in small, precise steps — 1% instead of 6%, and subtler warmth. The fine shortcuts appear below, where each can be re-recorded. While this is on, ⌥ + brightness keys go to MonitorFlux instead of opening Displays settings.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ForEach(Array(HotKeyGroup.allCases.enumerated()), id: \.element) { index, group in
                 Section {
-                    ForEach(HotKeyAction.allCases.filter { $0.group == group }) { action in
+                    // Fine (⌥) variants surface only while "Fine adjustments" is on — no dead
+                    // recorder rows for shortcuts that wouldn't fire.
+                    ForEach(HotKeyAction.allCases.filter {
+                        $0.group == group && (!$0.isFine || store.preferences.fineAdjustmentsEnabled)
+                    }) { action in
                         ShortcutRecorder(
                             label: action.label,
                             icon: action.icon,

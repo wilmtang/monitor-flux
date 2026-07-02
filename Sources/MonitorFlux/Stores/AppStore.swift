@@ -86,6 +86,11 @@ final class AppStore: ObservableObject {
     /// A settings pane requested from the menu-bar popup (e.g. tapping a display card). ContentView
     /// observes this, applies it to the sidebar selection, then clears it.
     @Published var requestedSelection: AppSelection?
+    /// Whether the menu-bar popup is on screen, tracked by `QuickControlsView`'s appear/disappear.
+    /// Read by the ⌘, Settings menu command so it only toggles the status item to dismiss the
+    /// popup when the popup is actually open (a blind toggle would open it). Not `@Published` —
+    /// nothing renders from it.
+    var quickControlsPopupVisible = false
 
     /// Set by `MONITORFLUX_SAFE_MODE=1`. Skips every gamma/DDC/backlight hardware write so
     /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
@@ -798,12 +803,13 @@ final class AppStore: ObservableObject {
         return true
     }
 
-    /// Nudge the global color temperature (200 K per step) and pin it as a manual override,
-    /// matching the Ambience slider. Positive steps cool (toward daylight), negative warm.
-    func adjustColorTemperature(bySteps steps: Int) -> Bool {
+    /// Nudge the global color temperature by `delta` kelvin (±200 K normal, ±100 K fine) and
+    /// pin it as a manual override, matching the Ambience slider. Positive cools (toward
+    /// daylight), negative warms.
+    func adjustColorTemperature(byKelvin delta: Int) -> Bool {
         let current = currentTemperature
             ?? (preferences.colorMode == .manual ? preferences.manualTemperature : preferences.dayTemperature)
-        let next = (current + steps * 200).clamped(to: ControlRanges.kelvin)
+        let next = (current + delta).clamped(to: ControlRanges.kelvin)
         updateGlobalPreferences { preferences in
             preferences.gammaEnabled = true
             preferences.colorMode = .manual
@@ -836,13 +842,19 @@ final class AppStore: ObservableObject {
     }
 
     /// Flash a sample OSD — used only by `MONITORFLUX_SHOW_OSD` to screenshot the overlay.
+    /// Targets the main display so a capture run knows which screen to grab.
     func showSampleOSD(_ kind: OSDController.Kind = .brightness, fraction: Double = 0.7) {
-        osd.show(kind, fraction: fraction, onDisplay: displays.first?.id)
+        osd.show(kind, fraction: fraction, onDisplay: CGMainDisplayID())
     }
 
     // MARK: - Custom global hotkeys
 
     private static let keyboardStep = 6
+    private static let kelvinStep = 200
+    /// Small steps for the fine (⌥) shortcut variants — the keyboard equivalent of a gentle
+    /// slider nudge, like ⌥⇧ on the Mac's own brightness keys.
+    private static let fineKeyboardStep = 1
+    private static let fineKelvinStep = 100
 
     func hotkey(for action: HotKeyAction) -> ShortcutBinding? {
         preferences.hotkeys[action.rawValue]
@@ -856,6 +868,15 @@ final class AppStore: ObservableObject {
         refreshHotKeys()
     }
 
+    /// Turn the small-step (⌥) shortcut variants on or off and re-register bindings — off
+    /// unregisters every fine shortcut, so ⌥ + media keys fall through to macOS again.
+    func setFineAdjustments(_ isOn: Bool) {
+        updateGlobalPreferences { preferences in
+            preferences.fineAdjustmentsEnabled = isOn
+        }
+        refreshHotKeys()
+    }
+
     private func refreshHotKeys() {
         guard !safeMode else {
             hotkeyConflicts = []
@@ -864,8 +885,13 @@ final class AppStore: ObservableObject {
         }
         var carbonMap: [HotKeyAction: GlobalShortcut] = [:]
         var mediaMap: [MediaKeyShortcut: HotKeyAction] = [:]
+        // With fine adjustments off, fine actions register nothing at all — neither their
+        // ⌥ defaults nor recorded customs — so every ⌥ media combo stays with macOS.
+        let isActive: (HotKeyAction) -> Bool = { [fineEnabled = preferences.fineAdjustmentsEnabled] action in
+            !action.isFine || fineEnabled
+        }
 
-        for action in HotKeyAction.allCases {
+        for action in HotKeyAction.allCases where isActive(action) {
             guard preferences.hotkeys[action.rawValue] == nil,
                   let shortcut = action.mediaShortcut
             else {
@@ -875,7 +901,7 @@ final class AppStore: ObservableObject {
         }
 
         for (key, binding) in preferences.hotkeys {
-            guard let action = HotKeyAction(rawValue: key) else { continue }
+            guard let action = HotKeyAction(rawValue: key), isActive(action) else { continue }
             switch binding {
             case .disabled:
                 continue
@@ -901,27 +927,29 @@ final class AppStore: ObservableObject {
         _ action: HotKeyAction,
         allowBuiltInForPointerBrightness: Bool
     ) -> Bool {
-        let step = Self.keyboardStep
+        // Fine variants run the same adjustment as their base action, just with a small step.
+        let step = action.isFine ? Self.fineKeyboardStep : Self.keyboardStep
+        let kelvin = action.isFine ? Self.fineKelvinStep : Self.kelvinStep
         switch action {
-        case .brightnessUp:
+        case .brightnessUp, .brightnessUpFine:
             return adjustBrightnessUnderCursor(by: step, allowBuiltIn: allowBuiltInForPointerBrightness)
-        case .brightnessDown:
+        case .brightnessDown, .brightnessDownFine:
             return adjustBrightnessUnderCursor(by: -step, allowBuiltIn: allowBuiltInForPointerBrightness)
-        case .contrastUp:
+        case .contrastUp, .contrastUpFine:
             return adjustContrastUnderCursor(by: step)
-        case .contrastDown:
+        case .contrastDown, .contrastDownFine:
             return adjustContrastUnderCursor(by: -step)
-        case .colorWarmer:
-            return adjustColorTemperature(bySteps: -1)
-        case .colorCooler:
-            return adjustColorTemperature(bySteps: 1)
+        case .colorWarmer, .colorWarmerFine:
+            return adjustColorTemperature(byKelvin: -kelvin)
+        case .colorCooler, .colorCoolerFine:
+            return adjustColorTemperature(byKelvin: kelvin)
         case .volumeUp:
             return adjustVolumeUnderCursor(by: step)
         case .volumeDown:
             return adjustVolumeUnderCursor(by: -step)
-        case .builtInBrightnessUp:
+        case .builtInBrightnessUp, .builtInBrightnessUpFine:
             return adjustBuiltInBrightness(by: step)
-        case .builtInBrightnessDown:
+        case .builtInBrightnessDown, .builtInBrightnessDownFine:
             return adjustBuiltInBrightness(by: -step)
         }
     }

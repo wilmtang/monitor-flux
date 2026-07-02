@@ -156,63 +156,76 @@ final class OSDController {
     }
 }
 
-/// The OSD's content: a large glyph over a 16-segment level bar on a dark HUD panel, matching
-/// the macOS brightness/volume overlay — always-dark vibrancy, bright white glyph, and
-/// translucent-white empty notches (so the bar reads on the dark blur, as the system's does).
+/// The OSD's content: a large glyph over a 16-segment level bar on a dark HUD panel, laid out
+/// to match the macOS brightness/volume bezel **pixel-for-pixel** (measured from a screenshot
+/// of OSDUIHelper's 200×200 window on macOS 15.7):
+/// - glyph: thin-stroke, ~112 pt tall, centered at (100, 87), ~55%-white gray (not bright white)
+/// - level bar: 159×6 pt whose *center* sits at (100, 176) — a continuous darker-than-panel
+///   track under 9 pt lit chiclets with 1 pt gaps (the empty side is the bare track; the
+///   native bezel draws no per-chiclet outlines there)
+/// - no border ring around the panel
 private struct OSDView: View {
     let systemImage: String
     let fraction: Double
     var tint: Color = .white
 
     private let segments = 16
-    private let barWidth: CGFloat = 150
-    private let segmentSpacing: CGFloat = 3
-    private var segmentWidth: CGFloat {
-        (barWidth - segmentSpacing * CGFloat(segments - 1)) / CGFloat(segments)
+    private let segmentWidth: CGFloat = 9
+    private let segmentSpacing: CGFloat = 1
+    private let barHeight: CGFloat = 6
+    private var barWidth: CGFloat {
+        CGFloat(segments) * segmentWidth + CGFloat(segments - 1) * segmentSpacing // 159
     }
+    /// The native glyph/chiclet gray over the dark blur reads as ~55% white; the HUD
+    /// vibrancy brightens marks a touch, so 0.50 lands on the native gray in a screenshot.
+    private let markOpacity = 0.50
 
     /// 0...1 fill for the segment at `index`: whole segments below the level read 1, the one
     /// segment straddling the level fills proportionally, the rest read 0. That partial
     /// boundary segment is what makes a sub-segment step — warmth's 200 K is ~0.6 of a
     /// segment — visibly nudge the bar on every keypress, instead of stalling between ticks
-    /// the way integer (rounded) segment counts did.
+    /// the way integer (rounded) segment counts did. (The native bezel does the same for its
+    /// quarter-step ⌥⇧ presses.)
     private func fillAmount(at index: Int) -> Double {
         OSDController.segmentFill(fraction: fraction, index: index, segments: segments)
     }
 
     var body: some View {
-        VStack(spacing: 20) {
+        ZStack {
             Image(systemName: systemImage)
-                .font(.system(size: 56, weight: .regular))
-                .foregroundStyle(tint.opacity(0.9))
-                .frame(height: 64)
+                .font(.system(size: 106, weight: .regular))
+                .foregroundStyle(tint.opacity(markOpacity))
+                .position(x: 100, y: 87)
 
-            HStack(spacing: segmentSpacing) {
-                ForEach(0..<segments, id: \.self) { index in
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.2))
-                        Rectangle()
-                            .fill(tint.opacity(0.9))
-                            .frame(width: segmentWidth * fillAmount(at: index))
-                    }
-                    .frame(width: segmentWidth, height: 7)
-                    .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
-                }
-            }
-            .frame(width: barWidth)
+            levelBar
+                .position(x: 100, y: 176)
         }
-        .padding(24)
         .frame(width: 200, height: 200)
         .background(
             OSDVisualEffectBackground()
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.1))
-        )
         .environment(\.colorScheme, .dark)
+    }
+
+    private var levelBar: some View {
+        ZStack(alignment: .leading) {
+            // The recessed track: slightly darker than the panel, one continuous strip.
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Color.black.opacity(0.27))
+            HStack(spacing: segmentSpacing) {
+                ForEach(0..<segments, id: \.self) { index in
+                    ZStack(alignment: .leading) {
+                        Color.clear
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(tint.opacity(markOpacity))
+                            .frame(width: segmentWidth * fillAmount(at: index))
+                    }
+                    .frame(width: segmentWidth, height: barHeight)
+                }
+            }
+        }
+        .frame(width: barWidth, height: barHeight)
     }
 }
 

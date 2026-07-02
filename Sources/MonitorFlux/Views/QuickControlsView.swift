@@ -34,6 +34,10 @@ struct QuickControlsView: View {
         }
         .padding(14)
         .frame(width: 312)
+        // The popup content exists exactly while the MenuBarExtra panel is open, so its
+        // appear/disappear is the reliable "is the popup showing?" signal for the ⌘, command.
+        .onAppear { store.quickControlsPopupVisible = true }
+        .onDisappear { store.quickControlsPopupVisible = false }
     }
 
     private var header: some View {

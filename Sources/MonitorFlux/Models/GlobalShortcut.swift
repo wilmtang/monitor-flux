@@ -68,10 +68,14 @@ struct MediaKeyShortcut: Codable, Hashable, Sendable {
     var control = false
     var shift = false
     var command = false
+    /// ⌥ variants are how fine adjustments ride the same media keys (⌥ + a bound combo =
+    /// small step). An ⌥ combo that isn't bound still passes through to macOS.
+    var option = false
 
     var displayTokens: [String] {
         var tokens: [String] = []
         if control { tokens.append("⌃") }
+        if option { tokens.append("⌥") }
         if shift { tokens.append("⇧") }
         if command { tokens.append("⌘") }
         switch keyCode {
@@ -93,11 +97,34 @@ struct MediaKeyShortcut: Codable, Hashable, Sendable {
         displayTokens.joined(separator: " ")
     }
 
-    func matches(keyCode: Int, control: Bool, shift: Bool, command: Bool) -> Bool {
+    func matches(keyCode: Int, control: Bool, shift: Bool, command: Bool, option: Bool) -> Bool {
         self.keyCode == keyCode
             && self.control == control
             && self.shift == shift
             && self.command == command
+            && self.option == option
+    }
+}
+
+extension MediaKeyShortcut {
+    private enum CodingKeys: String, CodingKey {
+        case keyCode
+        case control
+        case shift
+        case command
+        case option
+    }
+
+    /// Hand-written so shortcuts saved before `option` existed still decode (a synthesized
+    /// decoder would throw on the missing key, and `decodeHotkeys` would then drop every
+    /// custom binding by falling back to the legacy format).
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        keyCode = try container.decode(Int.self, forKey: .keyCode)
+        control = try container.decodeIfPresent(Bool.self, forKey: .control) ?? false
+        shift = try container.decodeIfPresent(Bool.self, forKey: .shift) ?? false
+        command = try container.decodeIfPresent(Bool.self, forKey: .command) ?? false
+        option = try container.decodeIfPresent(Bool.self, forKey: .option) ?? false
     }
 }
 
@@ -171,12 +198,43 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     // other actions keep their `hotKeyID`s, and thus their saved shortcuts.
     case builtInBrightnessUp
     case builtInBrightnessDown
+    // Fine (small-step) variants, active only while "Fine adjustments" is on. Appended, like the
+    // built-in set, so every earlier action keeps its `hotKeyID` and saved shortcut. Volume has no
+    // fine variant: macOS itself already does fine system volume with ⌥⇧.
+    case brightnessUpFine
+    case brightnessDownFine
+    case contrastUpFine
+    case contrastDownFine
+    case colorWarmerFine
+    case colorCoolerFine
+    case builtInBrightnessUpFine
+    case builtInBrightnessDownFine
 
     var id: String { rawValue }
 
+    /// True for the small-step variants that only exist while "Fine adjustments" is enabled.
+    var isFine: Bool {
+        baseAction != self
+    }
+
+    /// The coarse action a fine variant is the small-step version of; `self` for base actions.
+    var baseAction: HotKeyAction {
+        switch self {
+        case .brightnessUpFine: .brightnessUp
+        case .brightnessDownFine: .brightnessDown
+        case .contrastUpFine: .contrastUp
+        case .contrastDownFine: .contrastDown
+        case .colorWarmerFine: .colorWarmer
+        case .colorCoolerFine: .colorCooler
+        case .builtInBrightnessUpFine: .builtInBrightnessUp
+        case .builtInBrightnessDownFine: .builtInBrightnessDown
+        default: self
+        }
+    }
+
     /// Which set this action belongs to — drives the Settings grouping and the target it acts on.
     var group: HotKeyGroup {
-        switch self {
+        switch baseAction {
         case .builtInBrightnessUp, .builtInBrightnessDown:
             .builtIn
         default:
@@ -185,21 +243,25 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 
     var label: String {
+        if isFine {
+            return baseAction.label + " (fine)"
+        }
         switch self {
-        case .brightnessUp, .builtInBrightnessUp: "Brightness up"
-        case .brightnessDown, .builtInBrightnessDown: "Brightness down"
-        case .contrastUp: "Contrast up"
-        case .contrastDown: "Contrast down"
-        case .colorWarmer: "Color warmer"
-        case .colorCooler: "Color cooler"
-        case .volumeUp: "Volume up"
-        case .volumeDown: "Volume down"
+        case .brightnessUp, .builtInBrightnessUp: return "Brightness up"
+        case .brightnessDown, .builtInBrightnessDown: return "Brightness down"
+        case .contrastUp: return "Contrast up"
+        case .contrastDown: return "Contrast down"
+        case .colorWarmer: return "Color warmer"
+        case .colorCooler: return "Color cooler"
+        case .volumeUp: return "Volume up"
+        case .volumeDown: return "Volume down"
+        default: return baseAction.label
         }
     }
 
     /// SF Symbol shown beside the action in Settings.
     var icon: String {
-        switch self {
+        switch baseAction {
         case .brightnessUp, .builtInBrightnessUp: "sun.max.fill"
         case .brightnessDown, .builtInBrightnessDown: "sun.min"
         case .contrastUp: "circle.righthalf.filled"
@@ -208,6 +270,7 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .colorCooler: "thermometer.snowflake"
         case .volumeUp: "speaker.wave.3.fill"
         case .volumeDown: "speaker.wave.1.fill"
+        default: "keyboard"
         }
     }
 
@@ -215,9 +278,14 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     /// It is not the factory default; rows with `mediaShortcut` reset to that media binding.
     var suggestedKeyboardShortcut: GlobalShortcut {
         // Under-pointer set is ⌃⌥-based; built-in set is ⌘⌥-based, so suggestions do not collide.
+        // Fine variants add one more modifier (⌘, or ⇧ for the already-⌘⌥ built-in set) so they
+        // stay adjacent to their base combo without colliding with it.
         let controlOption = UInt32(controlKey | optionKey)
         let controlOptionShift = UInt32(controlKey | optionKey | shiftKey)
         let commandOption = UInt32(cmdKey | optionKey)
+        let controlOptionCommand = UInt32(controlKey | optionKey | cmdKey)
+        let controlOptionShiftCommand = UInt32(controlKey | optionKey | shiftKey | cmdKey)
+        let commandOptionShift = UInt32(cmdKey | optionKey | shiftKey)
         switch self {
         case .brightnessUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: controlOption)
         case .brightnessDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: controlOption)
@@ -229,12 +297,21 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .volumeDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Minus), carbonModifiers: controlOption)
         case .builtInBrightnessUp: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: commandOption)
         case .builtInBrightnessDown: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: commandOption)
+        case .brightnessUpFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: controlOptionCommand)
+        case .brightnessDownFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: controlOptionCommand)
+        case .contrastUpFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: controlOptionShiftCommand)
+        case .contrastDownFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: controlOptionShiftCommand)
+        case .colorWarmerFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Semicolon), carbonModifiers: controlOptionCommand)
+        case .colorCoolerFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_Quote), carbonModifiers: controlOptionCommand)
+        case .builtInBrightnessUpFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_RightBracket), carbonModifiers: commandOptionShift)
+        case .builtInBrightnessDownFine: return GlobalShortcut(keyCode: UInt32(kVK_ANSI_LeftBracket), carbonModifiers: commandOptionShift)
         }
     }
 
     /// Built-in media-key path, when one already exists for this action. This is separate
     /// from the optional custom Carbon shortcut: media keys are `NSSystemDefined` events,
-    /// not globally registered Carbon key combos.
+    /// not globally registered Carbon key combos. A fine variant's default is its base
+    /// combo plus ⌥ — mirroring how ⌥⇧ turns the Mac's own brightness keys into small steps.
     var mediaShortcut: MediaKeyShortcut? {
         switch self {
         case .brightnessUp:
@@ -255,6 +332,13 @@ enum HotKeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
             MediaKeyShortcut(keyCode: MediaKey.brightnessUp, command: true)
         case .builtInBrightnessDown:
             MediaKeyShortcut(keyCode: MediaKey.brightnessDown, command: true)
+        case .brightnessUpFine, .brightnessDownFine, .contrastUpFine, .contrastDownFine,
+             .colorWarmerFine, .colorCoolerFine, .builtInBrightnessUpFine, .builtInBrightnessDownFine:
+            baseAction.mediaShortcut.map { base in
+                var fine = base
+                fine.option = true
+                return fine
+            }
         }
     }
 

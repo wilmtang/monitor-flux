@@ -5,8 +5,8 @@ import XCTest
 
 final class GlobalShortcutTests: XCTestCase {
     func testTwoGroupsSplitTheActions() {
-        let underPointer = HotKeyAction.allCases.filter { $0.group == .underPointer }
-        let builtIn = HotKeyAction.allCases.filter { $0.group == .builtIn }
+        let underPointer = HotKeyAction.allCases.filter { $0.group == .underPointer && !$0.isFine }
+        let builtIn = HotKeyAction.allCases.filter { $0.group == .builtIn && !$0.isFine }
 
         XCTAssertEqual(underPointer.count, 8)
         // Built-in set is brightness only: the panel has no contrast control, color is global,
@@ -14,11 +14,55 @@ final class GlobalShortcutTests: XCTestCase {
         XCTAssertEqual(Set(builtIn.map(\.label)), ["Brightness up", "Brightness down"])
     }
 
+    func testFineVariantsMirrorTheirBaseActions() {
+        let fine = HotKeyAction.allCases.filter(\.isFine)
+        // Every adjustable control except volume (macOS already does fine system volume
+        // with ⌥⇧) has a small-step variant.
+        XCTAssertEqual(fine.count, 8)
+        for action in fine {
+            XCTAssertFalse(action.baseAction.isFine)
+            XCTAssertEqual(action.group, action.baseAction.group, "\(action) group must match its base")
+            XCTAssertTrue(action.label.hasPrefix(action.baseAction.label), "\(action) label should extend the base label")
+        }
+        // Base actions are their own base.
+        XCTAssertEqual(HotKeyAction.brightnessUp.baseAction, .brightnessUp)
+        XCTAssertEqual(HotKeyAction.brightnessUpFine.baseAction, .brightnessUp)
+        XCTAssertEqual(HotKeyAction.builtInBrightnessDownFine.baseAction, .builtInBrightnessDown)
+    }
+
+    func testFineMediaDefaultsAreBaseComboPlusOption() {
+        // The fine default is the base media combo with ⌥ added — the discoverable rule the
+        // Settings caption promises ("hold Option for small steps").
+        XCTAssertEqual(
+            HotKeyAction.brightnessUpFine.mediaShortcut,
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, option: true)
+        )
+        XCTAssertEqual(
+            HotKeyAction.contrastDownFine.mediaShortcut,
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown, control: true, option: true)
+        )
+        XCTAssertEqual(
+            HotKeyAction.colorWarmerFine.mediaShortcut,
+            MediaKeyShortcut(keyCode: MediaKey.brightnessDown, shift: true, option: true)
+        )
+        XCTAssertEqual(
+            HotKeyAction.builtInBrightnessUpFine.mediaShortcut,
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, command: true, option: true)
+        )
+        XCTAssertEqual(
+            HotKeyAction.builtInBrightnessUpFine.mediaShortcut?.displayTokens,
+            ["⌥", "⌘", "Brightness ↑"]
+        )
+    }
+
     func testHotKeyIDsAreStableAndUnique() {
         // Built-in actions were appended, so the original eight keep their ids (and saved
-        // shortcuts). Ids must also be unique so presses route correctly.
+        // shortcuts); the fine variants were appended after those. Ids must also be unique
+        // so presses route correctly.
         XCTAssertEqual(HotKeyAction.brightnessUp.hotKeyID, 1)
         XCTAssertEqual(HotKeyAction.volumeDown.hotKeyID, 8)
+        XCTAssertEqual(HotKeyAction.builtInBrightnessDown.hotKeyID, 10)
+        XCTAssertEqual(HotKeyAction.brightnessUpFine.hotKeyID, 11)
         let ids = HotKeyAction.allCases.map(\.hotKeyID)
         XCTAssertEqual(Set(ids).count, ids.count)
     }

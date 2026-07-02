@@ -122,8 +122,8 @@ final class KeyboardControlService {
 
     /// Handle a media-key press, remembering whether we owned it so the matching key-up is
     /// swallowed iff the key-down was. Returns true when handled (the tap swallows the down).
-    func handleKeyDown(keyCode: Int, control: Bool, shift: Bool, command: Bool) -> Bool {
-        let handled = handle(keyCode: keyCode, control: control, shift: shift, command: command)
+    func handleKeyDown(keyCode: Int, control: Bool, shift: Bool, command: Bool, option: Bool = false) -> Bool {
+        let handled = handle(keyCode: keyCode, control: control, shift: shift, command: command, option: option)
         if handled {
             ownedKeys.insert(keyCode)
         } else {
@@ -138,8 +138,8 @@ final class KeyboardControlService {
     }
 
     /// Returns true when MonitorFlux handled the key (so the tap swallows the event).
-    func handle(keyCode: Int, control: Bool, shift: Bool, command: Bool = false) -> Bool {
-        let incoming = MediaKeyShortcut(keyCode: keyCode, control: control, shift: shift, command: command)
+    func handle(keyCode: Int, control: Bool, shift: Bool, command: Bool = false, option: Bool = false) -> Bool {
+        let incoming = MediaKeyShortcut(keyCode: keyCode, control: control, shift: shift, command: command, option: option)
         guard let action = mediaBindings[incoming] else {
             return false
         }
@@ -215,16 +215,21 @@ private func mediaKeyTapCallback(
     let optionHeld = flags.contains(.maskAlternate)
     let commandHeld = flags.contains(.maskCommand)
 
-    // Pass through to macOS when Option is held. Option + Brightness opens Display settings.
-    guard !optionHeld else {
-        return Unmanaged.passUnretained(event)
-    }
-
+    // ⌥ is part of the binding lookup (fine adjustments bind ⌥ variants). An ⌥ combo that
+    // matches nothing still falls through to macOS below — ⌥ + brightness keeps opening
+    // Displays settings, and ⌥⇧ + brightness stays the native built-in fine step — because
+    // `handle` only swallows keys with an active binding.
     // Act on key-down; swallow the matching key-up only if we owned the down, so a key we
     // let through (e.g. volume on a speakerless monitor) reaches the system as a balanced pair.
     let handled = MainActor.assumeIsolated {
         media.isKeyDown
-            ? service.handleKeyDown(keyCode: media.code, control: controlHeld, shift: shiftHeld, command: commandHeld)
+            ? service.handleKeyDown(
+                keyCode: media.code,
+                control: controlHeld,
+                shift: shiftHeld,
+                command: commandHeld,
+                option: optionHeld
+            )
             : service.consumeKeyUp(keyCode: media.code)
     }
 

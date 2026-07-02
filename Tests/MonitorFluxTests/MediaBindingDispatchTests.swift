@@ -71,12 +71,19 @@ final class MediaBindingDispatchTests: XCTestCase {
         XCTAssertFalse(handled)
     }
 
-    func testOptionModifierPassesThroughInRecorderParser() {
+    func testOptionModifierRecordsInRecorderParser() {
         let data1 = (MediaKey.brightnessUp << 16) | (0x0A << 8)
-        // Option held → parser should return nil (pass through to macOS).
-        XCTAssertNil(ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.option]))
-        // Option + Control → still nil (Option takes precedence).
-        XCTAssertNil(ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.option, .control]))
+        // ⌥ records like any other modifier — it's how custom fine-adjustment combos are
+        // assigned. (Unbound ⌥ combos still pass through to macOS at runtime; that's the
+        // tap's job, not the recorder's.)
+        XCTAssertEqual(
+            ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.option]),
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, option: true)
+        )
+        XCTAssertEqual(
+            ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.option, .control]),
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, control: true, option: true)
+        )
         // Command is a real binding modifier for the built-in-display shortcut set.
         XCTAssertEqual(
             ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.command]),
@@ -85,6 +92,38 @@ final class MediaBindingDispatchTests: XCTestCase {
         // No special modifiers → should parse normally.
         XCTAssertNotNil(ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: []))
         XCTAssertNotNil(ShortcutRecorder.mediaShortcut(data1: data1, modifierFlags: [.control]))
+    }
+
+    func testOptionBindingDispatchesOnlyWhenOptionHeld() {
+        let service = KeyboardControlService()
+        var fired: HotKeyAction?
+        service.onAction = { fired = $0; return true }
+        service.mediaBindings = [
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp): .brightnessUp,
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, option: true): .brightnessUpFine,
+        ]
+
+        XCTAssertTrue(service.handle(keyCode: MediaKey.brightnessUp, control: false, shift: false, option: true))
+        XCTAssertEqual(fired, .brightnessUpFine)
+
+        fired = nil
+        XCTAssertTrue(service.handle(keyCode: MediaKey.brightnessUp, control: false, shift: false))
+        XCTAssertEqual(fired, .brightnessUp)
+    }
+
+    func testUnboundOptionComboPassesThrough() {
+        // Fine adjustments off (no ⌥ bindings registered): ⌥ + brightness must reach macOS —
+        // it opens Displays settings, and ⌥⇧ is the native built-in fine step.
+        let service = KeyboardControlService()
+        var fired: HotKeyAction?
+        service.onAction = { fired = $0; return true }
+        service.mediaBindings = [
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp): .brightnessUp,
+        ]
+
+        XCTAssertFalse(service.handle(keyCode: MediaKey.brightnessUp, control: false, shift: false, option: true))
+        XCTAssertFalse(service.handle(keyCode: MediaKey.brightnessUp, control: false, shift: true, option: true))
+        XCTAssertNil(fired)
     }
 
     func testRecorderParsesModernBrightnessKeyByCode() {
@@ -102,9 +141,12 @@ final class MediaBindingDispatchTests: XCTestCase {
             ShortcutRecorder.mediaShortcut(code: code, modifierFlags: [.command]),
             MediaKeyShortcut(keyCode: MediaKey.brightnessUp, command: true)
         )
-        // Option belongs to macOS → nil, so the recorder passes it through instead of recording a
-        // stray Carbon key-code-144 shortcut.
-        XCTAssertNil(ShortcutRecorder.mediaShortcut(code: code, modifierFlags: [.option]))
+        // Option resolves to a media binding too (fine-adjustment combos) — never to a stray
+        // Carbon key-code-144 keyboard shortcut.
+        XCTAssertEqual(
+            ShortcutRecorder.mediaShortcut(code: code, modifierFlags: [.option]),
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp, option: true)
+        )
         // A non-managed code is rejected.
         XCTAssertNil(ShortcutRecorder.mediaShortcut(code: 99, modifierFlags: [.command]))
     }

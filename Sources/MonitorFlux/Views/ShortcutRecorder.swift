@@ -156,7 +156,8 @@ struct ShortcutRecorder: View {
                     keyCode: media.keyCode,
                     control: media.control,
                     shift: media.shift,
-                    command: media.command
+                    command: media.command,
+                    option: media.option
                 ) == true {
                     // This action already uses that media key path; leave the custom override
                     // empty so the built-in binding remains visible and active.
@@ -173,9 +174,9 @@ struct ShortcutRecorder: View {
             }
 
             // A dedicated brightness key arriving as a plain keyDown (modern Apple silicon, codes
-            // 144/145) is not an ordinary key — never record it as a Carbon keyboard shortcut. If it
-            // didn't resolve to a media binding above, Option was held (which belongs to macOS), so
-            // let it pass through to the system untouched.
+            // 144/145) is not an ordinary key — never record it as a Carbon keyboard shortcut.
+            // Every managed combo resolves to a media binding above, so this is just a safety net
+            // that passes anything unresolved through to the system untouched.
             if event.type == .keyDown,
                MediaKey.code(forVirtualKeyCode: Int(event.keyCode)) != nil {
                 return event
@@ -263,14 +264,11 @@ struct ShortcutRecorder: View {
         return mediaShortcut(code: keyCode, modifierFlags: modifierFlags)
     }
 
-    /// Build a media-key shortcut from an already-resolved `MediaKey` code, applying the rules
-    /// shared by both delivery paths: Option belongs to macOS, and only managed keys (brightness /
-    /// volume) are bindable.
+    /// Build a media-key shortcut from an already-resolved `MediaKey` code, applying the rule
+    /// shared by both delivery paths: only managed keys (brightness / volume) are bindable.
+    /// ⌥ records like any other modifier — it's how fine-adjustment combos are assigned; an ⌥
+    /// combo that stays unbound still passes through to macOS at runtime.
     nonisolated static func mediaShortcut(code: Int, modifierFlags: NSEvent.ModifierFlags) -> MediaKeyShortcut? {
-        // Option + media keys belongs to macOS (e.g. opens Display/Sound preferences).
-        guard !modifierFlags.contains(.option) else {
-            return nil
-        }
         guard MediaKey.managed.contains(code) else {
             return nil
         }
@@ -278,7 +276,8 @@ struct ShortcutRecorder: View {
             keyCode: code,
             control: modifierFlags.contains(.control),
             shift: modifierFlags.contains(.shift),
-            command: modifierFlags.contains(.command)
+            command: modifierFlags.contains(.command),
+            option: modifierFlags.contains(.option)
         )
     }
 }

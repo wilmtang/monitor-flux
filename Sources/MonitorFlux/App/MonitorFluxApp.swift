@@ -22,6 +22,21 @@ struct MonitorFluxApp: App {
                 }
         }
         .menuBarExtraStyle(.window)
+        // The popup's "Settings… ⌘," row is only a click target; the key equivalent has to live
+        // in the app's main menu — the same (hidden) menu whose Quit item makes ⌘Q work while the
+        // popup is open. There is no `Settings` scene (it opens blank/duplicate windows from a
+        // `.window` MenuBarExtra — see agent.md), so provide the standard item ourselves.
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    if store.quickControlsPopupVisible {
+                        dismissMenuBarPopup()
+                    }
+                    store.showMainWindow()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
     }
 
     /// Warmth motif on the status icon: it picks up an amber tint while the screen is actually
@@ -76,12 +91,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        // `MONITORFLUX_OSD_FRACTION` overrides the sample fill level (0...1) — e.g. 1 fills
+        // every segment, which is what the OSD-geometry capture uses to measure the full bar.
+        let osdFraction = ProcessInfo.processInfo.environment["MONITORFLUX_OSD_FRACTION"]
+            .flatMap(Double.init)
         switch ProcessInfo.processInfo.environment["MONITORFLUX_SHOW_OSD"] {
         case "1", "brightness":
-            store?.showSampleOSD()
+            store?.showSampleOSD(fraction: osdFraction ?? 0.7)
         case "color":
             // Warm end of the range, so the warmth-tinted glyph/bar is visible in a screenshot.
-            store?.showSampleOSD(.color, fraction: 0.12)
+            store?.showSampleOSD(.color, fraction: osdFraction ?? 0.12)
         default:
             break
         }
