@@ -118,6 +118,7 @@ final class AppStore: ObservableObject {
     /// the same bus. `.userInitiated` keeps the monitor responsive during a drag.
     private let ddcQueue = DispatchQueue(label: "app.monitorflux.ddc", qos: .userInitiated)
     private var pendingPreferencesSave: DispatchWorkItem?
+    private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
     private var cancellables = Set<AnyCancellable>()
 
@@ -462,7 +463,15 @@ final class AppStore: ObservableObject {
     func updateGlobalPreferences(_ update: (inout AppPreferences) -> Void) {
         var next = preferences
         update(&next)
-        preferences = next.normalized()
+        let normalized = next.normalized()
+        // Skip the no-op assignment: @Published fires objectWillChange on every set, even an
+        // identical one, and both hot sliders round their raw drag value (warmth to 100 K,
+        // DDC to whole percent) — so most drag ticks would otherwise re-render every view
+        // observing the store at mouse-event rate. That was the visible slider lag.
+        guard normalized != preferences else {
+            return
+        }
+        preferences = normalized
     }
 
     func updateDisplayPreferences(
@@ -473,7 +482,11 @@ final class AppStore: ObservableObject {
         var displayPreferences = next.displayPreferences[display.key, default: DisplayPreferences()]
         update(&displayPreferences)
         next.displayPreferences[display.key] = displayPreferences.normalized()
-        preferences = next.normalized()
+        let normalized = next.normalized()
+        guard normalized != preferences else {
+            return
+        }
+        preferences = normalized
     }
 
     /// Persist preferences shortly after the last change rather than on every mutation, so
@@ -998,15 +1011,14 @@ final class AppStore: ObservableObject {
 
     func applyVolume(for display: DisplayInfo) {
         guard canUseDDC(for: display) else {
-            ddcMessage = display.isBuiltIn ? "Built-in displays do not use DDC" : ddcStatus.message
+            reportDDCStatus(display.isBuiltIn ? "Built-in displays do not use DDC" : ddcStatus.message)
             return
         }
         guard !safeMode else {
-            ddcMessage = "Safe mode — DDC not sent"
+            reportDDCStatus("Safe mode — DDC not sent")
             return
         }
         let value = displayPreferences(for: display).hardwareVolume
-        ddcMessage = "Applying volume \(value)% to \(display.name)"
         let backend = ddcBackend
         let displayName = display.name
         ddcQueue.async { [weak self] in
@@ -1021,7 +1033,11 @@ final class AppStore: ObservableObject {
             // don't, so a stale "Applied N%" could otherwise land after a newer write.
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self?.ddcMessage = failureMessage ?? "Applied volume \(value)% to \(displayName)"
+                    if let failureMessage {
+                        self?.reportDDCStatus("Volume failed on \(displayName): \(failureMessage)", immediate: true)
+                    } else {
+                        self?.reportDDCStatus("Applied volume \(value)% to \(displayName)")
+                    }
                 }
             }
         }
@@ -1120,9 +1136,13 @@ final class AppStore: ObservableObject {
             applySchedulePreview(minute)
             return
         }
-        currentTemperature = preferences.gammaEnabled
+        let target = preferences.gammaEnabled
             ? ColorSchedule.targetTemperature(preferences: preferences)
             : nil
+        // Publish only real changes — each @Published set is a full objectWillChange.
+        if currentTemperature != target {
+            currentTemperature = target
+        }
         guard !safeMode else {
             colorMessage = "Safe mode — gamma not applied"
             return
@@ -1141,7 +1161,9 @@ final class AppStore: ObservableObject {
             displays: displays,
             preferences: preferences
         )
-        colorMessage = summary.message
+        if colorMessage != summary.message {
+            colorMessage = summary.message
+        }
     }
 
     /// Read the gamma LUT back to notice another app (Night Shift, f.lux…) fighting us for the
@@ -1450,17 +1472,16 @@ final class AppStore: ObservableObject {
         displayIndex: Int
     ) {
         guard canUseDDC(for: display) else {
-            ddcMessage = display.isBuiltIn
+            reportDDCStatus(display.isBuiltIn
                 ? "Built-in displays do not use DDC"
-                : ddcStatus.message
+                : ddcStatus.message)
             return
         }
         guard !safeMode else {
-            ddcMessage = "Safe mode — DDC not sent"
+            reportDDCStatus("Safe mode — DDC not sent")
             return
         }
 
-        ddcMessage = "Applying \(label) \(value)% to \(display.name)"
         let backend = ddcBackend
         let displayName = display.name
 
@@ -1480,10 +1501,41 @@ final class AppStore: ObservableObject {
             // FIFO main-queue hop so status messages can't arrive out of order (see applyVolume).
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self?.ddcMessage = failureMessage ?? "Applied \(label) \(value)% to \(displayName)"
+                    if let failureMessage {
+                        self?.reportDDCStatus("\(label.capitalized) failed on \(displayName): \(failureMessage)", immediate: true)
+                    } else {
+                        self?.reportDDCStatus("Applied \(label) \(value)% to \(displayName)")
+                    }
                 }
             }
         }
+    }
+
+    /// Publish a DDC status line without re-rendering the world on every write. `ddcMessage`
+    /// is `@Published`, and `objectWillChange` is object-level — so the old per-write
+    /// "Applying… / Applied…" pair invalidated every observing view ~40×/s during a drag,
+    /// a hidden contributor to slider lag. Successes coalesce on a short trailing window
+    /// (the settled value still lands); failures publish immediately.
+    private func reportDDCStatus(_ message: String, immediate: Bool = false) {
+        pendingDDCMessage?.cancel()
+        pendingDDCMessage = nil
+        if immediate {
+            if ddcMessage != message {
+                ddcMessage = message
+            }
+            return
+        }
+        let item = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.pendingDDCMessage = nil
+                if self.ddcMessage != message {
+                    self.ddcMessage = message
+                }
+            }
+        }
+        pendingDDCMessage = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
     }
 }
 

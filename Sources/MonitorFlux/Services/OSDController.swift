@@ -14,6 +14,13 @@ final class OSDController {
     private var panel: NSPanel?
     private var hideWorkItem: DispatchWorkItem?
 
+    /// Where macOS puts its own bezel: OSDUIHelper's 200×200 window sits horizontally
+    /// centered with its bottom edge exactly 140 pt above the screen's bottom edge
+    /// (measured from its window frame on macOS 26 — not a fraction of the screen
+    /// height). The custom panel uses the same rule so warmth/contrast flashes in
+    /// precisely the spot the native brightness/volume bezel uses.
+    private static let nativeBezelBottomGap: CGFloat = 140
+
     enum Kind {
         case brightness
         case contrast
@@ -87,7 +94,7 @@ final class OSDController {
             let size = panel.frame.size
             let origin = NSPoint(
                 x: screen.frame.midX - size.width / 2,
-                y: screen.frame.minY + screen.frame.height * 0.10
+                y: screen.frame.minY + Self.nativeBezelBottomGap
             )
             panel.setFrameOrigin(origin)
         }

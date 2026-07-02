@@ -137,6 +137,11 @@ pkill -x MonitorFlux || true
   refreshes), never in `reconcileColor`. A foreign gamma app is a persistent condition, so a
   periodic check is enough — and detection must run before `apply` re-asserts our table.
 - Normalize preferences with `ControlRanges` before saving or using values.
+- **No no-op `@Published` writes on drag paths.** `objectWillChange` fires on every set — equal
+  or not — and re-renders every observer of the store. Route preference edits through
+  `updateGlobalPreferences`/`updateDisplayPreferences` (they skip equal values), and coalesce
+  chatty status text through `reportDDCStatus` instead of assigning `ddcMessage` per write.
+  Redundant publishes at mouse-event rate were the original slider-lag bug.
 - Keep hardware DDC separate from gamma controls in naming, state, and UI.
 - Do not make Homebrew tools required. `ddcctl` is fallback only, and it is
   Intel-only — on Apple Silicon `Arm64DDCBackend` (IOAVService) is the real path.
@@ -174,7 +179,9 @@ pkill -x MonitorFlux || true
   — never write gamma to a mirrored child.
 - **OSD:** brightness/volume go through the native `OSDManager` bezel; contrast/color use the
   custom panel (no native bezel exists for them). Don't expect the native path to draw a glyph for
-  contrast — macOS has none.
+  contrast — macOS has none. The custom panel copies the native bezel's placement exactly:
+  200×200, horizontally centered, **bottom edge 140 pt above the screen's bottom edge** (measured
+  from OSDUIHelper's window frame) — not a percentage of screen height, which drifts per display.
 - New behavior should get focused tests unless it directly touches real display
   hardware. The arm64 DDC packet builder and `SolarCalculator` are pure and tested
   (`GammaPlanTests` covers virtual-exclusion + mirror dedup; `DragReorderTests` the reorder math).
