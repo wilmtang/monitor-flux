@@ -41,6 +41,7 @@ struct ColorScheduleView: View {
                 } label: {
                     Label("Turn off warmth & reset colors", systemImage: "arrow.uturn.backward.circle")
                 }
+                .settingsPushButton()
                 .help("Turns warmth off on every display and restores their original color — use this if colors look wrong or you want another color app to take over.")
                 Text("Turns warmth off everywhere and restores each display's original color tables (undoing any warming or software dimming).")
                     .zoomFont(.caption)
@@ -185,6 +186,7 @@ struct ColorScheduleView: View {
             } label: {
                 Label("Use my location", systemImage: "location")
             }
+            .settingsPushButton()
             LabeledContent("Location access", value: store.locationStatus)
 
             if store.preferences.scheduleSource == .solar {

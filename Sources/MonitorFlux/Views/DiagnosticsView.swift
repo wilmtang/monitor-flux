@@ -130,6 +130,7 @@ struct DiagnosticsView: View {
             } label: {
                 Label(copiedReport ? "Copied" : "Copy Diagnostics Report", systemImage: copiedReport ? "checkmark" : "doc.on.doc")
             }
+            .settingsPushButton()
             Text("Copies everything on this screen as plain text — paste it into a bug report.")
                 .zoomFont(.caption)
                 .foregroundStyle(.secondary)
@@ -139,6 +140,7 @@ struct DiagnosticsView: View {
             } label: {
                 Label("Disable Gamma and Restore", systemImage: "arrow.uturn.backward.circle")
             }
+            .settingsPushButton()
         }
     }
 
@@ -152,12 +154,14 @@ struct DiagnosticsView: View {
             } label: {
                 Label("Export Preferences JSON…", systemImage: "square.and.arrow.up")
             }
+            .settingsPushButton()
 
             Button {
                 importPreferences()
             } label: {
                 Label("Import Preferences JSON…", systemImage: "square.and.arrow.down")
             }
+            .settingsPushButton()
 
             Text(preferencesTransferMessage ?? "Import replaces saved preferences and applies current display settings immediately.")
                 .zoomFont(.caption)

@@ -120,6 +120,47 @@ extension View {
     }
 }
 
+/// A System Settings-style push button that stays optically centered at every window zoom.
+///
+/// The native bordered bezel keeps its fixed-metric baseline placement while the window
+/// zoom inflates the label font: at zoom step 5 the label rides ~2.5 pt above the bezel's
+/// center (measured from rendered pixels: 10 px above the cap vs 14 px below the descenders
+/// at 2x; at the default zoom the native bezel is fine). Drawing the same bezel in SwiftUI
+/// makes the centering plain layout, so it can't drift with the font. Metrics match the
+/// native regular bezel at 13 pt — 20 pt tall, ~9 pt label inset, 5 pt radius — and scale
+/// with the zoom.
+struct SettingsPushButtonStyle: ButtonStyle {
+    @Environment(\.settingsZoomScale) private var zoomScale
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let radius = 5 * zoomScale
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        configuration.label
+            .padding(.horizontal, 9 * zoomScale)
+            .frame(minHeight: (20 * zoomScale).rounded())
+            .background(
+                shape
+                    .fill(Color(nsColor: .controlColor))
+                    // The bezel's rim: dark mode has a faint light top edge, light mode a
+                    // hairline outline (both visible in native captures).
+                    .overlay(shape.strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.08), lineWidth: 0.5))
+                    .overlay(shape.fill(Color.primary.opacity(configuration.isPressed ? 0.08 : 0)))
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.12), radius: 0.5, y: 0.5)
+            )
+            .contentShape(shape)
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+extension View {
+    /// Settings-window push button, centered at every zoom. See `SettingsPushButtonStyle`.
+    func settingsPushButton() -> some View {
+        buttonStyle(SettingsPushButtonStyle())
+    }
+}
+
 /// A small ⓘ button that reveals a popover explainer. Assumes the reader doesn't know the jargon.
 struct InfoButton: View {
     let title: String

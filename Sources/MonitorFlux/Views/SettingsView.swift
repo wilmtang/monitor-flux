@@ -58,6 +58,7 @@ struct SettingsView: View {
                         )
                         .labelsHidden()
                         Button("Reset") { store.resetFontSize() }
+                            .settingsPushButton()
                             .disabled(store.preferences.fontSizeStep == AppPreferences.defaultFontSizeStep)
                     }
                 }
@@ -165,6 +166,7 @@ struct SettingsView: View {
                 } label: {
                     Label("Refresh Displays", systemImage: "arrow.clockwise")
                 }
+                .settingsPushButton()
             }
         }
         .formStyle(.grouped)
