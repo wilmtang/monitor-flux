@@ -140,6 +140,18 @@ struct ContentView: View {
             Image(systemName: systemImage).font(sidebarRowFont)
         }
         .labelStyle(SidebarRowLabelStyle(fontSize: store.preferences.settingsFontSize))
+        // The sidebar's system row height (28 pt) ignores the window zoom, so zoomed text
+        // sits cramped and its section header's descenders nearly touch the selection
+        // highlight (measured: 2 pt at zoom step 5). Grow the row with the zoom — the
+        // padding is zero at 100%, keeping the native row untouched.
+        .padding(.vertical, sidebarRowExtraPadding)
+    }
+
+    /// Half the difference between the zoom-proportional row height (28 pt × scale) and the
+    /// fixed native 28 pt, i.e. the per-side padding that restores the row's proportions.
+    private var sidebarRowExtraPadding: CGFloat {
+        let scale = store.preferences.settingsZoomScale
+        return max(0, (28 * (scale - 1)).rounded() / 2)
     }
 
     private var sidebarRowFont: Font {

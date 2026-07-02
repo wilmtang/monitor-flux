@@ -98,10 +98,13 @@ struct DisplayDetailView: View {
         let position = store.unifiedBrightness(for: display)
         let notch = kind == .hybrid ? HybridBrightness.handoffFraction : nil
         let inSoftwareZone = notch.map { position < $0 } ?? false
+        // The label/readout columns scale with the zoom — fixed at 13 pt metrics, "100%"
+        // wraps into two stacked lines at higher zoom steps.
+        let zoomScale = store.preferences.settingsZoomScale
         return HStack(spacing: 10) {
             Text("Brightness")
                 .lineLimit(1)
-                .frame(width: 108, alignment: .leading)
+                .frame(width: (108 * zoomScale).rounded(), alignment: .leading)
             MonitorSlider(
                 systemImage: inSoftwareZone ? "moon" : "sun.max",
                 value: position * 100,
@@ -113,7 +116,8 @@ struct DisplayDetailView: View {
             }
             Text("\(Int((position * 100).rounded()))%")
                 .monospacedDigit()
-                .frame(width: 44, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: (44 * zoomScale).rounded(), alignment: .trailing)
         }
         .padding(.vertical, 2)
     }
@@ -414,6 +418,12 @@ struct DisplayDetailView: View {
             .padding(.vertical, 2)
     }
 
+    /// Leading pad that lines Advanced titles/captions up with the slider rows' icon column
+    /// (its scaled 18 pt frame + the 12 pt row spacing).
+    private var advancedLeadingPad: CGFloat {
+        (18 * store.preferences.settingsZoomScale).rounded() + 12
+    }
+
     private func advancedToggleRow(
         _ title: String,
         isOn: Binding<Bool>,
@@ -425,7 +435,7 @@ struct DisplayDetailView: View {
         Toggle(isOn: isOn) {
             Text(title)
                 .zoomFont(.body, weight: .medium)
-                .padding(.leading, 30)
+                .padding(.leading, advancedLeadingPad)
         }
         .settingsSwitch()
         .disabled(!isEnabled)
@@ -440,22 +450,25 @@ struct DisplayDetailView: View {
         isEnabled: Bool = true,
         setter: @escaping (Int) -> Void
     ) -> some View {
-        HStack(spacing: 12) {
+        // Columns scale with the zoom, like the hero row's — fixed 13 pt metrics wrap the
+        // readout and overflow the icon frame at higher zoom steps.
+        let zoomScale = store.preferences.settingsZoomScale
+        return HStack(spacing: 12) {
             if let icon {
                 Image(systemName: icon)
                     .zoomFont(size: 13, weight: .medium)
-                    .frame(width: 18)
+                    .frame(width: (18 * zoomScale).rounded())
                     .foregroundStyle(.secondary)
             } else {
                 Color.clear
-                    .frame(width: 18)
+                    .frame(width: (18 * zoomScale).rounded())
                     .accessibilityHidden(true)
             }
             Text(title)
                 .zoomFont(.body)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 168, alignment: .leading)
+                .frame(width: (168 * zoomScale).rounded(), alignment: .leading)
             Slider(
                 value: Binding {
                     Double(value)
@@ -470,7 +483,8 @@ struct DisplayDetailView: View {
                 .monospacedDigit()
                 .zoomFont(.body)
                 .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: (52 * zoomScale).rounded(), alignment: .trailing)
         }
         .padding(.vertical, 4)
     }
@@ -526,7 +540,7 @@ struct DisplayDetailView: View {
             .zoomFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.leading, 30)
+            .padding(.leading, advancedLeadingPad)
     }
 
     /// Like `displayBinding`, but re-applies the schedule after the change so toggling it on
