@@ -203,13 +203,13 @@ private struct SidebarRowLabelStyle: LabelStyle {
 // CALayer transforms, NSScrollView.magnification, .scaleEffect) breaks click
 // routing for SwiftUI content hosted in a large NSHostingView. Measured in
 // prototype-zoom-matrix/; analysis in docs/ZOOM_PLAN.md.
-private extension AppPreferences {
+extension AppPreferences {
     /// Body-text size derived from the zoom scale (13pt at 100%), half-point rounded.
     var settingsFontSize: CGFloat {
         (13 * settingsZoomScale * 2).rounded() / 2
     }
 
-    /// Controls (switches, steppers, buttons) only come in discrete sizes; step them
+    /// Controls (steppers, buttons, pickers) only come in discrete sizes; step them
     /// alongside the text so they don't stay miniature at high zoom.
     var settingsControlSize: ControlSize {
         switch fontSizeStep.clamped(to: Self.fontSizeStepRange) {
@@ -217,6 +217,18 @@ private extension AppPreferences {
         case 2...4: .regular
         case 5...6: .large
         default: .extraLarge
+        }
+    }
+
+    /// Switches run one size below `settingsControlSize`: System Settings pairs 13 pt row
+    /// labels with the compact 15 pt switch, and SwiftUI's regular switch (22 pt) floats its
+    /// label ~1 pt above the pill's center — both measured against System Settings pixels.
+    /// The mini switch reproduces the native pairing exactly; see `View.settingsSwitch()`.
+    var settingsSwitchControlSize: ControlSize {
+        switch fontSizeStep.clamped(to: Self.fontSizeStepRange) {
+        case ...4: .mini
+        case 5...6: .small
+        default: .regular
         }
     }
 

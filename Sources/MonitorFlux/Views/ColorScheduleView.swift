@@ -16,14 +16,13 @@ struct ColorScheduleView: View {
             }
 
             Section {
-                HStack(spacing: 8) {
-                    Text("Warmth")
-                    InfoButton(title: "What is gamma?", message: HelpText.gamma)
-                    Spacer()
-                    Toggle("Warmth", isOn: preferenceBinding(\.gammaEnabled))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
+                Toggle(isOn: preferenceBinding(\.gammaEnabled)) {
+                    HStack(spacing: 8) {
+                        Text("Warmth")
+                        InfoButton(title: "What is gamma?", message: HelpText.gamma)
+                    }
                 }
+                .settingsSwitch()
             }
 
             Section("Transition") {

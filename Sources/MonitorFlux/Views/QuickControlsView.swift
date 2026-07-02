@@ -70,8 +70,9 @@ struct QuickControlsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sun.max")
                         .foregroundStyle(.secondary)
+                    // 13 pt like Control Center's module titles (and the display cards below).
                     Text("Warmth")
-                        .font(.subheadline)
+                        .font(.body)
                         .fontWeight(.semibold)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
@@ -394,8 +395,9 @@ private struct DisplayCardView: View {
                     HStack(spacing: 6) {
                         Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
                             .foregroundStyle(.secondary)
+                        // 13 pt like Control Center's module titles (and the Warmth card).
                         Text(display.name)
-                            .font(.subheadline)
+                            .font(.body)
                             .fontWeight(.semibold)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")

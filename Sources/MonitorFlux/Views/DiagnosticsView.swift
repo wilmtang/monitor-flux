@@ -21,6 +21,7 @@ struct DiagnosticsView: View {
                 displaySection(display)
             }
             actionsSection
+            preferencesSection
         }
         .formStyle(.grouped)
         .navigationTitle("Diagnostics")
@@ -143,9 +144,14 @@ struct DiagnosticsView: View {
             } label: {
                 Label("Disable Gamma and Restore", systemImage: "arrow.uturn.backward.circle")
             }
+        }
+    }
 
-            Divider()
-
+    /// Export/import get their own titled card: they're a different job (moving state between
+    /// machines/bug reports) than the one-click actions above, and a `Divider()` inside a form
+    /// row rendered as a stray vertical tick rather than a separator.
+    private var preferencesSection: some View {
+        Section("Preferences") {
             Button {
                 exportPreferences()
             } label: {

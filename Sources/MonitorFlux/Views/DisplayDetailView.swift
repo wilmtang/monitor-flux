@@ -67,6 +67,7 @@ struct DisplayDetailView: View {
     private var colorSection: some View {
         Section("Warmth") {
             Toggle("Warm this display", isOn: displayBinding(\.colorEnabled))
+                .settingsSwitch()
                 .disabled(!store.preferences.gammaEnabled)
             LabeledContent("Current", value: store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
             Text(store.preferences.gammaEnabled
@@ -328,18 +329,15 @@ struct DisplayDetailView: View {
         isOn: Binding<Bool>,
         isEnabled: Bool = true
     ) -> some View {
-        HStack(spacing: 12) {
-            Color.clear
-                .frame(width: 18)
-                .accessibilityHidden(true)
+        // A plain Toggle keeps the native row layout (label leading, switch trailing —
+        // the pairing settingsSwitch() centers exactly); the leading pad lines the title
+        // up with the icon column of the slider rows below.
+        Toggle(isOn: isOn) {
             Text(title)
                 .zoomFont(.body, weight: .medium)
-            Spacer(minLength: 16)
-            Toggle(title, isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .accessibilityLabel(title)
+                .padding(.leading, 30)
         }
+        .settingsSwitch()
         .disabled(!isEnabled)
         .padding(.vertical, 3)
     }

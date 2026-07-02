@@ -29,7 +29,10 @@ enum ZoomFontRole {
     var baseSize: CGFloat {
         switch self {
         case .caption2: 10
-        case .caption: 10
+        // Deliberately 11, not SwiftUI's 10: `.caption` is this app's role for the
+        // description text under controls, and System Settings pairs its 13 pt rows with
+        // 11 pt descriptions (measured from its rendered pixels).
+        case .caption: 11
         case .footnote: 10
         case .callout: 12
         case .subheadline: 11

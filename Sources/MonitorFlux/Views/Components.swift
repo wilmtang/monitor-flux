@@ -79,6 +79,28 @@ enum HelpText {
     """
 }
 
+/// Sizes a switch `Toggle` like a System Settings row. SwiftUI's default switch is one visual
+/// notch larger than the one System Settings pairs with 13 pt labels, and its baseline floats
+/// the label ~1 pt above the pill's center; the compact switch centers the label exactly
+/// (both measured against System Settings pixels). Apply to every switch in the settings
+/// window — the size steps with the window zoom alongside `settingsControlSize`.
+private struct SettingsSwitch: ViewModifier {
+    @EnvironmentObject private var store: AppStore
+
+    func body(content: Content) -> some View {
+        content
+            .toggleStyle(.switch)
+            .controlSize(store.preferences.settingsSwitchControlSize)
+    }
+}
+
+extension View {
+    /// Switch sized and centered like a System Settings row. See `SettingsSwitch`.
+    func settingsSwitch() -> some View {
+        modifier(SettingsSwitch())
+    }
+}
+
 /// A small ⓘ button that reveals a popover explainer. Assumes the reader doesn't know the jargon.
 struct InfoButton: View {
     let title: String

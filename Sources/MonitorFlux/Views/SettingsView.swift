@@ -13,11 +13,13 @@ struct SettingsView: View {
                 } set: { isOn in
                     store.setShowInDock(isOn)
                 })
+                .settingsSwitch()
                 Toggle("Start at login", isOn: Binding {
                     store.preferences.startAtLogin
                 } set: { isOn in
                     store.setStartAtLogin(isOn)
                 })
+                .settingsSwitch()
                 LabeledContent("Login item", value: store.loginItemMessage)
                 if store.loginItemNeedsInstall {
                     Text("“Start at login” uses macOS's login-items service, which only registers an **installed** app. “Not available” means you're running a development build (launched from a build folder, not /Applications) — it works once the app is moved to Applications. Accessibility is different: it's granted to the running app by its signature, so it works either way.")
@@ -30,6 +32,7 @@ struct SettingsView: View {
                 } set: { isOn in
                     store.updateGlobalPreferences { $0.showDiagnostics = isOn }
                 })
+                .settingsSwitch()
                 Text("Adds a developer-facing Diagnostics pane (color pipeline, DDC, displays) to the sidebar. Also reachable with ⌘⇧D.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
@@ -72,6 +75,7 @@ struct SettingsView: View {
                 } set: { isOn in
                     store.setKeyboardControl(isOn)
                 })
+                .settingsSwitch()
                 VStack(alignment: .leading, spacing: 3) {
                     keyHint("Brightness keys", "brightness of the display under your pointer (DDC)")
                     keyHint("⌃ Control + brightness", "contrast (external monitor)")
@@ -92,6 +96,7 @@ struct SettingsView: View {
                 } set: { isOn in
                     store.setFineAdjustments(isOn)
                 })
+                .settingsSwitch()
                 Text("Hold ⌥ Option with any MonitorFlux shortcut to adjust in small, precise steps — 1% instead of 6%, and subtler warmth. The fine shortcuts appear below, where each can be re-recorded. While this is on, ⌥ + brightness keys go to MonitorFlux instead of opening Displays settings.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
@@ -142,6 +147,7 @@ struct SettingsView: View {
                         preferences.gammaEnabled = isOn
                     }
                 })
+                .settingsSwitch()
                 Text("Master switch for warmth — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own controls and macOS color remain). On means each display follows its **own** Warmth and software-dimming settings on its Display screen. Same setting as \u{201C}Warmth\u{201D} on the Schedule screen; doesn't affect real backlight, the monitor's own DDC controls, or volume.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
