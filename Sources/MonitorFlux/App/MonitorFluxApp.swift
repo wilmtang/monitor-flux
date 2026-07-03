@@ -137,6 +137,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Clicking the Dock icon — present only while "Show in Dock" is on — must reopen the
+    /// main window when nothing is showing, the same as any normal Mac app. Without this the
+    /// icon is inert once the settings window is closed: the click does nothing. When a window
+    /// is already up, returning true lets AppKit do its default (unminiaturize / bring forward).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            store?.showMainWindow()
+        }
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         store?.flushPendingPreferencesSave()
         store?.restoreColorTables()
