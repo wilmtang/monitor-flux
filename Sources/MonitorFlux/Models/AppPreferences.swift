@@ -283,6 +283,10 @@ struct AppPreferences: Codable, Equatable, Sendable {
     /// Settings-window text zoom (⌘+ / ⌘- / ⌘0). This drives SwiftUI semantic text sizing,
     /// not a post-layout scale transform, so hit testing stays aligned with the UI.
     var fontSizeStep = AppPreferences.defaultFontSizeStep
+    /// How solid the menu-bar popup's background is, 0…1: 0 leaves the system panel
+    /// translucency as-is, 1 backs it with a fully opaque window-background layer. Defaults
+    /// mostly solid — the bare panel let the desktop bleed through enough to hurt legibility.
+    var popupBackdropOpacity = AppPreferences.defaultPopupBackdropOpacity
     var latitude = "47.6"
     var longitude = "-122.3"
     var displayPreferences: [String: DisplayPreferences] = [:]
@@ -296,6 +300,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
     static let defaults = AppPreferences()
     static let fontSizeStepRange = 0...8
     static let defaultFontSizeStep = 3
+    static let defaultPopupBackdropOpacity = 0.85
 
     /// Maps fontSizeStep to a window zoom scale factor (1.0 = default, VS Code-style).
     var settingsZoomScale: CGFloat {
@@ -323,6 +328,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case showDiagnostics
         case hideNoExternalsHint
         case fontSizeStep
+        case popupBackdropOpacity
         case latitude
         case longitude
         case displayPreferences
@@ -343,6 +349,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         copy.sunsetStartMinutes = copy.sunsetStartMinutes.clamped(to: ControlRanges.minuteOfDay)
         copy.transitionMinutes = copy.transitionMinutes.clamped(to: ControlRanges.transitionMinutes)
         copy.fontSizeStep = copy.fontSizeStep.clamped(to: Self.fontSizeStepRange)
+        copy.popupBackdropOpacity = min(max(copy.popupBackdropOpacity, 0), 1)
         copy.displayPreferences = copy.displayPreferences.mapValues { $0.normalized() }
         return copy
     }
@@ -377,6 +384,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
         hideNoExternalsHint = try container.decodeIfPresent(Bool.self, forKey: .hideNoExternalsHint) ?? false
         fontSizeStep = (try container.decodeIfPresent(Int.self, forKey: .fontSizeStep) ?? AppPreferences.defaultFontSizeStep)
             .clamped(to: AppPreferences.fontSizeStepRange)
+        popupBackdropOpacity = min(max(
+            try container.decodeIfPresent(Double.self, forKey: .popupBackdropOpacity)
+                ?? AppPreferences.defaultPopupBackdropOpacity, 0), 1)
         latitude = try container.decodeIfPresent(String.self, forKey: .latitude) ?? "47.6"
         longitude = try container.decodeIfPresent(String.self, forKey: .longitude) ?? "-122.3"
         displayPreferences = try container.decodeIfPresent(
@@ -408,6 +418,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(showDiagnostics, forKey: .showDiagnostics)
         try container.encode(hideNoExternalsHint, forKey: .hideNoExternalsHint)
         try container.encode(fontSizeStep, forKey: .fontSizeStep)
+        try container.encode(popupBackdropOpacity, forKey: .popupBackdropOpacity)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
         try container.encode(displayPreferences, forKey: .displayPreferences)

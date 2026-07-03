@@ -66,6 +66,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertFalse(appPreferences.hideNoExternalsHint)
         XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)
         XCTAssertEqual(appPreferences.fontSizeStep, AppPreferences.defaultFontSizeStep)
+        XCTAssertEqual(appPreferences.popupBackdropOpacity, AppPreferences.defaultPopupBackdropOpacity)
     }
 
     func testMediaBindingsSavedBeforeOptionExistedStillDecode() throws {
@@ -240,7 +241,8 @@ final class PreferencesMigrationTests: XCTestCase {
           "warmStartMinutes": 9999,
           "coolStartMinutes": -30,
           "transitionMinutes": 999,
-          "fontSizeStep": 99
+          "fontSizeStep": 99,
+          "popupBackdropOpacity": 3.5
         }
         """.data(using: .utf8)!
 
@@ -253,6 +255,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.coolStartMinutes, ControlRanges.minuteOfDay.lowerBound)
         XCTAssertEqual(preferences.transitionMinutes, ControlRanges.transitionMinutes.upperBound)
         XCTAssertEqual(preferences.fontSizeStep, AppPreferences.fontSizeStepRange.upperBound)
+        XCTAssertEqual(preferences.popupBackdropOpacity, 1.0)
     }
 
     func testLegacyGlobalShortcutHotkeysDecodeAsKeyboardBindings() throws {

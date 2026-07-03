@@ -49,6 +49,13 @@ struct QuickControlsView: View {
         }
         .padding(14)
         .frame(width: 312)
+        // Backs the system panel translucency with a window-background layer so the popup
+        // reads solid instead of letting the desktop bleed through. User-tunable in General
+        // ("Popup background"); 0 restores the bare system panel.
+        .background(
+            Color(nsColor: .windowBackgroundColor)
+                .opacity(store.preferences.popupBackdropOpacity)
+        )
         // The popup content exists exactly while the MenuBarExtra panel is open, so its
         // appear/disappear is the reliable "is the popup showing?" signal for the ⌘, command.
         // Opening also re-reads the backlight, so the built-in card's slider reflects any

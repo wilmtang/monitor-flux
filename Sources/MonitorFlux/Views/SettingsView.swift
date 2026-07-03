@@ -65,6 +65,26 @@ struct SettingsView: View {
                 Text("Scales this window's text and controls. Also ⌘+ / ⌘− / ⌘0.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
+                LabeledContent("Popup background") {
+                    HStack(spacing: 6) {
+                        Text("\(Int((store.preferences.popupBackdropOpacity * 100).rounded()))%")
+                            .monospacedDigit()
+                            .frame(minWidth: 40, alignment: .trailing)
+                        Slider(
+                            value: Binding(
+                                get: { store.preferences.popupBackdropOpacity },
+                                set: { newValue in
+                                    store.updateGlobalPreferences { $0.popupBackdropOpacity = newValue }
+                                }
+                            ),
+                            in: 0...1
+                        )
+                        .labelsHidden()
+                    }
+                }
+                Text("How solid the menu-bar popup looks — 0% keeps the standard translucent panel, 100% is fully solid.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Keyboard") {
