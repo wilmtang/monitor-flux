@@ -28,10 +28,15 @@ pkill -x MonitorFlux || true
 ## Architecture
 
 - `App/`: SwiftUI app entrypoint and AppKit delegate. Launches menu-bar-first
-  (`LSUIElement`); Dock visibility strictly follows the "Show in Dock" preference
-  (default off), applied at launch and whenever the toggle changes — windows must never
-  factor in, or the toggle looks dead while the settings window is open. The only
-  SwiftUI scene is the `MenuBarExtra`. The detailed window is an AppKit `NSWindow` +
+  (`LSUIElement`). **Dock policy = "Show in Dock" AND the settings window is open**: with the
+  setting on the app is `.regular` (Dock icon, ⌘-Tab, ⌘Q quits) *while the settings window is
+  open* and drops to `.accessory` when it closes, so the icon follows the window; with the
+  setting off it's always `.accessory` (menu-bar only, not ⌘-Tab-able). Re-evaluated on the
+  toggle, on `showMainWindow`, and on the window's `willClose` (deferred, since `isVisible` is
+  still true inside willClose). `MainWindow.performKeyEquivalent` owns ⌘Q for the settings
+  window (a MenuBarExtra app has no reliable menu Quit): terminate in `.regular`, close-window
+  in `.accessory`. `MONITORFLUX_FORCE_DOCK=on|off` pins `showsDockIcon` for the smoke test. The
+  only SwiftUI scene is the `MenuBarExtra`. The detailed window is an AppKit `NSWindow` +
   `NSHostingController` managed by `AppStore.showMainWindow()` — NOT a `WindowGroup`/
   `Settings` scene, because `openWindow` from a `.window` `MenuBarExtra` in an accessory
   app opens blank, duplicate windows. All app-level settings (Dock/keyboard/login) live

@@ -12,6 +12,12 @@ final class WindowCoordinator {
     private(set) var mainWindow: MainWindow?
     private var onboardingWindow: NSWindow?
 
+    /// Whether the settings window is currently on screen. Drives the "Show in Dock" policy:
+    /// the Dock icon appears with the window and goes away when it closes.
+    var isMainWindowVisible: Bool {
+        mainWindow?.isVisible ?? false
+    }
+
     private static let mainWindowDefaultSize = NSSize(width: 800, height: 600)
 
     /// Show the detailed window. It's managed with AppKit rather than a SwiftUI
@@ -152,5 +158,25 @@ final class MainWindow: NSWindow {
 
     override var canBecomeMain: Bool {
         allowsActivation
+    }
+
+    /// ⌘Q from the settings window is handled here deterministically, because a MenuBarExtra
+    /// app has no reliably-wired menu Quit for this window to fall through to:
+    /// - `.regular` (Show in Dock on): quit the app, the normal expectation for a Dock app.
+    /// - `.accessory` (Show in Dock off): don't kill the background menu-bar app — just close
+    ///   the window; quitting is done from the menu-bar icon's Quit.
+    /// The window gets a key equivalent before the main menu, so consuming it here is reliable.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let isCommandQ = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+            && event.charactersIgnoringModifiers == "q"
+        if isCommandQ {
+            if NSApp.activationPolicy() == .accessory {
+                close()
+            } else {
+                NSApp.terminate(nil)
+            }
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }

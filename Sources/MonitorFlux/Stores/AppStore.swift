@@ -203,6 +203,18 @@ final class AppStore: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Closing the settings window drops the Dock icon back off when "Show in Dock" is on
+        // (the icon follows the window). Deferred to the next runloop turn so the window is
+        // actually gone — `isVisible` is still true inside willClose.
+        NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)
+            .sink { [weak self] notification in
+                guard let self, (notification.object as? NSWindow) === self.windows.mainWindow else {
+                    return
+                }
+                DispatchQueue.main.async { self.refreshActivationPolicy() }
+            }
+            .store(in: &cancellables)
+
         // Custom global shortcuts use Carbon hot keys, which (unlike the media-key tap) need
         // no Accessibility permission, so they're registered independently of that toggle.
         hotKeyCenter.onAction = { [weak self] action in
@@ -767,14 +779,15 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// The Dock icon follows the "Show in Dock" preference — and nothing else. An earlier
-    /// design also forced a Dock icon while any titled window was open, but that masked the
-    /// toggle: flipping it from the settings window (itself titled) visibly did nothing.
-    /// Windows don't need the `.regular` policy — the open paths activate the app
-    /// explicitly, which makes their window key and front in accessory mode too.
+    /// The Dock icon follows "Show in Dock" **and** the settings window: with the setting on,
+    /// the app is `.regular` (Dock icon, ⌘-Tab, ⌘Q quits) while the settings window is open,
+    /// and drops back to `.accessory` when it closes — so the icon appears with the window and
+    /// goes away with it. With the setting off it stays `.accessory` (menu-bar only, never in
+    /// the Dock, not ⌘-Tab-able). Re-evaluated when the setting changes and when the window
+    /// opens or closes.
     func refreshActivationPolicy() {
         let policy: NSApplication.ActivationPolicy =
-            showsDockIcon ? .regular : .accessory
+            (showsDockIcon && windows.isMainWindowVisible) ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
         }
@@ -803,6 +816,9 @@ final class AppStore: ObservableObject {
     /// the AppKit-not-WindowGroup rationale and the `activating:` test path).
     func showMainWindow(activating: Bool = true) {
         windows.showMainWindow(store: self, activating: activating)
+        // The window is now on screen, so re-evaluate the Dock icon (it follows the window
+        // when Show in Dock is on).
+        refreshActivationPolicy()
     }
 
     /// Show the first-run welcome. Marked seen the moment it appears so it never pops twice —
