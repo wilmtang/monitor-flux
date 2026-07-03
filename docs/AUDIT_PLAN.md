@@ -18,7 +18,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   on "this session actually wrote gamma" (`didStartSession`).
   Files: `Services/GammaTemperatureService.swift`, `Stores/AppStore.swift`.
 
-- [ ] **2. Warmth via keyboard kicks the user off the Automatic schedule; the slider doesn't.**
+- [x] **2. Warmth via keyboard kicks the user off the Automatic schedule; the slider doesn't.**
   `AppStore.adjustColorTemperature` always sets `colorMode = .manual`, while the popup's warmth
   slider re-warms the active phase and stays Automatic. The hotkey comment even claims it
   matches the slider (stale). Fix: in clock mode, adjust the active phase's temperature.

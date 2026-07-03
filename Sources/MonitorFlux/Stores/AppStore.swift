@@ -985,17 +985,25 @@ final class AppStore: ObservableObject {
         return true
     }
 
-    /// Nudge the global color temperature by `delta` kelvin (±200 K normal, ±100 K fine) and
-    /// pin it as a manual override, matching the Ambience slider. Positive cools (toward
+    /// Nudge the global color temperature by `delta` kelvin (±200 K normal, ±100 K fine),
+    /// matching the Ambience slider: on a schedule it re-warms the phase that's active right
+    /// now and stays Automatic; otherwise it pins a Fixed override. Positive cools (toward
     /// daylight), negative warms.
     func adjustColorTemperature(byKelvin delta: Int) -> Bool {
+        let activePhase = ColorSchedule.currentPhase(preferences: preferences)
         let current = currentTemperature
-            ?? (preferences.colorMode == .manual ? preferences.manualTemperature : preferences.dayTemperature)
+            ?? (preferences.colorMode == .clock
+                ? preferences.temperature(for: activePhase)
+                : preferences.manualTemperature)
         let next = (current + delta).clamped(to: ControlRanges.kelvin)
         updateGlobalPreferences { preferences in
             preferences.gammaEnabled = true
-            preferences.colorMode = .manual
-            preferences.manualTemperature = next
+            if preferences.colorMode == .clock {
+                preferences.setTemperature(next, for: activePhase)
+            } else {
+                preferences.colorMode = .manual
+                preferences.manualTemperature = next
+            }
         }
         let span = Double(ControlRanges.kelvin.upperBound - ControlRanges.kelvin.lowerBound)
         let fraction = Double(next - ControlRanges.kelvin.lowerBound) / span
