@@ -84,7 +84,7 @@ for warmth.
   Cards **drag-to-reorder** by their grip with an iOS-app-icon
   lift-and-shuffle animation. DDC writes are debounced so dragging doesn't flood the
   I2C bus. The Settings/Quit rows highlight on hover and show their shortcuts. The
-  app is menu-bar-first (no Dock icon by default; a "Show in Dock" setting toggles it).
+  app is menu-bar-first; a "Show in Dock" setting controls the Dock icon (shown by default).
 - The **on-screen display** (`OSDController`) flashes a level bezel when a control changes
   by keyboard. Brightness and volume use the **private `OSDManager`** (OSD.framework) so they
   look identical to macOS's own bezel; contrast and warmth use a custom tinted panel (macOS has

@@ -60,7 +60,8 @@ final class PreferencesMigrationTests: XCTestCase {
 
         let appPreferences = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
-        XCTAssertFalse(appPreferences.showInDock)
+        // Show in Dock defaults ON — including for payloads saved before the field existed.
+        XCTAssertTrue(appPreferences.showInDock)
         XCTAssertFalse(appPreferences.fineAdjustmentsEnabled)
         XCTAssertFalse(appPreferences.hideNoExternalsHint)
         XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)

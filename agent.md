@@ -28,7 +28,9 @@ pkill -x MonitorFlux || true
 ## Architecture
 
 - `App/`: SwiftUI app entrypoint and AppKit delegate. Launches menu-bar-first
-  (`LSUIElement`); the delegate drives the activation policy (Dock visibility). The only
+  (`LSUIElement`); Dock visibility strictly follows the "Show in Dock" preference
+  (default on), applied at launch and whenever the toggle changes — windows must never
+  factor in, or the toggle looks dead while the settings window is open. The only
   SwiftUI scene is the `MenuBarExtra`. The detailed window is an AppKit `NSWindow` +
   `NSHostingController` managed by `AppStore.showMainWindow()` — NOT a `WindowGroup`/
   `Settings` scene, because `openWindow` from a `.window` `MenuBarExtra` in an accessory

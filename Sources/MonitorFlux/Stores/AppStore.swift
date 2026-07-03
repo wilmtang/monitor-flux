@@ -709,6 +709,13 @@ final class AppStore: ObservableObject {
             preferences.showInDock = isEnabled
         }
         refreshActivationPolicy()
+        // Dropping to .accessory deactivates the app, which would shove the settings
+        // window — where this very toggle lives — behind other apps mid-click.
+        // Re-activate so only the Dock icon changes, not the window stacking.
+        if !isEnabled, mainWindow?.isVisible == true {
+            NSApp.activate(ignoringOtherApps: true)
+            mainWindow?.makeKeyAndOrderFront(nil)
+        }
     }
 
     func increaseFontSize() { setFontSizeStep(preferences.fontSizeStep + 1) }
@@ -721,15 +728,14 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// The app launches as a menu-bar accessory (no Dock icon). It shows a Dock icon
-    /// when the user enables "Show in Dock", or temporarily while a standard window is
-    /// open so the window can become key and front even in accessory mode.
+    /// The Dock icon follows the "Show in Dock" preference — and nothing else. An earlier
+    /// design also forced a Dock icon while any titled window was open, but that masked the
+    /// toggle: flipping it from the settings window (itself titled) visibly did nothing.
+    /// Windows don't need the `.regular` policy — the open paths activate the app
+    /// explicitly, which makes their window key and front in accessory mode too.
     func refreshActivationPolicy() {
-        let hasStandardWindow = NSApp.windows.contains { window in
-            window.isVisible && window.styleMask.contains(.titled)
-        }
         let policy: NSApplication.ActivationPolicy =
-            (preferences.showInDock || hasStandardWindow) ? .regular : .accessory
+            preferences.showInDock ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
         }
@@ -759,7 +765,6 @@ final class AppStore: ObservableObject {
         ensureWindowIsUsable(window)
         if activating {
             window.allowsActivation = true
-            NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
@@ -817,19 +822,17 @@ final class AppStore: ObservableObject {
         }
         let window = onboardingWindow ?? makeOnboardingWindow()
         onboardingWindow = window
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
     }
 
-    /// Dismiss the welcome window (from a button or the close box) and drop back to the normal
-    /// activation policy. The seen flag was already set in `showOnboarding`.
+    /// Dismiss the welcome window (from a button or the close box). The seen flag was
+    /// already set in `showOnboarding`.
     func completeOnboarding() {
         onboardingWindow?.close()
         onboardingWindow = nil
-        refreshActivationPolicy()
     }
 
     private func makeOnboardingWindow() -> NSWindow {
