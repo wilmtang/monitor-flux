@@ -72,7 +72,21 @@ pkill -x MonitorFlux || true
 - `Models/`: persisted app/display preferences and navigation selection. Three
   color phases (Daytime/Sunset/Bedtime) via `ColorPhase`; `ScheduleSource`.
 - `Stores/AppStore.swift`: main actor state owner and mutation gateway. Owns the
-  `LocationService` and throttles live DDC slider writes (`scheduleDDC`).
+  `LocationService`. The extractable machinery lives beside it in focused, tested units it
+  delegates to: `App/WindowCoordinator.swift` (builds/re-anchors the settings + onboarding
+  windows; `MainWindow` lives there), `Services/DDCWriteScheduler.swift` (the 45 ms
+  leading-edge throttle + trailing settle for live DDC drags), and the pure planners below —
+  the store executes what they return.
+- `Support/ScheduledHardware.swift`: pure planning for the day/night brightness/contrast
+  schedule — which writes are due at a minute, with the "only write when the target changes"
+  tracking that lets manual tweaks hold, and the built-in/backlight skip rules.
+- `Support/SchedulePreview.swift`: pure planning for the scrub preview — the warmth, the
+  preview copy of the preferences carrying the software brightness component (stored prefs
+  are never mutated, by construction), and the transient DDC writes.
+- `Support/BuiltInDimming.swift`: pure normalization of legacy built-in dimming state
+  (migrated `.automatic`, stale sub-100 gamma) for backlight-driven built-ins.
+- `Support/HotkeyBindings.swift`: pure derivation of the active Carbon/media shortcut maps
+  from the saved bindings (defaults vs. customs, `.disabled`, the fine-adjustments gate).
 - `Services/GammaPlan.swift`: pure gamma intent planning.
 - `Support/GammaCompositor.swift`: pure math for warmth + brightness + contrast.
 - `Support/HybridBrightness.swift`: pure math for the **unified brightness** scale — one

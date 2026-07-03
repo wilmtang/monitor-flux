@@ -90,11 +90,18 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
 
 ## Phase 4 — Structural (deferred)
 
-- [~] **11. Split `AppStore` (1,888 lines) into coordinators with protocol seams.**
-  Window management, scrub preview, DDC throttling, and hotkeys could each be extracted, with
-  gamma/DDC/backlight writers behind protocols so `reconcileBuiltInDimming`,
-  `applyScheduledHardware`, and the preview lifecycle get unit tests. Deferred: a large refactor
-  best done as its own effort, not batched with bug fixes.
+- [x] **11. Split `AppStore` (1,888 lines) into coordinators with testable seams.**
+  Done as extractions the store delegates to: `WindowCoordinator` (settings + onboarding
+  windows, `MainWindow`), `DDCWriteScheduler` (the drag throttle), and pure planners —
+  `ScheduledHardware` (schedule routing + change tracking), `SchedulePreview` (the scrub
+  preview's computation; stored-prefs immutability is now by construction), `BuiltInDimming`
+  (legacy state normalization), and `HotkeyBindings` (shortcut-map derivation) — each with new
+  unit tests (164 → 195). Deliberate deviation from the original sketch: instead of putting
+  the gamma/DDC/backlight writers behind protocols and injecting them into `AppStore`, the
+  logic moved into pure functions. `AppStore.init` has real side effects (loads live
+  preferences, registers display callbacks, touches hardware), so an injectable store would
+  still be unsafe to instantiate in tests — the planners give the same coverage without
+  speculative DI. `AppStore` is down to ~1,680 lines and is now orchestration + state.
 
 - [~] **12. Adopt `os.Logger` across gamma/DDC/schedule paths.**
   Field debugging currently relies on the Diagnostics pane's current-state strings. Deferred with

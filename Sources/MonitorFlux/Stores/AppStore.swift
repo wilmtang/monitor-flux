@@ -107,18 +107,16 @@ final class AppStore: ObservableObject {
     private let gammaService = GammaTemperatureService()
     /// Software dimming for AirPlay/virtual displays, which ignore gamma (see `ShadeController`).
     private let shadeController = ShadeController()
-    private var mainWindow: MainWindow?
-    private var onboardingWindow: NSWindow?
+    /// Builds and re-anchors the settings and onboarding windows (see `WindowCoordinator`).
+    private let windows = WindowCoordinator()
     private var timer: Timer?
-    /// Trailing (coalesced) DDC writes per control, and the last time each one actually
-    /// wrote, so `scheduleDDC` can throttle a drag instead of only firing on release.
-    private var ddcWriteWorkItems: [String: DispatchWorkItem] = [:]
-    /// Last brightness/contrast the schedule wrote per display. We only re-apply when the
-    /// scheduled target changes, so a manual adjustment between phase transitions sticks
-    /// (f.lux-style) instead of being snapped back on the next tick.
-    private var lastScheduledBrightness: [CGDirectDisplayID: Int] = [:]
-    private var lastScheduledContrast: [CGDirectDisplayID: Int] = [:]
-    private var ddcLastWrite: [String: DispatchTime] = [:]
+    /// Throttles live DDC slider drags per control (leading edge + trailing settle), so the
+    /// monitor tracks a drag without flooding the I2C bus. See `DDCWriteScheduler`.
+    private let ddcWriteScheduler = DDCWriteScheduler()
+    /// Last brightness/contrast targets the schedule wrote per display. We only re-apply when
+    /// the scheduled target changes, so a manual adjustment between phase transitions sticks
+    /// (f.lux-style) instead of being snapped back on the next tick. See `ScheduledHardware`.
+    private var scheduledHardwareState = ScheduledHardware.State()
     /// Serializes the actual I2C writes so a throttled drag can't overlap two writes to
     /// the same bus. `.userInitiated` keeps the monitor responsive during a drag.
     private let ddcQueue = DispatchQueue(label: "app.monitorflux.ddc", qos: .userInitiated)
@@ -186,7 +184,7 @@ final class AppStore: ObservableObject {
         // user on a previewed color.
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)
             .sink { [weak self] notification in
-                guard let self, (notification.object as? NSWindow) === self.mainWindow else {
+                guard let self, (notification.object as? NSWindow) === self.windows.mainWindow else {
                     return
                 }
                 self.clearSchedulePreview()
@@ -197,7 +195,7 @@ final class AppStore: ObservableObject {
         // Brightness slider reflects any keyboard changes macOS handled while we weren't looking.
         NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
             .sink { [weak self] notification in
-                guard let self, (notification.object as? NSWindow) === self.mainWindow else {
+                guard let self, (notification.object as? NSWindow) === self.windows.mainWindow else {
                     return
                 }
                 self.refreshNativeBrightness()
@@ -294,8 +292,7 @@ final class AppStore: ObservableObject {
         // whatever the preview last wrote.
         if schedulePreviewMinute != nil {
             schedulePreviewMinute = nil
-            lastScheduledBrightness.removeAll()
-            lastScheduledContrast.removeAll()
+            scheduledHardwareState = ScheduledHardware.State()
         }
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
@@ -329,21 +326,15 @@ final class AppStore: ObservableObject {
     /// reused, so the growth is tiny, but it's unbounded over a long uptime; prune on every change.
     private func pruneDisplayKeyedState() {
         let liveIDs = Set(displays.map(\.id))
-        lastScheduledBrightness = lastScheduledBrightness.filter { liveIDs.contains($0.key) }
-        lastScheduledContrast = lastScheduledContrast.filter { liveIDs.contains($0.key) }
-        // ddcLastWrite / ddcWriteWorkItems are keyed "<displayID>.<control>"; keep only live ones.
-        let isLiveKey: (String) -> Bool = { key in
+        scheduledHardwareState.retainOnly(liveIDs)
+        // The DDC throttle's keys are "<displayID>.<control>"; keep only live ones.
+        ddcWriteScheduler.retainOnly { key in
             guard let idText = key.split(separator: ".").first,
                   let id = CGDirectDisplayID(idText)
             else {
                 return false
             }
             return liveIDs.contains(id)
-        }
-        ddcLastWrite = ddcLastWrite.filter { isLiveKey($0.key) }
-        for key in ddcWriteWorkItems.keys.filter({ !isLiveKey($0) }) {
-            ddcWriteWorkItems[key]?.cancel()
-            ddcWriteWorkItems[key] = nil
         }
     }
 
@@ -758,7 +749,7 @@ final class AppStore: ObservableObject {
         // posted asynchronously, so re-assert front on the *next* runloop turn; doing it
         // inline races the deactivation and loses. Only the accessory direction needs this —
         // going .regular keeps the active window front on its own.
-        guard !isEnabled, let window = mainWindow, window.isVisible else { return }
+        guard !isEnabled, let window = windows.mainWindow, window.isVisible else { return }
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
@@ -800,14 +791,6 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Show the detailed window. It's managed with AppKit rather than a SwiftUI
-    /// `WindowGroup` so there is exactly one instance and its content/environment always
-    /// binds — `openWindow` from a `.window` `MenuBarExtra` in an accessory app opens
-    /// blank, duplicate windows.
-    /// - Parameter activating: when true (the real "Settings…" path) the app comes to the
-    ///   foreground and the window takes keyboard focus. The smoke test passes false so it
-    ///   can put the window on screen for `CGWindowList` without yanking focus away from
-    ///   whatever the user is doing while tests run.
     /// Open the main window and jump straight to a settings pane — used by the popup's tappable
     /// cards so e.g. a display card deep-links into that display's own settings.
     func openSettings(_ selection: AppSelection) {
@@ -815,127 +798,25 @@ final class AppStore: ObservableObject {
         showMainWindow()
     }
 
+    /// Show the detailed window (built and re-anchored by `WindowCoordinator` — see there for
+    /// the AppKit-not-WindowGroup rationale and the `activating:` test path).
     func showMainWindow(activating: Bool = true) {
-        let window = mainWindow ?? makeMainWindow()
-        mainWindow = window
-        // Reopening a closed window, or restoring a frame saved on a now-disconnected
-        // display, can leave it sized or positioned off every screen — it orders front
-        // but is invisible, so "Settings" looks like it does nothing. Re-anchor first.
-        ensureWindowIsUsable(window)
-        if activating {
-            window.allowsActivation = true
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
-        } else {
-            // Test path: the window must appear on screen for CGWindowList, but showing it
-            // must not pull focus from the developer's work. Making the window unable to
-            // become key/main means ordering it front doesn't activate the app — which is
-            // exactly what was stealing focus when running the tests.
-            window.allowsActivation = false
-            window.orderFront(nil)
-        }
-    }
-
-    private static let mainWindowDefaultSize = NSSize(width: 800, height: 600)
-
-    private func makeMainWindow() -> MainWindow {
-        // A hosting *controller* (not a bare NSHostingView) is what renders a
-        // NavigationSplitView's sidebar + detail columns correctly, and its default
-        // sizingOptions must stay (clearing them blanks the columns). The ideal-size
-        // frame modifier keeps the window at a sane 800×600 on open, while
-        // `maxWidth/Height: .infinity` still lets the user resize. Detail panes
-        // scroll internally (see ColorScheduleView).
-        //
-        // Window zoom (⌘+/⌘-/⌘0) is semantic — ContentView scales fonts, Dynamic
-        // Type size, and control size from `fontSizeStep` — NOT a geometric
-        // transform. Every transform-based zoom (NSView bounds scaling, CALayer
-        // transforms, NSScrollView.magnification, .scaleEffect) breaks click routing
-        // for SwiftUI content hosted in a large NSHostingView; measured evidence in
-        // docs/ZOOM_PLAN.md and prototype-zoom-matrix/.
-        let root = ContentView()
-            .environmentObject(self)
-            .frame(
-                minWidth: 620, idealWidth: Self.mainWindowDefaultSize.width, maxWidth: .infinity,
-                minHeight: 500, idealHeight: Self.mainWindowDefaultSize.height, maxHeight: .infinity
-            )
-        let controller = NSHostingController(rootView: root)
-        let window = MainWindow(contentViewController: controller)
-        window.title = "MonitorFlux"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(Self.mainWindowDefaultSize)
-        window.contentMinSize = NSSize(width: 620, height: 500)
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.center()
-        window.setFrameAutosaveName("MonitorFluxMainWindow")
-        return window
+        windows.showMainWindow(store: self, activating: activating)
     }
 
     /// Show the first-run welcome. Marked seen the moment it appears so it never pops twice —
-    /// even if the user closes it with the window's close box instead of a button. Activates the
-    /// app (unlike the test-driven window paths) because first launch is a deliberate "look here".
+    /// even if the user closes it with the window's close box instead of a button.
     func showOnboarding() {
         updateGlobalPreferences { preferences in
             preferences.hasSeenOnboarding = true
         }
-        let window = onboardingWindow ?? makeOnboardingWindow()
-        onboardingWindow = window
-        NSApp.activate(ignoringOtherApps: true)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
+        windows.showOnboarding(store: self)
     }
 
     /// Dismiss the welcome window (from a button or the close box). The seen flag was
     /// already set in `showOnboarding`.
     func completeOnboarding() {
-        onboardingWindow?.close()
-        onboardingWindow = nil
-    }
-
-    private func makeOnboardingWindow() -> NSWindow {
-        // Same NSHostingController pattern as the main window (a bare NSHostingView mis-renders),
-        // but a small, fixed, non-resizable sheet — the content is pinned to its own frame.
-        let root = OnboardingView()
-            .environmentObject(self)
-        let controller = NSHostingController(rootView: root)
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Welcome to MonitorFlux"
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.center()
-        return window
-    }
-
-    /// Reset the window to a sane, on-screen frame when it would otherwise be invisible:
-    /// larger than any display, or with too little overlap with a screen to see or grab.
-    /// A well-placed, user-resized frame is left untouched.
-    private func ensureWindowIsUsable(_ window: NSWindow) {
-        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
-        guard !visibleFrames.isEmpty else {
-            return
-        }
-        let frame = window.frame
-        let frameArea = frame.width * frame.height
-
-        let oversized = visibleFrames.allSatisfy { screen in
-            frame.width > screen.width || frame.height > screen.height
-        }
-        let visibleArea = visibleFrames.reduce(CGFloat(0)) { total, screen in
-            let overlap = screen.intersection(frame)
-            return overlap.isNull ? total : total + overlap.width * overlap.height
-        }
-        let mostlyOffscreen = frameArea <= 0 || visibleArea < frameArea * 0.5
-
-        if oversized || mostlyOffscreen {
-            window.setContentSize(Self.mainWindowDefaultSize)
-            window.center()
-        }
+        windows.completeOnboarding()
     }
 
     func setKeyboardControl(_ isEnabled: Bool) {
@@ -1117,36 +998,14 @@ final class AppStore: ObservableObject {
             keyboardService.mediaBindings = [:]
             return
         }
-        var carbonMap: [HotKeyAction: GlobalShortcut] = [:]
-        var mediaMap: [MediaKeyShortcut: HotKeyAction] = [:]
-        // With fine adjustments off, fine actions register nothing at all — neither their
-        // ⌥ defaults nor recorded customs — so every ⌥ media combo stays with macOS.
-        let isActive: (HotKeyAction) -> Bool = { [fineEnabled = preferences.fineAdjustmentsEnabled] action in
-            !action.isFine || fineEnabled
-        }
-
-        for action in HotKeyAction.allCases where isActive(action) {
-            guard preferences.hotkeys[action.rawValue] == nil,
-                  let shortcut = action.mediaShortcut
-            else {
-                continue
-            }
-            mediaMap[shortcut] = action
-        }
-
-        for (key, binding) in preferences.hotkeys {
-            guard let action = HotKeyAction(rawValue: key), isActive(action) else { continue }
-            switch binding {
-            case .disabled:
-                continue
-            case .keyboard(let shortcut):
-                carbonMap[action] = shortcut
-            case .media(let shortcut):
-                mediaMap[shortcut] = action
-            }
-        }
-        hotkeyConflicts = hotKeyCenter.update(carbonMap)
-        keyboardService.mediaBindings = mediaMap
+        // The resolution rules (defaults vs. customs, `.disabled`, the fine-adjustments gate)
+        // live in the pure `HotkeyBindings.maps`.
+        let maps = HotkeyBindings.maps(
+            bindings: preferences.hotkeys,
+            fineAdjustmentsEnabled: preferences.fineAdjustmentsEnabled
+        )
+        hotkeyConflicts = hotKeyCenter.update(maps.carbon)
+        keyboardService.mediaBindings = maps.media
     }
 
     private func performHotKeyAction(_ action: HotKeyAction) {
@@ -1325,41 +1184,12 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// How often a held drag is allowed to push a DDC write. Throttling (rather than the
-    /// old trailing-only debounce) lets the monitor track the slider live instead of only
-    /// jumping once the user lets go — the behaviour that made MonitorControl feel smoother.
-    private static let ddcThrottleInterval = 0.045
-
+    /// Throttled DDC write for live slider drags (the timing lives in `DDCWriteScheduler`).
     private func scheduleDDC(key: String, for display: DisplayInfo, _ apply: @escaping () -> Void) {
         guard canUseDDC(for: display) else {
             return
         }
-        let now = DispatchTime.now()
-        let elapsed = ddcLastWrite[key].map {
-            Double(now.uptimeNanoseconds &- $0.uptimeNanoseconds) / 1_000_000_000
-        } ?? .infinity
-
-        // A newer value supersedes any still-pending trailing write for this control.
-        ddcWriteWorkItems[key]?.cancel()
-        ddcWriteWorkItems[key] = nil
-
-        guard elapsed < Self.ddcThrottleInterval else {
-            // Leading edge: enough time has passed, write now so the monitor tracks.
-            ddcLastWrite[key] = now
-            apply()
-            return
-        }
-
-        // Trailing edge: coalesce until the throttle window elapses, then write the
-        // latest value so the drag still settles on exactly where the user left it.
-        let delay = Self.ddcThrottleInterval - elapsed
-        let item = DispatchWorkItem { [weak self] in
-            self?.ddcWriteWorkItems[key] = nil
-            self?.ddcLastWrite[key] = DispatchTime.now()
-            apply()
-        }
-        ddcWriteWorkItems[key] = item
-        DispatchQueue.main.asyncAfter(deadline: now + delay, execute: item)
+        ddcWriteScheduler.schedule(key: key, apply)
     }
 
     func restoreColorTables() {
@@ -1484,95 +1314,44 @@ final class AppStore: ObservableObject {
     }
 
     private func applySchedulePreview(_ minute: Int) {
-        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
-        let temperature = ColorSchedule.quantizedTemperature(
-            ColorSchedule.scheduledTemperature(preferences: effective, minuteOfDay: minute)
+        // What to show is computed by the pure `SchedulePreview.plan`: the warmth, a preview
+        // copy of the preferences carrying the *software* brightness component (stored prefs
+        // are never touched), and the transient DDC writes for the hardware component. The
+        // live (now) schedule is suspended while previewing (see `applyScheduledHardware`);
+        // `restoreScheduledHardwareAfterPreview` puts the now-targets back when it ends.
+        let plan = SchedulePreview.plan(
+            preferences: preferences,
+            displays: displays.map { display in
+                SchedulePreview.DisplayContext(
+                    key: display.key,
+                    id: display.id,
+                    isBuiltIn: display.isBuiltIn,
+                    isVirtual: display.isVirtual,
+                    hasHardwareControl: canUseDDC(for: display),
+                    dimmingMode: dimmingMode(for: display),
+                    softwareFloor: softwareDimmingFloor(for: display)
+                )
+            },
+            minuteOfDay: minute
         )
-        currentTemperature = temperature
+        currentTemperature = plan.temperature
         guard !safeMode else {
             colorMessage = "Safe mode — preview not applied"
             return
         }
-        // Apply through the normal gamma path by faking a manual target at the previewed
-        // temperature; `gammaService` skips unchanged writes, so a continuous scrub doesn't flood
-        // the LUT (and AirPlay/virtual displays stay excluded, as in the live path).
-        var previewPreferences = preferences
-        previewPreferences.colorMode = .manual
-        previewPreferences.manualTemperature = temperature
-        // Preview the *software* component of scheduled brightness too — written only into
-        // this local copy, so the preview never touches stored prefs (the DDC component rides
-        // `previewHardwareDDC`'s transient path below). Ending the preview restores the live
-        // gamma via the normal reconcile.
-        for display in displays where !display.isBuiltIn && !display.isVirtual {
-            let displayPreferences = displayPreferences(for: display)
-            guard displayPreferences.scheduleBrightness else {
+        _ = gammaService.apply(displays: displays, preferences: plan.previewPreferences)
+        for write in plan.hardwareWrites {
+            guard let display = displays.first(where: { $0.id == write.displayID }) else {
                 continue
             }
-            let target = ColorSchedule.scheduledHardwareLevel(
-                dayValue: displayPreferences.dayBrightness,
-                sunsetValue: displayPreferences.sunsetBrightness,
-                nightValue: displayPreferences.nightBrightness,
-                preferences: effective,
-                minuteOfDay: minute
+            previewHardwareDDC(
+                write.kind,
+                value: write.value,
+                label: write.kind == .brightness ? "brightness" : "contrast",
+                for: display
             )
-            let (_, gamma) = HybridBrightness.scheduledComponents(
-                target: target,
-                mode: dimmingMode(for: display),
-                hasHardwareControl: canUseDDC(for: display),
-                floor: softwareDimmingFloor(for: display)
-            )
-            if let gamma {
-                previewPreferences.displayPreferences[display.key, default: DisplayPreferences()]
-                    .gammaBrightness = gamma
-            }
         }
-        _ = gammaService.apply(displays: displays, preferences: previewPreferences)
-        // Preview the scheduled brightness/contrast at this time too, so the *whole* schedule
-        // shows on screen — not just the warmth.
-        previewScheduledHardware(atMinute: minute)
-        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(KelvinFormatting.label(for: temperature))"
-    }
-
-    /// During a scrub preview, drive each DDC external display's scheduled brightness/contrast to
-    /// its value at the previewed time (when that schedule is on). Sent straight to the monitor
-    /// firmware via `previewHardwareDDC` so the preview never rewrites stored prefs; the live (now)
-    /// schedule is suspended while previewing (see `applyScheduledHardware`), and
-    /// `restoreScheduledHardwareAfterPreview` puts the now-targets back when the preview ends.
-    private func previewScheduledHardware(atMinute minute: Int) {
-        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
-        for display in displays where !display.isBuiltIn {
-            let displayPreferences = displayPreferences(for: display)
-            if displayPreferences.scheduleBrightness {
-                let target = ColorSchedule.scheduledHardwareLevel(
-                    dayValue: displayPreferences.dayBrightness,
-                    sunsetValue: displayPreferences.sunsetBrightness,
-                    nightValue: displayPreferences.nightBrightness,
-                    preferences: effective,
-                    minuteOfDay: minute
-                )
-                // Send only the DDC component of the unified target (the software component
-                // previews through the gamma path in `applySchedulePreview`).
-                let (hardware, _) = HybridBrightness.scheduledComponents(
-                    target: target,
-                    mode: dimmingMode(for: display),
-                    hasHardwareControl: canUseDDC(for: display),
-                    floor: softwareDimmingFloor(for: display)
-                )
-                if let hardware {
-                    previewHardwareDDC(.brightness, value: hardware, label: "brightness", for: display)
-                }
-            }
-            if displayPreferences.scheduleContrast {
-                let target = ColorSchedule.scheduledHardwareLevel(
-                    dayValue: displayPreferences.dayContrast,
-                    sunsetValue: displayPreferences.sunsetContrast,
-                    nightValue: displayPreferences.nightContrast,
-                    preferences: effective,
-                    minuteOfDay: minute
-                )
-                previewHardwareDDC(.contrast, value: target, label: "contrast", for: display)
-            }
-        }
+        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(KelvinFormatting.label(for: plan.temperature))"
     }
 
     /// Send a brightness/contrast value to a display's DDC firmware *without* persisting it — the
@@ -1601,8 +1380,7 @@ final class AppStore: ObservableObject {
     /// Re-apply each display's *current-time* scheduled brightness/contrast after a preview ends —
     /// the preview drove them to a different time, so force the now-targets back over it.
     private func restoreScheduledHardwareAfterPreview() {
-        lastScheduledBrightness.removeAll()
-        lastScheduledContrast.removeAll()
+        scheduledHardwareState = ScheduledHardware.State()
         applyScheduledHardware()
     }
 
@@ -1631,8 +1409,9 @@ final class AppStore: ObservableObject {
     }
 
     /// Drive each display's scheduled brightness/contrast toward its day/night target.
-    /// Called from the minute timer and after display/preference changes. Only writes when
-    /// the scheduled target actually changes (see `lastScheduled*`), so manual tweaks hold.
+    /// Called from the minute timer and after display/preference changes. The routing rules
+    /// and the "only write when the target changes" tracking live in the pure
+    /// `ScheduledHardware.plan`; this executes the writes it returns.
     func applyScheduledHardware() {
         guard !displays.isEmpty else {
             return
@@ -1648,40 +1427,31 @@ final class AppStore: ObservableObject {
         let now = Date()
         let minute = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
 
-        for display in displays {
-            let displayPreferences = displayPreferences(for: display)
+        let contexts = displays.map { display in
+            ScheduledHardware.DisplayContext(
+                id: display.id,
+                isBuiltIn: display.isBuiltIn,
+                hasControllableBacklight: canUseNativeBrightness(display),
+                preferences: displayPreferences(for: display)
+            )
+        }
+        let (writes, state) = ScheduledHardware.plan(
+            displays: contexts,
+            preferences: effective,
+            minuteOfDay: minute,
+            state: scheduledHardwareState
+        )
+        scheduledHardwareState = state
 
-            if displayPreferences.scheduleBrightness {
-                let target = ColorSchedule.scheduledHardwareLevel(
-                    dayValue: displayPreferences.dayBrightness,
-                    sunsetValue: displayPreferences.sunsetBrightness,
-                    nightValue: displayPreferences.nightBrightness,
-                    preferences: effective,
-                    minuteOfDay: minute
-                )
-                if lastScheduledBrightness[display.id] != target {
-                    lastScheduledBrightness[display.id] = target
-                    applyScheduledBrightness(target, for: display)
-                }
-            } else {
-                lastScheduledBrightness[display.id] = nil
+        for write in writes {
+            guard let display = displays.first(where: { $0.id == write.displayID }) else {
+                continue
             }
-
-            // Contrast is a DDC-only control, so the schedule skips the built-in panel.
-            if displayPreferences.scheduleContrast, !display.isBuiltIn {
-                let target = ColorSchedule.scheduledHardwareLevel(
-                    dayValue: displayPreferences.dayContrast,
-                    sunsetValue: displayPreferences.sunsetContrast,
-                    nightValue: displayPreferences.nightContrast,
-                    preferences: effective,
-                    minuteOfDay: minute
-                )
-                if lastScheduledContrast[display.id] != target {
-                    lastScheduledContrast[display.id] = target
-                    setHardwareContrast(target, for: display)
-                }
-            } else {
-                lastScheduledContrast[display.id] = nil
+            switch write.control {
+            case .brightness:
+                applyScheduledBrightness(write.target, for: display)
+            case .contrast:
+                setHardwareContrast(write.target, for: display)
             }
         }
     }
@@ -1726,8 +1496,7 @@ final class AppStore: ObservableObject {
     /// Re-evaluate the schedule for a display immediately (e.g. after the user toggles it on
     /// or edits a day/night target), bypassing the "unchanged target" guard so it applies now.
     func reapplySchedule(for display: DisplayInfo) {
-        lastScheduledBrightness[display.id] = nil
-        lastScheduledContrast[display.id] = nil
+        scheduledHardwareState.clear(display.id)
         applyScheduledHardware()
     }
 
@@ -1768,45 +1537,27 @@ final class AppStore: ObservableObject {
 
     /// Fold legacy built-in dimming state into the built-in's real default: the backlight.
     ///
-    /// The built-in never dims hybrid and only dims in software when the user explicitly picks
-    /// it (`.software`). But old preferences can leave a built-in with a migrated `.automatic`
-    /// mode (from the retired `gammaControlsEnabled` gate, which couldn't see the display kind)
-    /// and/or a stale sub-100 `gammaBrightness` from a build that had no backlight API. Once the
-    /// backlight *is* controllable, that residual gamma would keep the screen dim with no way to
-    /// lift it from the Brightness slider. For every built-in whose slider now drives the
-    /// backlight (`.hardwareOnly`), normalize the mode to `.hardware` and clear any stale
-    /// software dim. Built-ins with no backlight API (still `.softwareOnly`) or an explicit
-    /// software choice are left untouched. Returns true when it cleared a dim — a color-affecting
-    /// change the `preferences` didSet already re-applied — so the caller can skip a redundant
-    /// `reconcileColor()`.
+    /// The normalization rules live in the pure `BuiltInDimming.normalized` (see there for the
+    /// history); this applies them to every built-in whose slider currently drives the real
+    /// backlight (`.hardwareOnly`). Built-ins with no backlight API (still `.softwareOnly`) or
+    /// an explicit software choice are left untouched. Returns true when a dim was cleared —
+    /// a color-affecting change the `preferences` didSet already re-applied — so the caller
+    /// can skip a redundant `reconcileColor()`.
     private func reconcileBuiltInDimming() -> Bool {
         var next = preferences
         var changed = false
         var clearedGamma = false
 
         for display in displays where display.isBuiltIn {
-            guard var displayPreferences = next.displayPreferences[display.key],
-                  brightnessControlKind(for: display) == .hardwareOnly
+            guard let displayPreferences = next.displayPreferences[display.key],
+                  brightnessControlKind(for: display) == .hardwareOnly,
+                  let normalization = BuiltInDimming.normalized(displayPreferences)
             else {
                 continue
             }
-            var displayChanged = false
-            // A built-in never stores `.automatic` as a real choice — normalize the legacy
-            // artifact so the persisted mode is honest.
-            if displayPreferences.dimmingMode == .automatic {
-                displayPreferences.dimmingMode = .hardware
-                displayChanged = true
-            }
-            // Hardware mode means the image isn't darkened in software (see `setDimmingMode`).
-            if displayPreferences.gammaBrightness < 100 {
-                displayPreferences.gammaBrightness = 100
-                displayChanged = true
-                clearedGamma = true
-            }
-            if displayChanged {
-                next.displayPreferences[display.key] = displayPreferences
-                changed = true
-            }
+            next.displayPreferences[display.key] = normalization.preferences
+            changed = true
+            clearedGamma = clearedGamma || normalization.clearedGamma
         }
 
         if changed {
@@ -1911,22 +1662,6 @@ enum BrightnessControlKind: Equatable {
     case shade
     /// No working path (non-DDC external in Monitor-hardware mode): disabled slider + hint.
     case unavailable
-}
-
-/// The detailed window. Subclassing `NSWindow` lets the smoke test show it on screen
-/// without activating the app: when `allowsActivation` is false the window can't become
-/// key or main, so ordering it front leaves focus with whatever app the developer is using.
-/// Real use sets `allowsActivation` true, so it behaves like an ordinary window.
-final class MainWindow: NSWindow {
-    var allowsActivation = true
-
-    override var canBecomeKey: Bool {
-        allowsActivation
-    }
-
-    override var canBecomeMain: Bool {
-        allowsActivation
-    }
 }
 
 /// CoreGraphics display-reconfiguration callback (C calling convention, so it can't
