@@ -38,7 +38,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   consistent with "editing a schedule control adopts the schedule" elsewhere.
   Files: `Views/QuickControlsView.swift`.
 
-- [ ] **5. Misleading DDC status on non-capable displays.**
+- [x] **5. Misleading DDC status on non-capable displays.**
   `runDDCCommand`/`applyVolume` report the backend name ("Native DDC") as the reason when a
   display isn't DDC-capable. Fix: say the display doesn't expose DDC.
   Files: `Stores/AppStore.swift`.

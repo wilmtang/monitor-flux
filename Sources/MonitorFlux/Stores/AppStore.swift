@@ -1239,7 +1239,7 @@ final class AppStore: ObservableObject {
 
     func applyVolume(for display: DisplayInfo) {
         guard canUseDDC(for: display) else {
-            reportDDCStatus(display.isBuiltIn ? "Built-in displays do not use DDC" : ddcStatus.message)
+            reportDDCStatus(ddcUnavailableMessage(for: display))
             return
         }
         guard !safeMode else {
@@ -1799,9 +1799,7 @@ final class AppStore: ObservableObject {
         displayIndex: Int
     ) {
         guard canUseDDC(for: display) else {
-            reportDDCStatus(display.isBuiltIn
-                ? "Built-in displays do not use DDC"
-                : ddcStatus.message)
+            reportDDCStatus(ddcUnavailableMessage(for: display))
             return
         }
         guard !safeMode else {
@@ -1836,6 +1834,15 @@ final class AppStore: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Why a DDC write to this display was skipped. The old text here was the backend's *name*
+    /// ("Native DDC"), which read as a non-sequitur in the status line — say what's actually
+    /// wrong with this display instead.
+    private func ddcUnavailableMessage(for display: DisplayInfo) -> String {
+        display.isBuiltIn
+            ? "Built-in displays do not use DDC"
+            : "\(display.name) doesn't expose DDC on this connection"
     }
 
     /// Publish a DDC status line without re-rendering the world on every write. `ddcMessage`
