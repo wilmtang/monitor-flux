@@ -193,14 +193,15 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertLessThan(abs(after - before), 200)
     }
 
-    func testSolarScheduleReplacesSunriseAndSunsetAnchors() {
+    func testSolarScheduleReplacesOnlyTheSunsetAnchor() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock
         preferences.scheduleSource = .solar
         preferences.latitude = "47.6"
         preferences.longitude = "-122.3"
-        preferences.coolStartMinutes = 0   // placeholder manual values that solar replaces
-        preferences.sunsetStartMinutes = 0
+        preferences.coolStartMinutes = 7 * 60   // hand-set wake — must be preserved
+        preferences.warmStartMinutes = 23 * 60  // hand-set bedtime — must be preserved
+        preferences.sunsetStartMinutes = 0      // placeholder that solar replaces
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
@@ -213,7 +214,10 @@ final class ColorScheduleTests: XCTestCase {
 
         let adjusted = ColorSchedule.solarAdjustedPreferences(preferences, date: date, calendar: calendar)
 
-        XCTAssertEqual(Double(adjusted.coolStartMinutes), 5 * 60 + 11, accuracy: 25)
+        // Only sunset follows the sun now; wake and bedtime stay the times the user set (so the
+        // screen no longer jumps to daytime at ~5 AM sunrise in summer).
+        XCTAssertEqual(adjusted.coolStartMinutes, 7 * 60)
+        XCTAssertEqual(adjusted.warmStartMinutes, 23 * 60)
         XCTAssertEqual(Double(adjusted.sunsetStartMinutes), 21 * 60 + 11, accuracy: 25)
     }
 

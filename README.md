@@ -93,14 +93,15 @@ for warmth.
 - The **Schedule** screen is modeled after f.lux preferences: three phase
   temperatures (Daytime / Sunset / Bedtime) over the same Kelvin range, a phase
   selector, a draggable three-handle schedule curve, **wake / sunset / bedtime** time
-  steppers, and a **Set times / Sunrise & sunset** source. In **Sunrise & sunset** mode
-  the wake and sunset anchors come from your location (CoreLocation + `SolarCalculator`),
-  and the curve, dots, and steppers all show those computed times (bedtime stays your set
-  hour). A **"now" marker** rides the curve at the current time. **Drag it to preview** how
+  steppers, and a **Set times / Follow sunset** source. In **Follow sunset** mode the sunset
+  anchor comes from your location (CoreLocation + `SolarCalculator`) and the curve, dots, and
+  steppers show that computed sunset — but **wake and bedtime stay the times you set** (f.lux
+  does the same: only sunset follows the sun, so the screen doesn't jump to daytime at the ~5 AM
+  summer sunrise). A **"now" marker** rides the curve at the current time. **Drag it to preview** how
   the screen will look at any time of day — the warmth *and* any scheduled brightness/contrast —
   and it adopts the **Automatic** schedule if you weren't already on it (so does editing any dot,
-  a time, a phase temperature, or the fade). Editing a **time** (a dot or a stepper) also switches
-  the source to **Set times**, since you're then placing the times by hand. The preview is always
+  a time, a phase temperature, or the fade). Editing the **sunset** dot/stepper switches the source
+  to **Set times** (you're placing it by hand); editing wake or bedtime just sets them. The preview is always
   temporary: it resets when you leave or reload the Schedule screen, switch away from the window,
   change the mode off the schedule, or hit Refresh — and the real current-time marker stays visible
   (fainter) while you scrub.

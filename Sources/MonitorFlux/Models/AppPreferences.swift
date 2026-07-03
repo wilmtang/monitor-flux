@@ -19,7 +19,9 @@ enum ColorMode: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
-/// Where the schedule's sunrise/sunset anchors come from.
+/// Where the schedule's sunset anchor comes from: hand-set times, or the day's real sunset
+/// computed from your location. (Wake and bedtime are always your set times — only sunset
+/// follows the sun, matching f.lux.)
 enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
     case manualTimes
     case solar
@@ -31,7 +33,7 @@ enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
         case .manualTimes:
             "Set times"
         case .solar:
-            "Sunrise & sunset"
+            "Follow sunset"
         }
     }
 }

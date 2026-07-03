@@ -190,9 +190,8 @@ struct ColorScheduleView: View {
             LabeledContent("Location access", value: store.locationStatus)
 
             if store.preferences.scheduleSource == .solar {
-                LabeledContent("Sunrise today", value: solarLabel(store.solarTimes?.sunriseMinutes))
                 LabeledContent("Sunset today", value: solarLabel(store.solarTimes?.sunsetMinutes))
-                Text("Computed on-device from your coordinates and today's date (no internet), so they shift a little each day and the schedule follows the real sun.")
+                Text("Sunset is computed on-device from your coordinates and today's date (no internet), so it shifts a little each day and follows the real sun. Your wake and bedtime stay the times you set below.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -344,11 +343,9 @@ struct ColorScheduleView: View {
 
     /// A binding for a phase's start *time*, shared by the curve handle and the time stepper.
     ///
-    /// Read returns the *effective* anchor: when the source is Sunrise & sunset, wake and sunset come
-    /// from the day's computed solar times (bedtime is always the set hour), so the chart, dots, and
-    /// steppers all show what's actually applied. Write commits the edit via `commitTimeEdit`, which
-    /// switches the source to Set times — hand-placing a time means the user is setting it, and a
-    /// solar source would otherwise recompute over it.
+    /// Read returns the *effective* anchor: in Follow-sunset mode the sunset anchor comes from the
+    /// day's computed sunset (wake and bedtime are always the set hours), so the chart, dots, and
+    /// steppers all show what's actually applied. Write commits the edit via `commitTimeEdit`.
     private func timeAnchorBinding(_ phase: ColorPhase) -> Binding<Int> {
         Binding {
             effectivePreferences.startMinutes(for: phase)
@@ -357,34 +354,45 @@ struct ColorScheduleView: View {
         }
     }
 
-    /// The preferences as the schedule actually applies them today: solar-adjusted when the source is
-    /// Sunrise & sunset (and the coordinates parse), otherwise the stored values verbatim.
+    /// The preferences as the schedule actually applies them today: the sunset anchor is
+    /// solar-adjusted in Follow-sunset mode (when the coordinates parse), otherwise the stored
+    /// values verbatim.
     private var effectivePreferences: AppPreferences {
         ColorSchedule.solarAdjustedPreferences(store.preferences)
     }
 
-    /// Commit a phase time edit (from a dragged dot or a stepper). If we were following the sun, first
-    /// freeze today's computed sunrise/sunset into the anchors so the other dots don't jump, then pin
-    /// the source to Set times with this edit applied — clamped to keep daytime → sunset → bedtime
-    /// order. Stays on the Automatic schedule (Warmth on); it never flips the mode to Fixed.
+    /// Commit a phase time edit (from a dragged dot or a stepper), clamped to keep daytime →
+    /// sunset → bedtime order and staying on the Automatic schedule (Warmth on; never Fixed).
+    ///
+    /// Only editing the **sunset** anchor takes over the sun: it freezes today's computed sunset
+    /// and switches to Set times, since a Follow-sunset source would otherwise recompute over the
+    /// hand-placed value. Wake and bedtime are already your set times even in Follow-sunset mode,
+    /// so editing them leaves the source alone — they clamp against the effective (solar) sunset
+    /// so the on-screen order still holds.
     private func commitTimeEdit(_ phase: ColorPhase, rawMinute: Int) {
         store.updateGlobalPreferences { preferences in
-            if preferences.scheduleSource == .solar {
+            if phase == .sunset, preferences.scheduleSource == .solar {
                 let solar = ColorSchedule.solarAdjustedPreferences(preferences)
-                preferences.coolStartMinutes = solar.coolStartMinutes
                 preferences.sunsetStartMinutes = solar.sunsetStartMinutes
                 preferences.scheduleSource = .manualTimes
             }
-            let clamped = ColorSchedule.clampedStartMinute(rawMinute, for: phase, preferences: preferences)
+            let effective = ColorSchedule.solarAdjustedPreferences(preferences)
+            let clamped = ColorSchedule.clampedStartMinute(
+                rawMinute,
+                for: phase,
+                wake: effective.coolStartMinutes,
+                sunset: effective.sunsetStartMinutes,
+                bedtime: effective.warmStartMinutes
+            )
             preferences.setStartMinutes(clamped, for: phase)
             preferences.gammaEnabled = true
             preferences.colorMode = .clock
         }
     }
 
-    /// The "Schedule from" binding. Switching from Sunrise & sunset to Set times freezes the times
-    /// currently shown (today's solar values) into the anchors, so the chart doesn't jump — it keeps
-    /// what you see rather than restoring an older hand-set value.
+    /// The "Schedule from" binding. Switching from Follow-sunset to Set times freezes today's
+    /// computed sunset into the anchor, so the chart doesn't jump — it keeps the sunset you see
+    /// rather than restoring an older hand-set value. (Wake and bedtime are unchanged either way.)
     private var scheduleSourceBinding: Binding<ScheduleSource> {
         Binding {
             store.preferences.scheduleSource
@@ -392,7 +400,6 @@ struct ColorScheduleView: View {
             store.updateGlobalPreferences { preferences in
                 if newSource == .manualTimes, preferences.scheduleSource == .solar {
                     let solar = ColorSchedule.solarAdjustedPreferences(preferences)
-                    preferences.coolStartMinutes = solar.coolStartMinutes
                     preferences.sunsetStartMinutes = solar.sunsetStartMinutes
                 }
                 preferences.scheduleSource = newSource

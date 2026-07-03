@@ -32,10 +32,11 @@ enum ColorSchedule {
         return Int((Double(temperature) / Double(step)).rounded()) * step
     }
 
-    /// When the schedule is location-driven, replace the daytime (sunrise) and sunset
-    /// anchors with the day's computed solar times; bedtime stays the user's set hour,
-    /// matching f.lux. Returns the preferences unchanged for manual schedules or when
-    /// the latitude/longitude can't be parsed.
+    /// When the schedule is location-driven, replace only the **sunset** anchor with the day's
+    /// computed sunset — like f.lux, which warms the screen at real sunset while your **wake**
+    /// and **bedtime** stay the times you set. (Tying "wake" to sunrise made the screen jump to
+    /// daytime at ~5 AM in summer, which isn't when people wake.) Returns the preferences
+    /// unchanged for manual schedules or when the latitude/longitude can't be parsed.
     static func solarAdjustedPreferences(
         _ preferences: AppPreferences,
         date: Date = Date(),
@@ -55,9 +56,6 @@ enum ColorSchedule {
             timeZone: calendar.timeZone
         )
         var copy = preferences
-        if let sunrise = times.sunriseMinutes {
-            copy.coolStartMinutes = sunrise
-        }
         if let sunset = times.sunsetMinutes {
             copy.sunsetStartMinutes = sunset
         }
