@@ -120,7 +120,6 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     var hardwareContrast = 70
     var hardwareVolume = 50
     var gammaBrightness = 100
-    var gammaContrast = 100
     /// Force-show the DDC volume slider even when no audio output is detected for this
     /// display. Off by default: the slider is hidden unless the monitor reports speakers.
     var forceVolumeControl = false
@@ -147,7 +146,6 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         case hardwareContrast
         case hardwareVolume
         case gammaBrightness
-        case gammaContrast
         case forceVolumeControl
         case scheduleBrightness
         case scheduleContrast
@@ -170,7 +168,6 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         copy.hardwareContrast = copy.hardwareContrast.clamped(to: ControlRanges.hardwarePercent)
         copy.hardwareVolume = copy.hardwareVolume.clamped(to: ControlRanges.hardwarePercent)
         copy.gammaBrightness = copy.gammaBrightness.clamped(to: ControlRanges.gammaBrightnessPercent)
-        copy.gammaContrast = copy.gammaContrast.clamped(to: ControlRanges.gammaContrastPercent)
         copy.dayBrightness = copy.dayBrightness.clamped(to: ControlRanges.hardwarePercent)
         copy.sunsetBrightness = copy.sunsetBrightness.clamped(to: ControlRanges.hardwarePercent)
         copy.nightBrightness = copy.nightBrightness.clamped(to: ControlRanges.hardwarePercent)
@@ -199,8 +196,8 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
             .clamped(to: ControlRanges.hardwarePercent)
         gammaBrightness = (try container.decodeIfPresent(Int.self, forKey: .gammaBrightness) ?? 100)
             .clamped(to: ControlRanges.gammaBrightnessPercent)
-        gammaContrast = (try container.decodeIfPresent(Int.self, forKey: .gammaContrast) ?? 100)
-            .clamped(to: ControlRanges.gammaContrastPercent)
+        // Note: old payloads may carry a `gammaContrast` key from the removed software-contrast
+        // feature; keys absent from CodingKeys are simply ignored, so no migration is needed.
         forceVolumeControl = try container.decodeIfPresent(Bool.self, forKey: .forceVolumeControl) ?? false
         scheduleBrightness = try container.decodeIfPresent(Bool.self, forKey: .scheduleBrightness) ?? false
         scheduleContrast = try container.decodeIfPresent(Bool.self, forKey: .scheduleContrast) ?? false
@@ -242,7 +239,6 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         try container.encode(hardwareContrast, forKey: .hardwareContrast)
         try container.encode(hardwareVolume, forKey: .hardwareVolume)
         try container.encode(gammaBrightness, forKey: .gammaBrightness)
-        try container.encode(gammaContrast, forKey: .gammaContrast)
         try container.encode(forceVolumeControl, forKey: .forceVolumeControl)
         try container.encode(scheduleBrightness, forKey: .scheduleBrightness)
         try container.encode(scheduleContrast, forKey: .scheduleContrast)
@@ -483,7 +479,6 @@ extension AppPreferences {
                 [
                     displayPreferences.colorEnabled ? 1 : 0,
                     displayPreferences.gammaBrightness,
-                    displayPreferences.gammaContrast,
                 ]
             }
         )

@@ -58,7 +58,6 @@ final class GammaPlanTests: XCTestCase {
         let display = makeDisplay(id: 1)
         var displayPreferences = DisplayPreferences()
         displayPreferences.gammaBrightness = 80
-        displayPreferences.gammaContrast = 120
 
         var preferences = AppPreferences.defaults
         preferences.colorMode = .manual
@@ -69,7 +68,7 @@ final class GammaPlanTests: XCTestCase {
 
         XCTAssertEqual(adjustment?.temperature, 3400)
         XCTAssertEqual(adjustment?.brightnessPercent, 80)
-        // Software contrast was removed — gammaContrast is no longer applied, always neutral.
+        // Software contrast was removed — the plan always emits a neutral contrast.
         XCTAssertEqual(adjustment?.contrastPercent, 100)
     }
 

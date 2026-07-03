@@ -562,14 +562,12 @@ final class AppStore: ObservableObject {
         let floor = softwareDimmingFloor(for: display)
         switch brightnessControlKind(for: display) {
         case .hybrid:
+            // Only DDC externals resolve to .hybrid (the built-in is binary — see
+            // brightnessControlKind), so the hardware component is always a DDC write.
             let current = hybridComponents(for: display)
             let next = HybridBrightness.resolve(targetUnified: position, current: current, floor: floor)
             if next.hardware != current.hardware {
-                if display.isBuiltIn {
-                    setNativeBrightness(Double(next.hardware) / 100.0, for: display)
-                } else {
-                    setHardwareBrightness(next.hardware, for: display)
-                }
+                setHardwareBrightness(next.hardware, for: display)
             }
             if next.gamma != current.gamma {
                 updateDisplayPreferences(for: display) { displayPreferences in
@@ -597,13 +595,14 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Both dimming components as integer percents (the built-in backlight scaled to 0…100).
+    /// Both dimming components as integer percents. Hybrid is DDC-external-only, so the
+    /// hardware component is the stored DDC brightness.
     private func hybridComponents(for display: DisplayInfo) -> HybridBrightness.Components {
         let displayPreferences = displayPreferences(for: display)
-        let hardware = display.isBuiltIn
-            ? Int((nativeBrightnessValue(for: display) * 100).rounded())
-            : displayPreferences.hardwareBrightness
-        return HybridBrightness.Components(hardware: hardware, gamma: displayPreferences.gammaBrightness)
+        return HybridBrightness.Components(
+            hardware: displayPreferences.hardwareBrightness,
+            gamma: displayPreferences.gammaBrightness
+        )
     }
 
     /// The popup's display cards in the user's chosen order (drag-to-reorder). Displays not yet
@@ -1360,7 +1359,6 @@ final class AppStore: ObservableObject {
             // also neutralize it — otherwise the tables would stay darkened after "restore".
             for key in preferences.displayPreferences.keys {
                 preferences.displayPreferences[key]?.gammaBrightness = 100
-                preferences.displayPreferences[key]?.gammaContrast = 100
             }
         }
     }

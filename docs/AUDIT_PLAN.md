@@ -45,7 +45,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
 
 ## Phase 2 — Dead code & robustness
 
-- [ ] **6. Strip the inert `gammaContrast` preference and dead hybrid built-in branches.**
+- [x] **6. Strip the inert `gammaContrast` preference and dead hybrid built-in branches.**
   `GammaPlan` hardcodes `contrastPercent: 100` (software contrast was removed), yet the field is
   still decoded/encoded/normalized, reset by the escape hatch, and part of `colorSignature`
   (where it can trigger pointless gamma recomputes). Old payloads with the key still decode fine

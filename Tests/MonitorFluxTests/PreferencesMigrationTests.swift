@@ -17,7 +17,6 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.hardwareBrightness, 42)
         XCTAssertEqual(preferences.hardwareContrast, 63)
         XCTAssertEqual(preferences.gammaBrightness, 100)
-        XCTAssertEqual(preferences.gammaContrast, 100)
     }
 
     func testAppPreferencesDecodeAddsGammaDefaults() throws {
@@ -213,6 +212,7 @@ final class PreferencesMigrationTests: XCTestCase {
     }
 
     func testDisplayPreferencesClampDecodedValues() throws {
+        // The stale `gammaContrast` key (software contrast was removed) must simply be ignored.
         let json = """
         {
           "ddcDisplayIndex": 99,
@@ -229,7 +229,6 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.hardwareBrightness, ControlRanges.hardwarePercent.lowerBound)
         XCTAssertEqual(preferences.hardwareContrast, ControlRanges.hardwarePercent.upperBound)
         XCTAssertEqual(preferences.gammaBrightness, ControlRanges.gammaBrightnessPercent.upperBound)
-        XCTAssertEqual(preferences.gammaContrast, ControlRanges.gammaContrastPercent.lowerBound)
     }
 
     func testAppPreferencesClampDecodedScheduleValues() throws {

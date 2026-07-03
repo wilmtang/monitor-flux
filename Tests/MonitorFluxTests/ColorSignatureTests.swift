@@ -66,10 +66,6 @@ final class ColorSignatureTests: XCTestCase {
         gammaBrightness.displayPreferences[displayKey]?.gammaBrightness = 60
         XCTAssertNotEqual(before.colorSignature, gammaBrightness.colorSignature)
 
-        var gammaContrast = before
-        gammaContrast.displayPreferences[displayKey]?.gammaContrast = 60
-        XCTAssertNotEqual(before.colorSignature, gammaContrast.colorSignature)
-
         var colorEnabled = before
         colorEnabled.displayPreferences[displayKey]?.colorEnabled = false
         XCTAssertNotEqual(before.colorSignature, colorEnabled.colorSignature)
