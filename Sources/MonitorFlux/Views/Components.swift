@@ -195,6 +195,9 @@ struct InfoButton: View {
 /// except the optional handoff notch of a hybrid (hardware + software) brightness track.
 struct MonitorSlider: View {
     let systemImage: String
+    /// The control's name — spoken by VoiceOver and shown as the hover tooltip. Several
+    /// tracks are icon-only (the popup's contrast/volume rows), so this is their only name.
+    let label: String
     let value: Double
     let range: ClosedRange<Double>
     var isEnabled = true
@@ -202,6 +205,8 @@ struct MonitorSlider: View {
     /// 55% white — the "image is being darkened now, not the backlight" look of the unified
     /// brightness track's software zone.
     var notchFraction: Double? = nil
+    /// Spoken value override (e.g. "3400 K" for warmth). Defaults to the track percentage.
+    var accessibilityValueText: String? = nil
     let onChange: (Double) -> Void
 
     private let height: CGFloat = 24
@@ -264,6 +269,26 @@ struct MonitorSlider: View {
             .opacity(isEnabled ? 1 : 0.55)
         }
         .frame(height: height)
+        .help(label)
+        // The track is drawn shapes on a DragGesture — invisible to VoiceOver without an
+        // explicit element. Expose it as an adjustable control (VO ↑/↓ steps 5% of the range;
+        // setters round/clamp as they do for drags) so the popup and detail hero aren't
+        // pointer-only.
+        .accessibilityElement()
+        .accessibilityLabel(label)
+        .accessibilityValue(accessibilityValueText ?? "\(Int((fraction * 100).rounded()))%")
+        .accessibilityAdjustableAction { direction in
+            guard isEnabled else { return }
+            let step = (range.upperBound - range.lowerBound) * 0.05
+            switch direction {
+            case .increment:
+                onChange(min(range.upperBound, value + step))
+            case .decrement:
+                onChange(max(range.lowerBound, value - step))
+            @unknown default:
+                break
+            }
+        }
     }
 }
 

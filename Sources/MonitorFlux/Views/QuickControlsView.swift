@@ -164,8 +164,10 @@ struct QuickControlsView: View {
         HStack(spacing: 10) {
             MonitorSlider(
                 systemImage: "thermometer.sun",
+                label: "Warmth",
                 value: Double(ambienceTemperature),
-                range: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound)
+                range: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound),
+                accessibilityValueText: KelvinFormatting.label(for: ambienceTemperature)
             ) { newValue in
                 let rounded = Int((newValue / 100.0).rounded()) * 100
                 store.updateGlobalPreferences { preferences in
@@ -468,6 +470,7 @@ private struct DisplayCardView: View {
         if store.canUseDDC(for: display) {
             ControlRow(
                 icon: "circle.lefthalf.filled",
+                label: "Contrast",
                 value: Double(preferences.hardwareContrast),
                 range: ControlRanges.hardwarePercent,
                 readout: "\(preferences.hardwareContrast)%"
@@ -478,6 +481,7 @@ private struct DisplayCardView: View {
             if store.shouldShowVolumeControl(for: display) {
                 ControlRow(
                     icon: "speaker.wave.2.fill",
+                    label: "Volume",
                     value: Double(preferences.hardwareVolume),
                     range: ControlRanges.hardwarePercent,
                     readout: "\(preferences.hardwareVolume)%"
@@ -497,6 +501,7 @@ private struct DisplayCardView: View {
         let inSoftwareZone = notch.map { position < $0 } ?? false
         return ControlRow(
             icon: inSoftwareZone ? "moon" : "sun.max",
+            label: "Brightness",
             value: position * 100,
             range: ControlRanges.hardwarePercent,
             enabled: kind != .unavailable,
@@ -519,6 +524,8 @@ private struct DisplayCardView: View {
 /// A labeled MonitorControl-style slider row: the slider plus a fixed-width readout.
 private struct ControlRow: View {
     let icon: String
+    /// Spoken name / tooltip for the icon-only slider (e.g. "Contrast").
+    let label: String
     let value: Double
     let range: ClosedRange<Int>
     var enabled = true
@@ -530,10 +537,12 @@ private struct ControlRow: View {
         HStack(spacing: 10) {
             MonitorSlider(
                 systemImage: icon,
+                label: label,
                 value: value,
                 range: Double(range.lowerBound)...Double(range.upperBound),
                 isEnabled: enabled,
                 notchFraction: notchFraction,
+                accessibilityValueText: readout,
                 onChange: onChange
             )
             Text(readout)

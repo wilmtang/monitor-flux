@@ -107,6 +107,7 @@ struct DisplayDetailView: View {
                 .frame(width: (108 * zoomScale).rounded(), alignment: .leading)
             MonitorSlider(
                 systemImage: inSoftwareZone ? "moon" : "sun.max",
+                label: "Brightness",
                 value: position * 100,
                 range: 0...100,
                 isEnabled: kind != .unavailable,

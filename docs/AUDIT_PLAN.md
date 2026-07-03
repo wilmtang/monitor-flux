@@ -62,7 +62,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
 
 ## Phase 3 — UX & accessibility
 
-- [ ] **8. Make the custom sliders accessible.**
+- [x] **8. Make the custom sliders accessible.**
   `MonitorSlider` is a bare `DragGesture` view: no accessibility label/value, no adjustable
   action — VoiceOver users cannot set brightness/warmth from the popup or the detail hero (the
   only surfaces for unified brightness). Curve-editor handles have labels but no adjustable

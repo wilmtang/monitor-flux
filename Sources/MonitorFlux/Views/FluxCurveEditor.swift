@@ -213,6 +213,35 @@ struct FluxCurveEditor: View {
                     }
             )
             .accessibilityLabel("\(phaseLabel(for: handle)) color handle, \(MinuteFormatting.label(for: startMinute(for: handle)))")
+            .accessibilityValue(KelvinFormatting.label(for: temperature(for: handle)))
+            // VO ↑/↓ adjusts the handle's temperature in the same 100 K steps a drag rounds to;
+            // the phase's *time* stays keyboard-editable through the steppers below the chart.
+            .accessibilityAdjustableAction { direction in
+                let delta = direction == .increment ? 100 : -100
+                setTemperature((temperature(for: handle) + delta).clamped(to: ControlRanges.kelvin), for: handle)
+            }
+    }
+
+    private func temperature(for handle: FluxCurveHandle) -> Int {
+        switch handle {
+        case .day:
+            dayTemperature
+        case .sunset:
+            sunsetTemperature
+        case .night:
+            nightTemperature
+        }
+    }
+
+    private func setTemperature(_ value: Int, for handle: FluxCurveHandle) {
+        switch handle {
+        case .day:
+            dayTemperature = value
+        case .sunset:
+            sunsetTemperature = value
+        case .night:
+            nightTemperature = value
+        }
     }
 
     private func color(for handle: FluxCurveHandle) -> Color {

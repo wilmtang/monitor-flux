@@ -140,6 +140,11 @@ struct HardwareScheduleChart: View {
                     }
             )
             .accessibilityLabel("\(phase.label) value handle")
+            .accessibilityValue("\(value(for: phase))%")
+            .accessibilityAdjustableAction { direction in
+                let delta = direction == .increment ? 5 : -5
+                setValue((value(for: phase) + delta).clamped(to: range), for: phase)
+            }
     }
 
     private func value(for phase: ColorPhase) -> Int {
