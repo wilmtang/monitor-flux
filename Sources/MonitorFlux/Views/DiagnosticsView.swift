@@ -32,6 +32,9 @@ struct DiagnosticsView: View {
     private var appSection: some View {
         Section("App") {
             LabeledContent("Version", value: AppInfo.version)
+            if let commit = AppInfo.shortCommit {
+                LabeledContent("Commit", value: commit)
+            }
             LabeledContent("macOS", value: ProcessInfo.processInfo.operatingSystemVersionString)
             LabeledContent("Safe mode", value: store.safeMode ? "On — no hardware writes" : "Off")
             LabeledContent("Accessibility", value: store.accessibilityTrusted ? "Granted" : "Not granted")
@@ -270,6 +273,12 @@ struct DiagnosticsView: View {
         var lines: [String] = []
         lines.append("MonitorFlux Diagnostics")
         lines.append("Version: \(AppInfo.version)")
+        if let commit = AppInfo.commit {
+            lines.append("Commit: \(commit)")
+        }
+        if let buildDate = AppInfo.buildDate {
+            lines.append("Built: \(buildDate)")
+        }
         lines.append("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("Safe mode: \(store.safeMode ? "on" : "off")")
         lines.append("Accessibility: \(store.accessibilityTrusted ? "granted" : "not granted")")

@@ -170,9 +170,24 @@ struct SettingsView: View {
             }
 
             // Version was previously only visible in the hidden Diagnostics pane — bug reports
-            // need it reachable without knowing about ⌘⇧D.
+            // need it reachable without knowing about ⌘⇧D. The commit + build date (VS Code
+            // style) pin down exactly what shipped; both are stamped into Info.plist at build
+            // time, so they only appear on a real bundle, not an unbundled `swift run`.
             Section("About") {
                 LabeledContent("Version", value: AppInfo.version)
+                if let commit = AppInfo.commit {
+                    LabeledContent("Commit") {
+                        Text(commit)
+                            .zoomFont(.body, design: .monospaced)
+                            .textSelection(.enabled)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: 240, alignment: .trailing)
+                    }
+                }
+                if let buildDate = AppInfo.buildDate {
+                    LabeledContent("Built", value: buildDate)
+                }
             }
         }
         .formStyle(.grouped)

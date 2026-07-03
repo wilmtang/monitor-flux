@@ -41,6 +41,15 @@ if [ -f "$ICON_SOURCE" ]; then
 "
 fi
 
+# Stamp the build with its git commit + UTC date so the app's About row (and the Diagnostics
+# report) can identify exactly what shipped, VS Code-style. A dirty working tree is flagged so a
+# local build off uncommitted changes is never mistaken for a clean commit.
+GIT_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+if [ "$GIT_COMMIT" != "unknown" ] && ! git -C "$ROOT_DIR" diff --quiet HEAD 2>/dev/null; then
+  GIT_COMMIT="${GIT_COMMIT}-dirty"
+fi
+BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -58,6 +67,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
   <string>$APP_VERSION</string>
+  <key>MonitorFluxGitCommit</key>
+  <string>$GIT_COMMIT</string>
+  <key>MonitorFluxBuildDate</key>
+  <string>$BUILD_DATE</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSUIElement</key>
