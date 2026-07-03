@@ -397,6 +397,11 @@ struct ColorScheduleView: View {
                 }
                 preferences.scheduleSource = newSource
             }
+            // Following the sun needs real coordinates — prompt on the first switch so the
+            // schedule doesn't silently run on the shipped default (Seattle) location.
+            if newSource == .solar {
+                store.requestLocationIfNeverAsked()
+            }
         }
     }
 

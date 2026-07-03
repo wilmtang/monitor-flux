@@ -72,7 +72,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   Files: `Views/Components.swift`, `Views/QuickControlsView.swift`, `Views/DisplayDetailView.swift`,
   `Views/FluxCurveEditor.swift`, `Views/HardwareScheduleChart.swift`.
 
-- [ ] **9. Solar schedule silently uses the default (Seattle) coordinates.**
+- [x] **9. Solar schedule silently uses the default (Seattle) coordinates.**
   Picking "Sunrise & sunset" without ever granting location keeps the shipped default lat/long —
   plausible-but-wrong times for everyone else. Fix: request location when switching to solar if
   permission was never asked.

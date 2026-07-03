@@ -264,6 +264,17 @@ final class AppStore: ObservableObject {
         locationService.request()
     }
 
+    /// Ask for location the first time the user picks the solar schedule. The shipped default
+    /// coordinates are Seattle, so without this, "Sunrise & sunset" silently follows the wrong
+    /// city until the user notices the times. Only fires when permission was never asked —
+    /// a denied choice is respected (the Location rows explain how to fix it).
+    func requestLocationIfNeverAsked() {
+        guard locationService.authorizationStatus == .notDetermined else {
+            return
+        }
+        locationService.request()
+    }
+
     private func applyLocation(_ coordinate: CLLocationCoordinate2D) {
         updateGlobalPreferences { preferences in
             preferences.latitude = String(format: "%.4f", coordinate.latitude)
