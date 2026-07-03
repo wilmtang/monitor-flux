@@ -157,14 +157,15 @@ struct QuickControlsView: View {
     /// in the in-track thermometer glyph, the "K" readout, and the Warmth schedule view; the old
     /// flanking flame/snowflake were what made this track shorter than the brightness ones.)
     /// Dragging on a schedule re-warms the current phase (stays Automatic); off a schedule it's a
-    /// "set it now" override → Fixed warmth.
+    /// "set it now" override → Fixed warmth. Always interactive: with warmth Off, a drag turns it
+    /// on at the dragged value — the same "editing it adopts it" rule as the schedule curve —
+    /// rather than a dead slider that needs a mode change first.
     private var warmthRow: some View {
         HStack(spacing: 10) {
             MonitorSlider(
                 systemImage: "thermometer.sun",
                 value: Double(ambienceTemperature),
-                range: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound),
-                isEnabled: ambienceEnabled
+                range: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound)
             ) { newValue in
                 let rounded = Int((newValue / 100.0).rounded()) * 100
                 store.updateGlobalPreferences { preferences in
@@ -186,10 +187,6 @@ struct QuickControlsView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
-    }
-
-    private var ambienceEnabled: Bool {
-        store.preferences.gammaEnabled && store.preferences.colorMode != .off
     }
 
     private var ambienceTemperature: Int {

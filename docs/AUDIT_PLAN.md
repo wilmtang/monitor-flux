@@ -31,7 +31,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   becomes key.
   Files: `Stores/AppStore.swift`, `Views/QuickControlsView.swift`.
 
-- [ ] **4. Popup warmth slider's "drag to enable" path is dead code.**
+- [x] **4. Popup warmth slider's "drag to enable" path is dead code.**
   `onChange` sets `gammaEnabled = true`, but the slider is disabled whenever warmth is off, so the
   line can never fire when it matters. Decision: make the slider always interactive — dragging
   while Off turns warmth on (Fixed at the dragged value, or re-warms the phase on a schedule),
