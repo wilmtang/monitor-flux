@@ -166,6 +166,21 @@ final class AppStore: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Waking from sleep can leave stale gamma and an out-of-date scheduled brightness (the
+        // 60s timer only catches up on its next tick, and a wake doesn't always reconfigure
+        // displays). Re-run the reconcile chain right away — detection first, since it reads
+        // the LUT that reconcileColor is about to overwrite.
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.refreshNativeBrightness()
+                self.refreshGammaConflictState()
+                self.reconcileColor()
+                self.applyScheduledHardware()
+            }
+            .store(in: &cancellables)
+
         // End any schedule-curve preview when the settings window loses key focus — switching
         // apps, clicking another window, or closing it — so a temporary preview never strands the
         // user on a previewed color.

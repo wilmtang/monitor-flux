@@ -54,7 +54,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   to hybrid. The compositor's contrast math stays (pure, tested, documents the pipeline).
   Files: `Models/AppPreferences.swift`, `Stores/AppStore.swift`, tests.
 
-- [ ] **7. Re-apply color and schedule on wake from sleep.**
+- [x] **7. Re-apply color and schedule on wake from sleep.**
   Nothing observes `NSWorkspace.didWakeNotification`; after wake, gamma/scheduled hardware wait
   on the 60 s timer or a reconfiguration callback. Fix: on wake, run conflict detection →
   reconcile color → scheduled hardware (and refresh the backlight cache).
