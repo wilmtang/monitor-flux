@@ -11,6 +11,7 @@ struct DiagnosticsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var copiedReport = false
     @State private var preferencesTransferMessage: String?
+    @State private var showResetConfirmation = false
 
     var body: some View {
         Form {
@@ -32,8 +33,18 @@ struct DiagnosticsView: View {
     private var appSection: some View {
         Section("App") {
             LabeledContent("Version", value: AppInfo.version)
-            if let commit = AppInfo.shortCommit {
-                LabeledContent("Commit", value: commit)
+            if let commit = AppInfo.commit {
+                LabeledContent("Commit") {
+                    Text(commit)
+                        .zoomFont(.caption, design: .monospaced)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 220, alignment: .trailing)
+                }
+            }
+            if let buildDate = AppInfo.buildDate {
+                LabeledContent("Built", value: buildDate)
             }
             LabeledContent("macOS", value: ProcessInfo.processInfo.operatingSystemVersionString)
             LabeledContent("Safe mode", value: store.safeMode ? "On — no hardware writes" : "Off")
@@ -169,6 +180,30 @@ struct DiagnosticsView: View {
             Text(preferencesTransferMessage ?? "Import replaces saved preferences and applies current display settings immediately.")
                 .zoomFont(.caption)
                 .foregroundStyle(preferencesTransferMessage == nil ? .secondary : .primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(role: .destructive) {
+                showResetConfirmation = true
+            } label: {
+                Label("Reset All Settings…", systemImage: "arrow.counterclockwise")
+            }
+            .settingsPushButton()
+            .confirmationDialog(
+                "Reset all settings to defaults?",
+                isPresented: $showResetConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Reset All Settings", role: .destructive) {
+                    store.resetAllSettingsToDefaults()
+                    preferencesTransferMessage = "All settings were reset to their defaults."
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This restores every setting — warmth schedule, per-display brightness/contrast/color, keyboard shortcuts, and general options — to how they were on a fresh install. It can't be undone.")
+            }
+            Text("Restores every setting to its default (a clean slate). Warmth and DDC are re-applied immediately; there's no undo.")
+                .zoomFont(.caption)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

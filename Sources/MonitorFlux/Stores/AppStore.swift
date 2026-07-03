@@ -704,17 +704,30 @@ final class AppStore: ObservableObject {
 
     func importPreferences(from data: Data) throws {
         let imported = try PreferencesStore.importData(data)
-        let loginItemChanged = preferences.startAtLogin != imported.startAtLogin
+        applyReplacementPreferences(imported)
+    }
+
+    /// Factory-reset every saved setting to its default (from Diagnostics). This includes
+    /// per-display brightness/contrast/color and the onboarding flag — a full clean slate.
+    /// Uses the same side-effect re-application as an import.
+    func resetAllSettingsToDefaults() {
+        applyReplacementPreferences(AppPreferences())
+    }
+
+    /// Swap the whole preferences blob (an import or a reset) and re-run every applier whose
+    /// state lives *outside* the struct. Assigning `preferences` re-applies gamma/shades via
+    /// didSet, and `refreshDisplays()` below restores DDC values — but the media-key tap, the
+    /// Carbon/media bindings, the Dock policy, and the login item all hold state elsewhere, so
+    /// their appliers must re-run or the swapped-in toggles silently don't take effect.
+    private func applyReplacementPreferences(_ next: AppPreferences) {
+        let normalized = next.normalized()
+        let loginItemChanged = preferences.startAtLogin != normalized.startAtLogin
         schedulePreviewMinute = nil
-        preferences = imported
+        preferences = normalized
         pendingPreferencesSave?.cancel()
         pendingPreferencesSave = nil
-        PreferencesStore.save(imported)
+        PreferencesStore.save(normalized)
 
-        // Assigning `preferences` re-applies gamma/shades via didSet, and refreshDisplays()
-        // below restores DDC values — but the media-key tap, the Carbon/media bindings, the
-        // Dock policy, and the login item all hold state *outside* the struct, so their
-        // appliers must re-run or the imported toggles silently don't take effect.
         refreshHotKeys()
         if !safeMode {
             if preferences.keyboardControlEnabled {
@@ -725,13 +738,15 @@ final class AppStore: ObservableObject {
             }
             accessibilityTrusted = keyboardService.hasAccessibilityPermission
         }
-        refreshActivationPolicy()
-        // Only touch the login item when the imported value differs — re-registering
-        // unconditionally would replace the friendly "install the app first" status with a
-        // raw service error on development builds.
+        // Blink-safe: a reset flips Show in Dock back off, so if the Diagnostics window is up
+        // with a Dock icon this is the same .regular→.accessory drop the toggle smooths.
+        refreshActivationPolicyKeepingWindowFront()
+        // Only touch the login item when the value differs — re-registering unconditionally
+        // would replace the friendly "install the app first" status with a raw service error
+        // on development builds.
         if loginItemChanged {
             do {
-                try LoginItemService.setEnabled(imported.startAtLogin)
+                try LoginItemService.setEnabled(normalized.startAtLogin)
                 loginItemMessage = LoginItemService.statusLabel()
             } catch {
                 loginItemMessage = error.localizedDescription
@@ -756,16 +771,35 @@ final class AppStore: ObservableObject {
         updateGlobalPreferences { preferences in
             preferences.showInDock = isEnabled
         }
+        refreshActivationPolicyKeepingWindowFront()
+    }
+
+    /// Re-evaluate the Dock policy, but when it drops the app to `.accessory` (Show in Dock
+    /// turned off, or a reset) keep the settings window from **blinking** behind other apps.
+    /// macOS deactivates the app on the *next* runloop turn as it loses its Dock presence,
+    /// which briefly orders the window — where the toggle that triggered this lives — behind
+    /// whatever was underneath, and the re-assert on the turn after brings it back: a visible
+    /// one-frame blink. Pinning the window to a temporary floating level across that gap keeps
+    /// it visually on top the whole time, so there's nothing to blink; the level and normal
+    /// front/key state are restored once the deactivation has landed. Going `.regular` keeps the
+    /// active window front on its own, so it takes the plain path.
+    private func refreshActivationPolicyKeepingWindowFront() {
+        let willDropToAccessory = !(showsDockIcon && windows.isMainWindowVisible)
+        guard willDropToAccessory,
+              NSApp.activationPolicy() == .regular,
+              let window = windows.mainWindow, window.isVisible
+        else {
+            refreshActivationPolicy()
+            return
+        }
+        let savedLevel = window.level
+        window.level = .floating
         refreshActivationPolicy()
-        // Dropping to .accessory deactivates the app, which would shove the settings window —
-        // where this very toggle lives — behind other apps mid-click. That deactivation is
-        // posted asynchronously, so re-assert front on the *next* runloop turn; doing it
-        // inline races the deactivation and loses. Only the accessory direction needs this —
-        // going .regular keeps the active window front on its own.
-        guard !isEnabled, let window = windows.mainWindow, window.isVisible else { return }
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak window] in
+            guard let window else { return }
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
+            window.level = savedLevel
         }
     }
 
