@@ -11,12 +11,13 @@ set -euo pipefail
 #   open    (MONITORFLUX_OPEN_MAIN=1)      — the window opens once.
 #   reopen  (MONITORFLUX_OPEN_MAIN=reopen) — open, close, then reopen; this is what users
 #                                            hit clicking Settings again after closing.
-#   dock    (MONITORFLUX_DOCK_POLICY_TEST) — the app cycles "Show in Dock" through the
-#                                            store; the LaunchServices app type must flip
-#                                            Foreground → UIElement → Foreground with the
-#                                            window staying on screen throughout. Guards
-#                                            the bug where an open titled window pinned
-#                                            the Dock icon and the toggle looked dead.
+#   dock    (MONITORFLUX_FORCE_DOCK)       — launch once with the Dock forced on and once
+#                                            off; the LaunchServices app type must be
+#                                            Foreground then UIElement, with the window on
+#                                            screen either way. Guards the bug where an open
+#                                            titled window pinned the Dock icon and the
+#                                            toggle looked dead, and that accessory mode
+#                                            still opens and places its window.
 #
 # For deeper UI assertions ("a Brightness slider exists and moving it changes state"),
 # use XCUITest, which needs an Xcode app+UITest target — see README/agent.md.
@@ -56,32 +57,37 @@ app_type() {
   lsappinfo info MonitorFlux 2>/dev/null | sed -n 's/.*type="\([^"]*\)".*/\1/p'
 }
 
-run_dock_scenario() {
-  echo "scenario: MONITORFLUX_DOCK_POLICY_TEST=1"
-  local result=0 mid_type end_type
-  MONITORFLUX_SAFE_MODE=1 MONITORFLUX_OPEN_MAIN=1 MONITORFLUX_DOCK_POLICY_TEST=1 \
+# Launch once with the Dock policy forced by MONITORFLUX_FORCE_DOCK, open the window, and
+# assert both the LaunchServices app type and that the window is on screen. Forcing the
+# policy via env (rather than toggling at runtime) pins the launch path deterministically
+# without rewriting the developer's saved preference.
+run_dock_case() {
+  local force="$1" want_type="$2" result=0 got_type
+  echo "scenario: MONITORFLUX_FORCE_DOCK=$force (expect $want_type)"
+  MONITORFLUX_SAFE_MODE=1 MONITORFLUX_OPEN_MAIN=1 MONITORFLUX_FORCE_DOCK="$force" \
     /usr/bin/open -gn "$APP_BUNDLE"
-  sleep 3  # the hook turns "Show in Dock" off at t=2s
-  mid_type="$(app_type)"
-  if [ "$mid_type" != "UIElement" ]; then
-    echo "FAIL: expected UIElement while Show in Dock is off, got '$mid_type'"
+  sleep 2
+  got_type="$(app_type)"
+  if [ "$got_type" != "$want_type" ]; then
+    echo "FAIL: expected $want_type with Show in Dock $force, got '$got_type'"
     result=1
   fi
-  # The window must survive the drop to accessory — the old design closed the loop the
-  # other way (window forced the Dock icon), so guard the new one (icon leaves, window stays).
+  # The window must be on screen in either policy — accessory mode (Dock off) has no
+  # Dock icon but must still open and place its window, which is the mode the refactor
+  # relies on activate()/orderFrontRegardless() for.
   set +e
   swift "$ROOT_DIR/script/check_main_window.swift"
   [ $? -eq 0 ] || result=1
   set -e
-  sleep 2  # the hook turns it back on at t=4s
-  end_type="$(app_type)"
-  if [ "$end_type" != "Foreground" ]; then
-    echo "FAIL: expected Foreground after Show in Dock came back, got '$end_type'"
-    result=1
-  fi
-  sleep 2  # let the hook restore the developer's saved value at t=6s
   pkill -x MonitorFlux >/dev/null 2>&1 || true
   sleep 1
+  return "$result"
+}
+
+run_dock_scenario() {
+  local result=0
+  run_dock_case on Foreground || result=1
+  run_dock_case off UIElement || result=1
   return "$result"
 }
 

@@ -709,12 +709,15 @@ final class AppStore: ObservableObject {
             preferences.showInDock = isEnabled
         }
         refreshActivationPolicy()
-        // Dropping to .accessory deactivates the app, which would shove the settings
-        // window — where this very toggle lives — behind other apps mid-click.
-        // Re-activate so only the Dock icon changes, not the window stacking.
-        if !isEnabled, mainWindow?.isVisible == true {
+        // Dropping to .accessory deactivates the app, which would shove the settings window —
+        // where this very toggle lives — behind other apps mid-click. That deactivation is
+        // posted asynchronously, so re-assert front on the *next* runloop turn; doing it
+        // inline races the deactivation and loses. Only the accessory direction needs this —
+        // going .regular keeps the active window front on its own.
+        guard !isEnabled, let window = mainWindow, window.isVisible else { return }
+        DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
-            mainWindow?.makeKeyAndOrderFront(nil)
+            window.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -735,9 +738,21 @@ final class AppStore: ObservableObject {
     /// explicitly, which makes their window key and front in accessory mode too.
     func refreshActivationPolicy() {
         let policy: NSApplication.ActivationPolicy =
-            preferences.showInDock ? .regular : .accessory
+            showsDockIcon ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
+        }
+    }
+
+    /// Normally the saved preference. `MONITORFLUX_FORCE_DOCK=on|off` overrides it so the
+    /// smoke test can pin the launch policy and read it back from LaunchServices without
+    /// mutating the developer's saved prefs — the activation policy is process state that
+    /// no unit test can reach, and a MenuBarExtra app's AX tree vends no toggle to script.
+    private var showsDockIcon: Bool {
+        switch ProcessInfo.processInfo.environment["MONITORFLUX_FORCE_DOCK"] {
+        case "on": return true
+        case "off": return false
+        default: return preferences.showInDock
         }
     }
 

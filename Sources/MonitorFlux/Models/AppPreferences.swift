@@ -268,7 +268,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var transitionMinutes = 45
     var scheduleSource: ScheduleSource = .manualTimes
     var startAtLogin = false
-    var showInDock = true
+    var showInDock = false
     var keyboardControlEnabled = false
     /// Master switch for the small-step (⌥) shortcut variants. Off by default: the fine
     /// shortcuts neither fire nor appear in Settings, and ⌥ + media keys stay with macOS.
@@ -371,7 +371,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
             .clamped(to: ControlRanges.transitionMinutes)
         scheduleSource = try container.decodeIfPresent(ScheduleSource.self, forKey: .scheduleSource) ?? .manualTimes
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
-        showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? true
+        showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
         fineAdjustmentsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fineAdjustmentsEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false

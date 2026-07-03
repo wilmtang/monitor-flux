@@ -110,16 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Test hook: cycle the "Show in Dock" preference through the same store method the
-        // settings toggle calls, so the smoke test can watch the LaunchServices app type
-        // flip Foreground → UIElement → Foreground from outside. It can't be tested any
-        // closer to the UI: the activation policy is process state (out of unit-test reach)
-        // and the toggle can't be scripted — a MenuBarExtra app's AX tree vends no window
-        // elements. Ends by restoring the developer's saved value.
-        if ProcessInfo.processInfo.environment["MONITORFLUX_DOCK_POLICY_TEST"] == "1" {
-            runDockPolicyCycle()
-        }
-
         // First-run welcome: show once on a fresh install. `MONITORFLUX_SHOW_ONBOARDING=1` forces
         // it for a screenshot run; the main-window test hook suppresses it so the smoke geometry
         // check finds only the titled main window, not the welcome sheet.
@@ -129,23 +119,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if store?.preferences.hasSeenOnboarding == false,
                   env["MONITORFLUX_OPEN_MAIN"] == nil {
             store?.showOnboarding()
-        }
-    }
-
-    /// Used only by the `MONITORFLUX_DOCK_POLICY_TEST=1` smoke test. Off at 2s, back on
-    /// at 4s, then the original value at 6s so a test run doesn't rewrite the developer's
-    /// preference. The smoke script samples the app type between the steps.
-    private func runDockPolicyCycle() {
-        guard let store else { return }
-        let original = store.preferences.showInDock
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak store] in
-            store?.setShowInDock(false)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                store?.setShowInDock(true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    store?.setShowInDock(original)
-                }
-            }
         }
     }
 

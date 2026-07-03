@@ -60,8 +60,9 @@ final class PreferencesMigrationTests: XCTestCase {
 
         let appPreferences = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
-        // Show in Dock defaults ON — including for payloads saved before the field existed.
-        XCTAssertTrue(appPreferences.showInDock)
+        // Show in Dock defaults OFF — a menu-bar-first app is an accessory by default, and
+        // payloads saved before the field existed keep their no-Dock-icon behavior on upgrade.
+        XCTAssertFalse(appPreferences.showInDock)
         XCTAssertFalse(appPreferences.fineAdjustmentsEnabled)
         XCTAssertFalse(appPreferences.hideNoExternalsHint)
         XCTAssertEqual(appPreferences.scheduleSource, .manualTimes)
