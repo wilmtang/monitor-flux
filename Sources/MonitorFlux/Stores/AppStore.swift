@@ -125,6 +125,10 @@ final class AppStore: ObservableObject {
     private var displayRefreshGeneration = 0
     private var cancellables = Set<AnyCancellable>()
 
+    /// Observers for an in-flight `.regular`→`.accessory` drop smoothing pass (see
+    /// `refreshActivationPolicyKeepingWindowFront`); non-empty means a pass is active.
+    private var dockDropSmoothing = Set<AnyCancellable>()
+
     init() {
         safeMode = ProcessInfo.processInfo.environment["MONITORFLUX_SAFE_MODE"] == "1"
         preferences = PreferencesStore.load().normalized()
@@ -775,32 +779,58 @@ final class AppStore: ObservableObject {
     }
 
     /// Re-evaluate the Dock policy, but when it drops the app to `.accessory` (Show in Dock
-    /// turned off, or a reset) keep the settings window from **blinking** behind other apps.
-    /// macOS deactivates the app on the *next* runloop turn as it loses its Dock presence,
-    /// which briefly orders the window — where the toggle that triggered this lives — behind
-    /// whatever was underneath, and the re-assert on the turn after brings it back: a visible
-    /// one-frame blink. Pinning the window to a temporary floating level across that gap keeps
-    /// it visually on top the whole time, so there's nothing to blink; the level and normal
-    /// front/key state are restored once the deactivation has landed. Going `.regular` keeps the
+    /// turned off, or a reset) keep the settings window from **blinking**. macOS deactivates
+    /// the app as it loses its Dock presence — and not on the next runloop turn: measured at
+    /// 60 fps, the deactivation lands several frames *after* the policy call, and the app then
+    /// stays inactive for ~0.7 s before the system hands activation back. So a next-turn
+    /// re-assert (the previous fix) runs while the app is still active and does nothing.
+    /// Instead, watch for the deactivation itself and take activation straight back, holding
+    /// the window on a temporary `.floating` level across the whole gap so it can't be
+    /// reordered behind whatever briefly activates; everything is restored once we're active
+    /// again (or after a timeout, if the deactivation never comes). Going `.regular` keeps the
     /// active window front on its own, so it takes the plain path.
     private func refreshActivationPolicyKeepingWindowFront() {
         let willDropToAccessory = !(showsDockIcon && windows.isMainWindowVisible)
         guard willDropToAccessory,
               NSApp.activationPolicy() == .regular,
-              let window = windows.mainWindow, window.isVisible
+              NSApp.isActive,
+              let window = windows.mainWindow, window.isVisible,
+              dockDropSmoothing.isEmpty  // a pass is already holding the window front
         else {
             refreshActivationPolicy()
             return
         }
-        let savedLevel = window.level
         window.level = .floating
-        refreshActivationPolicy()
-        DispatchQueue.main.async { [weak window] in
-            guard let window else { return }
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            window.level = savedLevel
+
+        NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
+            .sink { [weak self] _ in
+                // The .accessory drop just landed. The toggle click that got us here is a
+                // fresh user interaction, so cooperative activation lets us take it right back.
+                NSApp.activate(ignoringOtherApps: true)
+                self?.windows.mainWindow?.makeKeyAndOrderFront(nil)
+            }
+            .store(in: &dockDropSmoothing)
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                self?.endDockDropSmoothing()
+            }
+            .store(in: &dockDropSmoothing)
+        // If the deactivation (or our re-activation) never arrives, don't leave the window
+        // floating over other apps forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.endDockDropSmoothing()
         }
+
+        refreshActivationPolicy()
+    }
+
+    /// Tear down an in-flight `.regular`→`.accessory` smoothing pass: drop its observers and
+    /// return the settings window to its normal level. Idempotent — the become-active
+    /// observer and the timeout both funnel here.
+    private func endDockDropSmoothing() {
+        guard !dockDropSmoothing.isEmpty else { return }
+        dockDropSmoothing.removeAll()
+        windows.mainWindow?.level = .normal
     }
 
     func increaseFontSize() { setFontSizeStep(preferences.fontSizeStep + 1) }

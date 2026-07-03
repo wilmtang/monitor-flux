@@ -101,6 +101,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        // Verification hook: flip Show in Dock off through the real toggle path some seconds
+        // after launch, so a screen recording can capture the .regular→.accessory transition
+        // (the settings window's AX tree can't be scripted reliably).
+        if let delay = ProcessInfo.processInfo.environment["MONITORFLUX_DOCK_OFF_AFTER"]
+            .flatMap(Double.init) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.store?.setShowInDock(false)
+            }
+        }
+
         // Verification hook: open the menu-bar popup so it can be captured by window id (the
         // popup has no public "show" API). The status item exists once the scene's label has
         // appeared, so defer one tick.
