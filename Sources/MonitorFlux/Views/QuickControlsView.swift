@@ -589,40 +589,10 @@ private struct ControlRow: View {
     }
 }
 
-/// The popup cards' liquid-glass treatment (no real `.glassEffect` before macOS 26, so it's
-/// composed): a material fill that genuinely blurs what's behind the panel, a specular wash
-/// that catches the top of the card, and a rim light brightest along the top edge — over a
-/// faint neutral stroke so card edges stay defined in light mode, where a white rim alone
-/// disappears. Content sits on top at full contrast, so legibility is untouched.
 private func popupCardBackground() -> some View {
-    let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-    return shape
-        .fill(.ultraThinMaterial)
-        .overlay(
-            shape.fill(
-                LinearGradient(
-                    stops: [
-                        .init(color: .white.opacity(0.09), location: 0),
-                        .init(color: .white.opacity(0.02), location: 0.4),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-        )
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.06)))
-        .overlay(
-            shape.strokeBorder(
-                LinearGradient(
-                    colors: [.white.opacity(0.28), .white.opacity(0.04)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                lineWidth: 1
-            )
-        )
-        .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+    RoundedRectangle(cornerRadius: 10)
+        .fill(Color.primary.opacity(0.06))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
 }
 
 /// Collapse the `MenuBarExtra(.window)` dropdown the way clicking a real `NSMenu` item does.
