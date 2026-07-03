@@ -168,6 +168,12 @@ struct SettingsView: View {
                 }
                 .settingsPushButton()
             }
+
+            // Version was previously only visible in the hidden Diagnostics pane — bug reports
+            // need it reachable without knowing about ⌘⇧D.
+            Section("About") {
+                LabeledContent("Version", value: AppInfo.version)
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("General")

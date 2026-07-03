@@ -31,7 +31,7 @@ struct DiagnosticsView: View {
 
     private var appSection: some View {
         Section("App") {
-            LabeledContent("Version", value: Self.appVersion)
+            LabeledContent("Version", value: AppInfo.version)
             LabeledContent("macOS", value: ProcessInfo.processInfo.operatingSystemVersionString)
             LabeledContent("Safe mode", value: store.safeMode ? "On — no hardware writes" : "Off")
             LabeledContent("Accessibility", value: store.accessibilityTrusted ? "Granted" : "Not granted")
@@ -172,11 +172,6 @@ struct DiagnosticsView: View {
 
     // MARK: - Formatting
 
-    private static var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        return version ?? "dev (unbundled)"
-    }
-
     private func solarLabel(_ minutes: Int?) -> String {
         minutes.map(MinuteFormatting.label(for:)) ?? "—"
     }
@@ -274,7 +269,7 @@ struct DiagnosticsView: View {
     private func reportText() -> String {
         var lines: [String] = []
         lines.append("MonitorFlux Diagnostics")
-        lines.append("Version: \(Self.appVersion)")
+        lines.append("Version: \(AppInfo.version)")
         lines.append("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("Safe mode: \(store.safeMode ? "on" : "off")")
         lines.append("Accessibility: \(store.accessibilityTrusted ? "granted" : "not granted")")

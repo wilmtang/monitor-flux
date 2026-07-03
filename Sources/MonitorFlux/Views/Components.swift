@@ -209,7 +209,14 @@ struct MonitorSlider: View {
     var accessibilityValueText: String? = nil
     let onChange: (Double) -> Void
 
-    private let height: CGFloat = 24
+    @Environment(\.settingsZoomScale) private var zoomScale
+
+    /// Track/knob size rides the window zoom (the environment default is 1.0, so the popup —
+    /// which doesn't zoom — keeps the native 24 pt). Without this, a zoomed detail pane grew
+    /// its text but left the slider a fixed small target.
+    private var height: CGFloat {
+        (24 * zoomScale).rounded()
+    }
 
     private var fraction: Double {
         guard range.upperBound > range.lowerBound else { return 0 }

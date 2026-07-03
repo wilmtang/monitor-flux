@@ -28,7 +28,9 @@ struct ContentView: View {
                 }
 
                 Section {
-                    ForEach(store.displays) { display in
+                    // Same user-chosen order as the popup's cards (drag-to-reorder), so the two
+                    // surfaces list displays identically.
+                    ForEach(store.orderedDisplays) { display in
                         sidebarRow(display.name, systemImage: display.isBuiltIn ? "laptopcomputer" : "display")
                             .tag(AppSelection.display(display.key))
                     }

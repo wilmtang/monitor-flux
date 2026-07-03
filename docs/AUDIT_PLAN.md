@@ -78,7 +78,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   permission was never asked.
   Files: `Views/ColorScheduleView.swift`, `Stores/AppStore.swift`.
 
-- [ ] **10. Small UX alignments.**
+- [x] **10. Small UX alignments.**
   Sidebar display order should match the popup's user-chosen card order; `MonitorSlider` height
   should scale with the window zoom (fixed 24 pt leaves small targets at 200 %); add a Version
   row to General (today the version is only in the hidden Diagnostics pane).
