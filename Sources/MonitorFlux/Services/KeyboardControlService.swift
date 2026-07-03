@@ -73,6 +73,7 @@ final class KeyboardControlService {
             return true
         }
         guard AXIsProcessTrusted() else {
+            AppLog.keyboard.notice("Media-key tap not started: Accessibility not granted")
             return false
         }
 
@@ -99,10 +100,12 @@ final class KeyboardControlService {
         eventTap = tap
         runLoopSource = source
         isActive = true
+        AppLog.keyboard.notice("Media-key tap started")
         return true
     }
 
     func stop() {
+        let wasActive = isActive
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
@@ -112,11 +115,17 @@ final class KeyboardControlService {
         eventTap = nil
         runLoopSource = nil
         isActive = false
+        if wasActive {
+            AppLog.keyboard.notice("Media-key tap stopped")
+        }
     }
 
     func reEnableAfterDisable() {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: true)
+            // The system disables the tap if our callback is ever too slow — worth a persisted
+            // breadcrumb, since it means media keys briefly stopped routing.
+            AppLog.keyboard.notice("Media-key tap re-enabled after system disable")
         }
     }
 

@@ -172,6 +172,7 @@ final class AppStore: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
+                AppLog.schedule.notice("Woke from sleep; re-applying color and schedule")
                 self.refreshNativeBrightness()
                 self.refreshGammaConflictState()
                 self.reconcileColor()
@@ -1146,8 +1147,10 @@ final class AppStore: ObservableObject {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     if let failureMessage {
+                        AppLog.ddc.error("volume write failed on \(displayName, privacy: .public): \(failureMessage, privacy: .public)")
                         self?.reportDDCStatus("Volume failed on \(displayName): \(failureMessage)", immediate: true)
                     } else {
+                        AppLog.ddc.debug("Wrote volume \(value)% to \(displayName, privacy: .public)")
                         self?.reportDDCStatus("Applied volume \(value)% to \(displayName)")
                     }
                 }
@@ -1270,13 +1273,21 @@ final class AppStore: ObservableObject {
             return
         }
         let detected = gammaService.detectsForeignGammaChange(displays: displays)
-        if detected, !gammaConflictDetected {
+        let wasDetected = gammaConflictDetected
+        if detected, !wasDetected {
             gammaConflictBannerDismissed = false
         }
         gammaConflictDetected = detected
         // We can't ask the OS which process wrote the gamma table, so name any known gamma app
         // that's running as the likely cause.
         gammaConflictApps = detected ? GammaConflictApp.runningConflictingAppNames() : []
+        // Log only the edges (detected / cleared), not every 60s poll while it persists.
+        if detected, !wasDetected {
+            let likely = gammaConflictApps.isEmpty ? "unknown app" : gammaConflictApps.joined(separator: ", ")
+            AppLog.gamma.notice("Foreign gamma change detected (likely: \(likely, privacy: .public))")
+        } else if !detected, wasDetected {
+            AppLog.gamma.notice("Gamma conflict cleared")
+        }
     }
 
     // MARK: - Schedule preview (scrub the curve to preview the screen's warmth)
@@ -1399,9 +1410,17 @@ final class AppStore: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                let previousTemperature = self.currentTemperature
                 // Detection reads the LUT, so it must run before reconcileColor re-applies our table.
                 self.refreshGammaConflictState()
                 self.reconcileColor()
+                // Log only the *automatic* clock advance (not manual drags, which never route
+                // through this timer) so a bug report shows warmth changing on its own.
+                if self.preferences.colorMode == .clock,
+                   self.currentTemperature != previousTemperature,
+                   let temperature = self.currentTemperature {
+                    AppLog.gamma.notice("Scheduled warmth advanced to \(temperature, privacy: .public) K")
+                }
                 self.applyScheduledHardware()
             }
         }
@@ -1412,7 +1431,10 @@ final class AppStore: ObservableObject {
     /// Called from the minute timer and after display/preference changes. The routing rules
     /// and the "only write when the target changes" tracking live in the pure
     /// `ScheduledHardware.plan`; this executes the writes it returns.
-    func applyScheduledHardware() {
+    /// - Parameter automatic: true for timer/wake/hotplug-driven runs (logged at `.notice`, so
+    ///   an on-its-own change lands in a bug report); false when the user is editing a schedule
+    ///   slider (logged at `.debug`, so a drag doesn't flood the report).
+    func applyScheduledHardware(automatic: Bool = true) {
         guard !displays.isEmpty else {
             return
         }
@@ -1446,6 +1468,12 @@ final class AppStore: ObservableObject {
         for write in writes {
             guard let display = displays.first(where: { $0.id == write.displayID }) else {
                 continue
+            }
+            let control = write.control == .brightness ? "brightness" : "contrast"
+            if automatic {
+                AppLog.schedule.notice("Schedule set \(control, privacy: .public) to \(write.target)% on \(display.name, privacy: .public)")
+            } else {
+                AppLog.schedule.debug("Schedule set \(control, privacy: .public) to \(write.target)% on \(display.name, privacy: .public)")
             }
             switch write.control {
             case .brightness:
@@ -1497,7 +1525,8 @@ final class AppStore: ObservableObject {
     /// or edits a day/night target), bypassing the "unchanged target" guard so it applies now.
     func reapplySchedule(for display: DisplayInfo) {
         scheduledHardwareState.clear(display.id)
-        applyScheduledHardware()
+        // User-initiated (editing a schedule slider), so log the writes at .debug, not .notice.
+        applyScheduledHardware(automatic: false)
     }
 
     private func seedMissingDisplayPreferences() -> Bool {
@@ -1602,8 +1631,11 @@ final class AppStore: ObservableObject {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     if let failureMessage {
+                        AppLog.ddc.error("\(label, privacy: .public) write failed on \(displayName, privacy: .public): \(failureMessage, privacy: .public)")
                         self?.reportDDCStatus("\(label.capitalized) failed on \(displayName): \(failureMessage)", immediate: true)
                     } else {
+                        // Per-write success is drag-frequency, so .debug (streamable, not persisted).
+                        AppLog.ddc.debug("Wrote \(label, privacy: .public) \(value)% to \(displayName, privacy: .public)")
                         self?.reportDDCStatus("Applied \(label) \(value)% to \(displayName)")
                     }
                 }

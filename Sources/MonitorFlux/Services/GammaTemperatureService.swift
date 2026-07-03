@@ -96,6 +96,10 @@ final class GammaTemperatureService {
                     message: "Gamma unchanged"
                 )
             }
+            // Applies happen at drag frequency (each distinct table), so .debug — not persisted.
+            if applied > 0 {
+                AppLog.gamma.debug("Applied gamma to \(applied) display(s)")
+            }
             return GammaApplySummary(
                 appliedCount: applied,
                 failedCount: failed,
@@ -103,6 +107,7 @@ final class GammaTemperatureService {
             )
         }
 
+        AppLog.gamma.error("Gamma apply: \(applied) applied, \(failed) failed")
         return GammaApplySummary(
             appliedCount: applied,
             failedCount: failed,
@@ -111,6 +116,7 @@ final class GammaTemperatureService {
     }
 
     func restore() {
+        AppLog.gamma.notice("Restored system color tables")
         CGDisplayRestoreColorSyncSettings()
         baselines.removeAll()
         appliedAdjustments.removeAll()

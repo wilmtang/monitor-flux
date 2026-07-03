@@ -103,9 +103,20 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   still be unsafe to instantiate in tests — the planners give the same coverage without
   speculative DI. `AppStore` is down to ~1,680 lines and is now orchestration + state.
 
-- [~] **12. Adopt `os.Logger` across gamma/DDC/schedule paths.**
-  Field debugging currently relies on the Diagnostics pane's current-state strings. Deferred with
-  the same reasoning.
+- [x] **12. Adopt `os.Logger` across gamma/DDC/schedule/keyboard paths.**
+  New `Support/AppLog.swift` — four categories (`gamma`, `ddc`, `schedule`, `keyboard`) on the
+  `app.monitorflux.MonitorFlux` subsystem, which `build_and_run.sh --telemetry` already streams
+  (previously showed nothing). Level policy chosen so a drag can't flood a bug report:
+  **`.notice`** (persisted → survives into a sysdiagnose, and shows in `--telemetry`) for the
+  *automatic* screen-changing events — the clock advancing warmth, a scheduled brightness/
+  contrast write, a gamma conflict edge, the media-key tap's lifecycle, a wake re-apply;
+  **`.error`** for gamma/DDC write failures; **`.debug`** (not persisted) for drag-frequency
+  detail (each successful DDC write, each gamma apply) and user-driven schedule-slider edits.
+  Automatic vs. user-driven is distinguished at the trigger site (the 60 s timer / wake log at
+  `.notice`; `reapplySchedule` passes `automatic: false`), so manual drags stay at `.debug`.
+  Verified via build + 195 tests + `--verify`; a live log-capture would require hardware writes
+  (screen flicker), so it wasn't run — the subsystem string is asserted against the script
+  predicate instead.
 
 ## Other observations (no action planned)
 

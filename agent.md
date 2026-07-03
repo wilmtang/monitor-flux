@@ -183,6 +183,13 @@ pkill -x MonitorFlux || true
   regress it to a trailing-only debounce — that only updates the monitor on release.
 - Keep DDC writes off the main thread; gamma writes stay routed through the single
   `GammaTemperatureService` writer.
+- **Logging** goes through `Support/AppLog.swift` (categories `gamma`/`ddc`/`schedule`/`keyboard`
+  on subsystem `app.monitorflux.MonitorFlux`, streamed by `build_and_run.sh --telemetry`). Level
+  policy, to keep a bug report clean: `.notice` for *automatic*, low-frequency, screen-changing
+  events (persisted → lands in a sysdiagnose); `.error` for write failures; `.debug` for
+  drag-frequency or user-driven detail (per DDC/gamma write, schedule-slider edits) so a drag
+  can't flood the log. Log automatic vs. user-driven at the trigger site — never at drag
+  frequency on `.notice`. Mark display names `\(name, privacy: .public)`.
 - Use `MonitorSlider` (not a stepped SwiftUI `Slider`) for the popup; a `step:` on a
   macOS `Slider` draws tick marks. Round in the setter instead.
 - Gamma is a single-owner resource: surface the `GammaConflictBanner` so users disable
