@@ -24,7 +24,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
   matches the slider (stale). Fix: in clock mode, adjust the active phase's temperature.
   Files: `Stores/AppStore.swift`.
 
-- [ ] **3. Built-in brightness slider shows stale values.**
+- [x] **3. Built-in brightness slider shows stale values.**
   The `nativeBrightness` cache is only refreshed in `refreshDisplays()`; bare brightness keys are
   handled by macOS, so the popup card and detail hero drift out of sync until the next display
   reconfiguration. Fix: re-read the backlight when the popup appears and when the main window

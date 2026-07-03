@@ -39,7 +39,12 @@ struct QuickControlsView: View {
         .frame(width: 312)
         // The popup content exists exactly while the MenuBarExtra panel is open, so its
         // appear/disappear is the reliable "is the popup showing?" signal for the ⌘, command.
-        .onAppear { store.quickControlsPopupVisible = true }
+        // Opening also re-reads the backlight, so the built-in card's slider reflects any
+        // keyboard brightness changes macOS handled since the last refresh.
+        .onAppear {
+            store.quickControlsPopupVisible = true
+            store.refreshNativeBrightness()
+        }
         .onDisappear { store.quickControlsPopupVisible = false }
     }
 

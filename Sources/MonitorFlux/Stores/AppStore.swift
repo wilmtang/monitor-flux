@@ -178,6 +178,17 @@ final class AppStore: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Coming back to the settings window re-reads the backlight, so the built-in display's
+        // Brightness slider reflects any keyboard changes macOS handled while we weren't looking.
+        NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+            .sink { [weak self] notification in
+                guard let self, (notification.object as? NSWindow) === self.mainWindow else {
+                    return
+                }
+                self.refreshNativeBrightness()
+            }
+            .store(in: &cancellables)
+
         // Custom global shortcuts use Carbon hot keys, which (unlike the media-key tap) need
         // no Accessibility permission, so they're registered independently of that toggle.
         hotKeyCenter.onAction = { [weak self] action in
@@ -441,14 +452,22 @@ final class AppStore: ObservableObject {
         nativeBrightnessBackend.setBrightness(Float(clamped), for: display.id)
     }
 
-    private func refreshNativeBrightness() {
+    /// Re-read the real backlight into the cache. Beyond each display refresh, this also runs
+    /// when the popup opens and when the settings window becomes key: bare brightness keys on
+    /// the built-in are handled by macOS (not us), so without a re-read the slider would show
+    /// a stale level until the next display reconfiguration.
+    func refreshNativeBrightness() {
         var levels: [CGDirectDisplayID: Double] = [:]
         for display in displays where nativeBrightnessBackend.canControl(display.id) {
             if let value = nativeBrightnessBackend.brightness(of: display.id) {
                 levels[display.id] = Double(value)
             }
         }
-        nativeBrightness = levels
+        // Skip the no-op publish: this runs on every popup open / window focus, and an
+        // unchanged @Published set would still re-render every observer.
+        if nativeBrightness != levels {
+            nativeBrightness = levels
+        }
     }
 
     func displayPreferences(for display: DisplayInfo) -> DisplayPreferences {
