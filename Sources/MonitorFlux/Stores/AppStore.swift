@@ -1314,7 +1314,9 @@ final class AppStore: ObservableObject {
         guard !safeMode else {
             return
         }
-        gammaService.restore()
+        // Only reset the tables if we wrote gamma this session — a no-write session must not
+        // flicker on quit or clobber another color app's tables with a ColorSync reset.
+        gammaService.restoreIfWritten()
         // Lift any AirPlay/virtual shade overlays too, so those screens return to full brightness
         // on quit (the shade isn't a gamma table, so the gamma restore above doesn't clear it).
         shadeController.removeAll()

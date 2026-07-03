@@ -117,6 +117,17 @@ final class GammaTemperatureService {
         lastSetTables.removeAll()
     }
 
+    /// Quit-path restore: reset the color tables only when this session actually wrote gamma.
+    /// A session that never wrote (Warmth off, no software dimming — MonitorFlux used purely
+    /// as a DDC controller) must not flicker the screen on quit or stomp another color app's
+    /// tables (f.lux, Night Shift) with a ColorSync reset.
+    func restoreIfWritten() {
+        guard didStartSession else {
+            return
+        }
+        restore()
+    }
+
     /// True when the current LUT for any display we've warmed no longer matches what we last
     /// wrote — i.e. another app is also editing gamma and the two are fighting. Reading the
     /// table is cheap and causes no flash. Returns false until we've written at least once.

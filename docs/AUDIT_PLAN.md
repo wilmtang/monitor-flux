@@ -10,7 +10,7 @@ Legend: `[ ]` open · `[x]` done · `[~]` deferred (with reason)
 
 ## Phase 1 — Correctness fixes
 
-- [ ] **1. Quit always resets system color tables, even when gamma was never written.**
+- [x] **1. Quit always resets system color tables, even when gamma was never written.**
   `applicationWillTerminate` → `AppStore.restoreColorTables()` → `GammaTemperatureService.restore()`
   calls `CGDisplayRestoreColorSyncSettings()` unconditionally. Running MonitorFlux as a pure
   DDC controller (Warmth off) alongside f.lux/Night Shift means every quit flickers and stomps
