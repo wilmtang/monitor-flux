@@ -44,7 +44,7 @@ struct DisplayDetailView: View {
     private var airplayBrightnessSection: some View {
         Section {
             unifiedBrightnessRow
-            Text("Dimmed with a translucent overlay, since AirPlay/wireless displays have no hardware brightness and ignore gamma. It only goes darker, not brighter.")
+            Text("Dimmed with an overlay — wireless displays have no hardware brightness. Darker only, not brighter.")
                 .zoomFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -68,8 +68,8 @@ struct DisplayDetailView: View {
                 .disabled(store.preferences.colorMode == .off)
             LabeledContent("Current", value: store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
             Text(store.preferences.colorMode != .off
-                ? "Opt this display into the global warmth schedule and manual warmth changes."
-                : "Turn warmth on (Fixed or Automatic) on the Schedule screen to warm individual displays.")
+                ? "Include this display in warmth changes."
+                : "Turn on warmth in Schedule to warm individual displays.")
                 .zoomFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -87,14 +87,47 @@ struct DisplayDetailView: View {
                 sectionHeader("Brightness", help: HelpText.backlight, helpTitle: "Backlight")
             }
         } else {
+            let hasContrast = store.canUseDDC(for: display)
             Section {
                 unifiedBrightnessRow
                 dimmingMethodRow
                 brightnessCaption
+                if hasContrast {
+                    contrastRow
+                }
             } header: {
-                sectionHeader("Brightness", help: HelpText.ddc, helpTitle: "Monitor brightness (DDC/CI)")
+                sectionHeader(
+                    hasContrast ? "Brightness & contrast" : "Brightness",
+                    help: HelpText.ddc,
+                    helpTitle: hasContrast ? "Brightness & contrast (DDC/CI)" : "Monitor brightness (DDC/CI)"
+                )
             }
         }
+    }
+
+    /// Contrast — a monitor-native DDC control, promoted out of Advanced to sit under the
+    /// Brightness slider. Same `MonitorSlider` + label/readout columns as the hero row above,
+    /// so the two tracks share their left/right edges.
+    private var contrastRow: some View {
+        let zoomScale = store.preferences.settingsZoomScale
+        return HStack(spacing: 10) {
+            Text("Contrast")
+                .lineLimit(1)
+                .frame(width: (108 * zoomScale).rounded(), alignment: .leading)
+            MonitorSlider(
+                systemImage: "circle.lefthalf.filled",
+                label: "Contrast",
+                value: Double(displayPreferences.hardwareContrast),
+                range: Double(ControlRanges.hardwarePercent.lowerBound)...Double(ControlRanges.hardwarePercent.upperBound)
+            ) { newValue in
+                store.setHardwareContrast(Int(newValue.rounded()), for: display)
+            }
+            Text("\(displayPreferences.hardwareContrast)%")
+                .monospacedDigit()
+                .lineLimit(1)
+                .frame(width: (44 * zoomScale).rounded(), alignment: .trailing)
+        }
+        .padding(.vertical, 2)
     }
 
     /// The hero slider, driven by the unified brightness position — the same `MonitorSlider`
@@ -162,23 +195,23 @@ struct DisplayDetailView: View {
         let text: LocalizedStringKey
         switch store.brightnessControlKind(for: display) {
         case .hybrid:
-            text = "Uses the monitor's **own brightness** first; keep dragging below the notch to darken the **image** further with software dimming. Contrast and volume are under Advanced."
+            text = "Uses the monitor's **own brightness** first; drag below the notch to darken the **image** in software."
         case .hardwareOnly:
             text = display.isBuiltIn
-                ? "This is the **real backlight** — the same hardware level as macOS's own brightness control. To dim the **image** in software instead, leaving the backlight untouched, turn on Software dimming under Advanced."
-                : "The monitor's own brightness control, sent over DDC like its physical buttons. Contrast, volume, and DDC details are under Advanced."
+                ? "The **real backlight**, same as macOS's brightness control. To dim the **image** instead, turn on Software dimming under Advanced."
+                : "The monitor's own brightness, sent over the cable like its physical buttons."
         case .softwareOnly:
             if display.isBuiltIn {
                 text = store.canUseNativeBrightness(display)
-                    ? "Darkens the **image** in software — the real **backlight stays put** (the keyboard brightness keys still control it). Switch back under Advanced."
-                    : "This panel exposes no backlight API, so MonitorFlux darkens the **image** in software instead."
+                    ? "Darkens the **image** in software; the **backlight stays put** (keyboard keys still control it). Switch back under Advanced."
+                    : "This panel has no backlight control, so brightness dims the **image** in software."
             } else if store.canUseDDC(for: display) {
                 text = "Darkens the **image** in software; the monitor's own brightness is left alone."
             } else {
-                text = "This connection doesn't expose the monitor's own brightness (no DDC), so MonitorFlux darkens the **image** in software."
+                text = "No DDC on this connection, so brightness dims the **image** in software."
             }
         case .unavailable:
-            text = "This connection doesn't expose the monitor's own brightness (no DDC). Choose Automatic or Software dimming to dim the image instead."
+            text = "No DDC on this connection. Switch to Software dimming to dim the **image** instead."
         case .shade:
             text = "" // AirPlay renders its own section.
         }
@@ -197,7 +230,7 @@ struct DisplayDetailView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "slider.horizontal.3")
                         .foregroundStyle(.secondary)
-                    Text("Advanced")
+                    Text("Show Advanced Settings")
                         .zoomFont(.headline)
                 }
             }
@@ -247,16 +280,6 @@ struct DisplayDetailView: View {
                 .zoomFont(.body)
             }
 
-            advancedSliderRow(
-                title: "Contrast",
-                icon: "circle.lefthalf.filled",
-                value: displayPreferences.hardwareContrast,
-                range: ControlRanges.hardwarePercent,
-                isEnabled: store.canUseDDC(for: display)
-            ) {
-                store.setHardwareContrast($0, for: display)
-            }
-
             if store.shouldShowVolumeControl(for: display) {
                 advancedSliderRow(
                     title: "Volume",
@@ -270,11 +293,11 @@ struct DisplayDetailView: View {
             }
 
             if !store.displayHasDetectedAudio(display) {
-                advancedToggleRow("Show volume control", isOn: displayBinding(\.forceVolumeControl))
-                advancedCaption("No speakers were detected on this monitor. Enable this only if it has built-in speakers controlled over DDC.")
+                advancedToggleRow("Show volume control", icon: "speaker.wave.2.fill", isOn: displayBinding(\.forceVolumeControl))
+                advancedCaption("No speakers detected. Turn on only if this monitor has built-in speakers.")
             }
 
-            advancedCaption("Contrast and volume are also monitor-native controls. They send live as you drag.")
+            advancedCaption("Volume is a monitor-native control, sent live as you drag.")
         }
     }
 
@@ -293,10 +316,10 @@ struct DisplayDetailView: View {
                         isOn: softwareDimmingBinding
                     )
                     advancedCaption(store.dimmingMode(for: display) == .hardware
-                        ? "Hands the Brightness slider above fully to software: it darkens the **image** and the real **backlight stays put**. Worth trying if dim screens strain your eyes — many panels dim their backlight by flickering it, and the flicker gets harsher the lower it goes; software dimming keeps the backlight steady at a comfortable level."
-                        : "The Brightness slider above now darkens the **image** in software, and the real **backlight stays put** at the level you set (the keyboard brightness keys still control it). Easier on eyes that are sensitive to low backlight flicker. Turn off to drive the backlight directly again.")
+                        ? "Dims the **image** instead of the **backlight**, which stays put. Worth trying if low backlight levels strain your eyes — many panels flicker more the dimmer they get."
+                        : "The Brightness slider now dims the **image**; the **backlight stays put** (keyboard keys still control it). Turn off to drive the backlight directly.")
                 } else {
-                    advancedCaption("This panel has no backlight control, so the Brightness slider above always dims in software.")
+                    advancedCaption("This panel has no backlight control, so brightness always dims the image.")
                 }
                 dimToBlackRows
             }
@@ -312,7 +335,7 @@ struct DisplayDetailView: View {
                         displayPreferences.gammaBrightness = newValue
                     }
                 }
-                advancedCaption("The raw image-darkening level — 100% is neutral, and the Brightness slider drives it automatically below the notch. This is the only control that reaches the **100–150% boost** range, and it works in every dimming method. Heavy use can cause slight banding.")
+                advancedCaption("The raw image level — 100% is neutral; the Brightness slider drives it below the notch. The only way to **boost past 100%** for a dim panel. Heavy use can cause slight banding.")
                 dimToBlackRows
             }
         }
@@ -324,7 +347,7 @@ struct DisplayDetailView: View {
     private var dimToBlackRows: some View {
         if [.hybrid, .softwareOnly].contains(store.brightnessControlKind(for: display)) {
             advancedToggleRow("Allow dimming to black", isOn: displayBinding(\.dimToBlack))
-            advancedCaption("Lets the very bottom of the Brightness slider turn the screen **completely black** instead of stopping at a faintly readable level. Brightness-up keys and the slider still recover it.")
+            advancedCaption("Lets the bottom of the Brightness slider go **fully black** instead of stopping at a dim, readable level. The slider and brightness keys still recover it.")
         }
     }
 
@@ -345,7 +368,7 @@ struct DisplayDetailView: View {
             if display.isBuiltIn, store.canUseNativeBrightness(display) {
                 // macOS already manages the built-in backlight (auto-brightness / ambient sensor);
                 // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
-                advancedCaption("The built-in display's brightness is managed by macOS (auto-brightness), so MonitorFlux doesn't schedule it. Brightness/contrast scheduling applies to external monitors.")
+                advancedCaption("macOS manages the built-in brightness (auto-brightness), so it isn't scheduled. Scheduling applies to external monitors.")
             } else {
                 advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
                 if displayPreferences.scheduleBrightness {
@@ -385,9 +408,9 @@ struct DisplayDetailView: View {
     /// The schedule explainer, with the unified-target hint when this display's scheduled
     /// brightness can continue below the hardware minimum (Automatic dimming on a DDC panel).
     private var scheduleCaption: LocalizedStringKey {
-        let base = "Eases the real brightness/contrast from the daytime value to the night value on the **same day–night timeline as Warmth** (set on the Schedule screen — wake, bedtime, and fade). A manual change holds until the next phase."
+        let base = "Eases brightness/contrast from the daytime value to the night value on the **same times as Warmth** (set in Schedule). A manual change holds until the next phase."
         if store.brightnessControlKind(for: display) == .hybrid, !display.isBuiltIn {
-            return LocalizedStringKey(base + " A brightness target below the notch keeps dimming the image in software.")
+            return LocalizedStringKey(base + " A target below the notch keeps dimming in software.")
         }
         return LocalizedStringKey(base)
     }
@@ -433,16 +456,30 @@ struct DisplayDetailView: View {
 
     private func advancedToggleRow(
         _ title: String,
+        icon: String? = nil,
         isOn: Binding<Bool>,
         isEnabled: Bool = true
     ) -> some View {
         // A plain Toggle keeps the native row layout (label leading, switch trailing —
-        // the pairing settingsSwitch() centers exactly); the leading pad lines the title
-        // up with the icon column of the slider rows below.
-        Toggle(isOn: isOn) {
-            Text(title)
-                .zoomFont(.body, weight: .medium)
-                .padding(.leading, advancedLeadingPad)
+        // the pairing settingsSwitch() centers exactly). With an icon, it fills the same
+        // 18 pt column as the slider rows; without one, a leading pad lines the title up
+        // with that column either way.
+        let zoomScale = store.preferences.settingsZoomScale
+        return Toggle(isOn: isOn) {
+            if let icon {
+                HStack(spacing: 12) {
+                    Image(systemName: icon)
+                        .zoomFont(size: 13, weight: .medium)
+                        .frame(width: (18 * zoomScale).rounded())
+                        .foregroundStyle(.secondary)
+                    Text(title)
+                        .zoomFont(.body, weight: .medium)
+                }
+            } else {
+                Text(title)
+                    .zoomFont(.body, weight: .medium)
+                    .padding(.leading, advancedLeadingPad)
+            }
         }
         .settingsSwitch()
         .disabled(!isEnabled)
@@ -520,6 +557,9 @@ struct DisplayDetailView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(.quaternary)
         )
+        // Line the chart's left edge up with the toggles and sliders around it (which sit in
+        // the icon column). Without this the chart bled the full width and jutted out to the left.
+        .padding(.leading, advancedLeadingPad)
         .padding(.bottom, 2)
     }
 

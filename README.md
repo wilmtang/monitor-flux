@@ -106,10 +106,11 @@ for warmth.
   change the mode off the schedule, or hit Refresh — and the real current-time marker stays visible
   (fainter) while you scrub.
   In-app ⓘ tooltips are short summaries; the deeper explanations live here in the README.
-- Each **Display** screen separates the monitor's real controls (DDC brightness/contrast, or
-  the built-in backlight) from software gamma brightness and the day/night brightness schedule,
-  with warmth enablement on top. **AirPlay/wireless** displays get a stripped-down pane — overlay
-  dimming only — because they have no hardware controls and ignore gamma.
+- Each **Display** screen keeps the monitor's everyday controls — brightness and contrast (DDC),
+  or the built-in backlight — on the main pane, with warmth enablement on top. **Show Advanced
+  Settings** reveals software gamma dimming, the day/night brightness & contrast schedule, and
+  monitor extras (volume, DDC index). **AirPlay/wireless** displays get a stripped-down pane —
+  overlay dimming only — because they have no hardware controls and ignore gamma.
 - The settings window supports **⌘+ / ⌘− / ⌘0** to zoom its text. The chosen size is remembered,
   and zoom uses SwiftUI semantic text sizing rather than visual scaling so controls stay clickable.
 

@@ -51,50 +51,43 @@ extension Color {
 /// Plain-language explanations of the two control paths, surfaced via `InfoButton`.
 enum HelpText {
     static let gamma = """
-    Warmth tints the image by editing macOS's color tables — it never changes the real \
-    backlight. Only one app should drive it at a time (turn off Night Shift / f.lux). \
-    Wired displays only; AirPlay is dimmed by an overlay instead.
+    Warms the screen by tinting its colors, not by changing the backlight. Only one color app \
+    can do this at a time — turn off Night Shift or f.lux. Wired displays only.
     """
 
     static let airplayDimming = """
-    AirPlay and other wireless displays have no DDC and ignore gamma, so MonitorFlux dims them \
-    with a translucent black overlay instead. It only goes darker, never brighter — and there's \
-    no warmth, contrast, or volume for them.
+    Wireless displays can't be controlled directly, so they're dimmed with a dark overlay — \
+    darker only, and no warmth, contrast, or volume.
     """
 
     static let ddc = """
-    DDC/CI sends commands over the video cable to an external monitor's firmware — the same thing \
-    its physical buttons do — changing the real backlight, contrast, and volume. External displays \
-    only; support depends on the monitor, cable, and port.
+    Controls an external monitor's own brightness, contrast, and volume over the video cable — \
+    the same settings as its physical buttons. Support varies by monitor and cable.
     """
 
     static let backlight = """
-    Sets the real backlight through the private DisplayServices framework — the same level the \
-    menu-bar slider and keyboard brightness keys use. Works on the built-in and Apple displays.
+    Sets the real backlight — the same level as the keyboard brightness keys and the menu-bar \
+    slider. Works on the built-in and Apple displays.
     """
 
     static let dimmingMethod = """
-    Automatic uses the monitor's own brightness (DDC/CI) first and, below the notch, keeps \
-    darkening the image in software (gamma). Monitor hardware drives only the monitor's own \
-    control; Software dimming only darkens the image — it can't go brighter than the backlight.
+    Automatic uses the monitor's own brightness first, then darkens the image in software once \
+    it bottoms out. Monitor hardware uses only the monitor's control; Software dims the image only.
     """
 
     static let softwareDimming = """
-    Software dimming darkens the image by editing macOS's color tables (gamma) — the real \
-    backlight doesn't change, so the screen can go below its hardware minimum. 100% is \
-    neutral; values above 100% boost a dim panel. Heavy use can cause slight banding.
+    Darkens the image itself, so the screen can go below its hardware minimum without touching \
+    the backlight. 100% is neutral; above 100% brightens a dim panel. Heavy use can cause slight banding.
     """
 
     static let builtInDimmingChoice = """
-    Off, the Brightness slider drives the panel's real backlight — the same control as the \
-    keyboard brightness keys. On, it darkens the image in software (gamma) and leaves the \
-    backlight alone. Many panels dim their backlight by pulsing it (PWM), which flickers \
-    harder at low levels — software dimming avoids that for flicker-sensitive eyes.
+    Off, the Brightness slider drives the real backlight. On, it darkens the image in software \
+    and leaves the backlight alone — steadier for eyes sensitive to backlight flicker at low levels.
     """
 
     static let schedule = """
-    Scheduled brightness/contrast ride the same day–night timeline as Warmth: hold the daytime \
-    value, ease to the night value at sunset, back at wake. A manual change holds until the next phase.
+    Brightness and contrast follow the same day–night times as Warmth: the daytime value by day, \
+    easing to the night value at sunset and back at wake.
     """
 }
 

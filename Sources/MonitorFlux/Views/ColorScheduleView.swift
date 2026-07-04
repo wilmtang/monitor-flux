@@ -28,8 +28,8 @@ struct ColorScheduleView: View {
                     Label("Turn off warmth & reset colors", systemImage: "arrow.uturn.backward.circle")
                 }
                 .settingsPushButton()
-                .help("Turns warmth off on every display and restores their original color — use this if colors look wrong or you want another color app to take over.")
-                Text("Turns warmth off everywhere and restores each display's original color tables (undoing any warming or software dimming).")
+                .help("Turns warmth off everywhere and restores original colors — use this if colors look wrong or another color app should take over.")
+                Text("Turns warmth off everywhere and restores each display's original colors.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -78,7 +78,7 @@ struct ColorScheduleView: View {
             // Automatic shows the warmth curve. The shared times live in their own section below
             // so they stay reachable in every mode.
             if store.preferences.colorMode == .off {
-                Text("No warmth right now. Choose Fixed for one constant warmth, or Automatic to follow the day-and-night schedule below.")
+                Text("Warmth is off. Choose Fixed for a constant warmth, or Automatic to follow the schedule below.")
                     .zoomFont(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -100,7 +100,7 @@ struct ColorScheduleView: View {
                 }
 
                 if isFixed {
-                    Text("Holds a single warmth around the clock. Automatic instead warms on the day-and-night schedule below.")
+                    Text("Holds one warmth around the clock. Automatic follows the schedule below instead.")
                         .zoomFont(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -183,7 +183,7 @@ struct ColorScheduleView: View {
             .pickerStyle(.segmented)
 
             if followsSunset {
-                Text("Daytime while the sun is up, sunset warmth after sundown, bedtime warmth before sleep — timed from your location and one time you set: your wake. Computed on-device, no internet.")
+                Text("Timed from your location and wake time: daytime while the sun's up, sunset warmth after sundown, bedtime warmth before sleep. Computed on-device.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
