@@ -999,12 +999,19 @@ final class AppStore: ObservableObject {
     /// now and stays Automatic; otherwise it pins a Fixed override. Positive cools (toward
     /// daylight), negative warms.
     func adjustColorTemperature(byKelvin delta: Int) -> Bool {
+        // A key nudge is a "change it now" edit, so end any held scrub preview first — otherwise
+        // the base below would read the previewed color and the nudge would persist it.
+        clearSchedulePreview()
         let activePhase = ColorSchedule.currentPhase(preferences: preferences)
-        let current = currentTemperature
-            ?? (preferences.colorMode == .clock
-                ? preferences.temperature(for: activePhase)
-                : preferences.manualTemperature)
-        let next = (current + delta).clamped(to: ControlRanges.kelvin)
+        // Nudge from the *stored* anchor for the active mode, never `currentTemperature`: mid-fade
+        // that's the interpolated on-screen blend (and during a preview the scrubbed value), so
+        // reading it back and writing it into the phase would corrupt the stored warmth by hundreds
+        // of Kelvin across the ~2 h/day of fades. This mirrors the popup slider's `editableTemperature`,
+        // which binds to the same stored anchor for exactly this reason.
+        let base = preferences.colorMode == .clock
+            ? preferences.temperature(for: activePhase)
+            : preferences.manualTemperature
+        let next = (base + delta).clamped(to: ControlRanges.kelvin)
         updateGlobalPreferences { preferences in
             if preferences.colorMode == .clock {
                 preferences.setTemperature(next, for: activePhase)
