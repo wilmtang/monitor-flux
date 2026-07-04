@@ -546,6 +546,39 @@ extension AppPreferences {
         )
     }
 
+    /// The shared day/night timeline — the phase times, the source, the fade, and the solar
+    /// inputs — that drives warmth (when Automatic) *and* every display's scheduled
+    /// brightness/contrast. Compared in the store's `preferences` didSet so editing the timeline
+    /// (e.g. moving Wake in the Schedule pane) re-applies the hardware schedule immediately
+    /// instead of leaving it up to a minute behind at the next timer tick. The per-phase warmth
+    /// temperatures and per-display targets are deliberately excluded — those edit paths already
+    /// re-apply directly (`reapplySchedule`) or don't affect the hardware schedule.
+    struct TimelineSignature: Equatable {
+        var coolStartMinutes: Int
+        var sunsetStartMinutes: Int
+        var warmStartMinutes: Int
+        var transitionMinutes: Int
+        var scheduleSource: ScheduleSource
+        var bedtimeLeadMinutes: Int
+        var morningStart: MorningStart
+        var latitude: String
+        var longitude: String
+    }
+
+    var timelineSignature: TimelineSignature {
+        TimelineSignature(
+            coolStartMinutes: coolStartMinutes,
+            sunsetStartMinutes: sunsetStartMinutes,
+            warmStartMinutes: warmStartMinutes,
+            transitionMinutes: transitionMinutes,
+            scheduleSource: scheduleSource,
+            bedtimeLeadMinutes: bedtimeLeadMinutes,
+            morningStart: morningStart,
+            latitude: latitude,
+            longitude: longitude
+        )
+    }
+
     /// True when MonitorFlux may currently be writing gamma tables: warmth is on (any mode but
     /// `.off`), or some display carries a non-neutral software brightness (software dimming is
     /// plain dimming, independent of warmth's mode). Gates gamma-conflict detection.

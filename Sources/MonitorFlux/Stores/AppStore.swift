@@ -37,6 +37,13 @@ final class AppStore: ObservableObject {
                 // color signature, so an AirPlay slider drag lands here — push it to the shade.
                 reconcileShades()
             }
+            // The shared day/night timeline (times, source, fade, solar inputs) also drives each
+            // display's scheduled brightness/contrast, so a timeline edit in the Schedule pane must
+            // re-apply them now — not up to a minute later at the next timer tick. Per-display
+            // target edits already re-apply through `reapplySchedule`; this covers the shared times.
+            if oldValue.timelineSignature != preferences.timelineSignature {
+                applyScheduledHardware(automatic: false)
+            }
             if endPreview {
                 // Restore the now scheduled brightness/contrast the preview overrode, deferred so
                 // the restore's hardware writes don't re-enter this didSet.
