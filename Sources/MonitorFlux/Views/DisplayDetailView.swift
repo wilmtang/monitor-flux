@@ -416,7 +416,9 @@ struct DisplayDetailView: View {
                     scheduleSliderRow(title: "Night brightness", keyPath: \.nightBrightness)
                 }
 
-                if !display.isBuiltIn {
+                // Contrast is DDC-only, so a non-DDC monitor can't schedule it — hide the toggle
+                // rather than offer a control whose writes are silently dropped.
+                if !display.isBuiltIn, store.canUseDDC(for: display) {
                     advancedToggleRow("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
                     if displayPreferences.scheduleContrast {
                         scheduleChart(

@@ -9,6 +9,7 @@ final class ScheduledHardwareTests: XCTestCase {
         id: CGDirectDisplayID = 1,
         isBuiltIn: Bool = false,
         hasControllableBacklight: Bool = false,
+        hasControllableContrast: Bool = true,
         scheduleBrightness: Bool = true,
         scheduleContrast: Bool = false
     ) -> ScheduledHardware.DisplayContext {
@@ -19,6 +20,7 @@ final class ScheduledHardwareTests: XCTestCase {
             id: id,
             isBuiltIn: isBuiltIn,
             hasControllableBacklight: hasControllableBacklight,
+            hasControllableContrast: hasControllableContrast,
             preferences: preferences
         )
     }
@@ -114,6 +116,18 @@ final class ScheduledHardwareTests: XCTestCase {
         XCTAssertTrue(result.writes.contains(
             ScheduledHardware.Write(displayID: 1, control: .contrast, target: 75)
         ))
+    }
+
+    func testContrastSkipsDisplaysWithoutDDC() {
+        // A non-DDC external can't take a contrast write, so the planner must not emit one
+        // (nor track it) even with the schedule on.
+        let nonDDC = context(hasControllableContrast: false, scheduleContrast: true)
+        let result = ScheduledHardware.plan(
+            displays: [nonDDC], schedule: schedule, minuteOfDay: 12 * 60,
+            state: ScheduledHardware.State()
+        )
+        XCTAssertFalse(result.writes.contains { $0.control == .contrast })
+        XCTAssertTrue(result.state.contrast.isEmpty)
     }
 
     func testRetainOnlyDropsDisconnectedDisplays() {

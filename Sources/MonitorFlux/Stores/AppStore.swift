@@ -1572,6 +1572,7 @@ final class AppStore: ObservableObject {
                 id: display.id,
                 isBuiltIn: display.isBuiltIn,
                 hasControllableBacklight: canUseNativeBrightness(display),
+                hasControllableContrast: canUseDDC(for: display),
                 preferences: displayPreferences(for: display)
             )
         }

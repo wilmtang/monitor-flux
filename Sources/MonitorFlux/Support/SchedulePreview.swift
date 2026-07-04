@@ -93,7 +93,9 @@ enum SchedulePreview {
                 }
             }
 
-            if displayPreferences.scheduleContrast {
+            // Contrast is DDC-only, so a non-DDC monitor can't preview it either (the write
+            // would be dropped) — mirror the live schedule's DDC gate.
+            if displayPreferences.scheduleContrast, display.hasHardwareControl {
                 let target = ColorSchedule.scheduledHardwareLevel(
                     dayValue: displayPreferences.dayContrast,
                     sunsetValue: displayPreferences.sunsetContrast,

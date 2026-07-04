@@ -15,6 +15,10 @@ enum ScheduledHardware {
         /// manages that backlight (auto-brightness), so the schedule never drives it — only a
         /// built-in with *no* backlight API falls through to software dimming.
         var hasControllableBacklight: Bool
+        /// True when the display can take a DDC contrast write. Contrast has no software path,
+        /// so a non-DDC monitor can't schedule it — the planner skips it rather than emitting a
+        /// write the executor would silently drop.
+        var hasControllableContrast: Bool
         var preferences: DisplayPreferences
     }
 
@@ -54,7 +58,7 @@ enum ScheduledHardware {
     /// Rules (mirroring the store's long-standing behavior):
     /// - Brightness is planned only when its per-display schedule is on — and never for a
     ///   built-in whose real backlight is controllable, since macOS owns that backlight.
-    /// - Contrast is DDC-only, so it always skips the built-in panel.
+    /// - Contrast is DDC-only, so it skips the built-in panel and any display without a DDC path.
     /// - A control whose schedule is off has its tracking cleared, so re-enabling re-emits
     ///   even when the target happens to be unchanged.
     static func plan(
@@ -86,7 +90,7 @@ enum ScheduledHardware {
                 state.brightness[display.id] = nil
             }
 
-            if displayPreferences.scheduleContrast, !display.isBuiltIn {
+            if displayPreferences.scheduleContrast, !display.isBuiltIn, display.hasControllableContrast {
                 let target = ColorSchedule.scheduledHardwareLevel(
                     dayValue: displayPreferences.dayContrast,
                     sunsetValue: displayPreferences.sunsetContrast,

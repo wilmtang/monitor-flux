@@ -141,6 +141,18 @@ final class SchedulePreviewTests: XCTestCase {
         )
     }
 
+    func testScheduledContrastSkippedWithoutDDC() {
+        // Contrast is DDC-only, so a non-DDC monitor previews no contrast write.
+        let preferences = preferencesWithScheduledDisplay(scheduleBrightness: false, scheduleContrast: true)
+        let plan = SchedulePreview.plan(
+            preferences: preferences,
+            schedule: .setTimes(preferences),
+            displays: [context(hasHardwareControl: false)],
+            minuteOfDay: noon
+        )
+        XCTAssertTrue(plan.hardwareWrites.isEmpty)
+    }
+
     func testUnscheduledDisplayContributesNothing() {
         let preferences = preferencesWithScheduledDisplay(scheduleBrightness: false)
         let plan = SchedulePreview.plan(
