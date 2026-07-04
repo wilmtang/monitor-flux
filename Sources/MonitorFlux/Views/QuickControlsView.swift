@@ -207,9 +207,9 @@ struct QuickControlsView: View {
             MonitorSlider(
                 systemImage: "thermometer.sun",
                 label: "Warmth",
-                value: Double(ambienceTemperature),
+                value: Double(editableTemperature),
                 range: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound),
-                accessibilityValueText: KelvinFormatting.label(for: ambienceTemperature)
+                accessibilityValueText: KelvinFormatting.label(for: editableTemperature)
             ) { newValue in
                 let rounded = Int((newValue / 100.0).rounded()) * 100
                 store.updateGlobalPreferences { preferences in
@@ -225,7 +225,7 @@ struct QuickControlsView: View {
                     }
                 }
             }
-            Text(KelvinFormatting.label(for: ambienceTemperature))
+            Text(KelvinFormatting.label(for: editableTemperature))
                 .font(.callout)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -233,11 +233,19 @@ struct QuickControlsView: View {
         }
     }
 
-    private var ambienceTemperature: Int {
-        store.currentTemperature
-            ?? (store.preferences.colorMode == .manual
-                ? store.preferences.manualTemperature
-                : store.preferences.dayTemperature)
+    /// The warmth value the slider edits — the raw preference behind the active mode, exactly as
+    /// the Schedule view's slider binds to `editedTemperature`. Binding the thumb to this stored
+    /// anchor (not `store.currentTemperature`, the interpolated on-screen color) is what lets the
+    /// drag track 1:1 across the whole range: mid-transition the live color is a blend compressed
+    /// toward the phase being faded from, so reading it back pins the thumb inside a moving sub-band
+    /// and the ends of the track become unreachable. Read and write resolve the phase the same way
+    /// (`ColorSchedule.currentPhase`) so they stay in lockstep. The live applied color still shows
+    /// in the popup header.
+    private var editableTemperature: Int {
+        let preferences = store.preferences
+        return preferences.colorMode == .clock
+            ? preferences.temperature(for: ColorSchedule.currentPhase(preferences: preferences))
+            : preferences.manualTemperature
     }
 
     private var modeBinding: Binding<ColorMode> {
