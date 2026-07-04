@@ -25,20 +25,11 @@ struct ColorScheduleView: View {
                 .settingsSwitch()
             }
 
-            // Fade (between phases) and the location/sun math only mean something for the
-            // day-and-night schedule, so they hide in Fixed mode — one constant warmth has no
-            // transitions and no sun.
-            if !isFixed {
-                Section("Transition") {
-                    Picker("Fade", selection: scheduleEditBinding(\.transitionMinutes)) {
-                        ForEach(fadeOptions, id: \.self) { minutes in
-                            Text(fadeLabel(minutes)).tag(minutes)
-                        }
-                    }
-                }
-
-                locationSection
-            }
+            // The shared day-and-night timeline: the times, source, and fade that Warmth (when
+            // Automatic) AND each monitor's scheduled brightness/contrast all ride. It's always
+            // shown — those channels are independent, so hiding it based on Warmth's mode would
+            // strand a scheduled brightness on times you can't see.
+            scheduleSection
 
             Section {
                 Button {
@@ -91,85 +82,82 @@ struct ColorScheduleView: View {
                 .fixedSize()
             }
 
-            // One row — phase label, slider, Kelvin readout — the same shape as System
-            // Settings' Night Shift color-temperature row. The form gives the slider the
-            // standard compact trailing track; the label and readout anchor the row's edges.
-            HStack(spacing: 12) {
-                Text(editingLabel)
-                    .zoomFont(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-                Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound))
-                    .layoutPriority(1)
-                    .disabled(!store.preferences.gammaEnabled || store.preferences.colorMode == .off)
-                Text(KelvinFormatting.label(for: editedTemperature))
-                    .zoomFont(.callout)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .fixedSize()
-            }
-
-            if isFixed {
-                // Fixed mode is one constant warmth — the slider above is the whole control.
-                // The schedule apparatus (phases, curve, times) would only mislead here, so it
-                // hides; this line says what Fixed does and where the schedule lives.
-                Text("Holds a single warmth around the clock. Switch to Automatic to warm on a day-and-night schedule.")
+            // The hero is Warmth-only now: Off shows nothing to set, Fixed shows one slider,
+            // Automatic shows the warmth curve. The shared times live in their own section below
+            // so they stay reachable in every mode.
+            if store.preferences.colorMode == .off {
+                Text("No warmth right now. Choose Fixed for one constant warmth, or Automatic to follow the day-and-night schedule below.")
                     .zoomFont(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                VStack(spacing: 4) {
-                    Picker("Phase", selection: $selectedPhase) {
-                        ForEach(ColorPhase.allCases) { phase in
-                            Text(phase.label).tag(phase)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 380)
-                    .disabled(store.preferences.colorMode != .clock)
-                    // Switching phases is a fresh editing intent, so drop any scrub preview and
-                    // snap the time line back to "now" — the same reset we do on enter/leave.
-                    .onChange(of: selectedPhase) { _, _ in
-                        store.clearSchedulePreview()
-                    }
-
-                    Text("Pick a phase, then drag the slider above to set its warmth.")
-                        .zoomFont(.caption)
+                // One row — Fixed/phase label, slider, Kelvin readout — the same shape as System
+                // Settings' Night Shift color-temperature row.
+                HStack(spacing: 12) {
+                    Text(editingLabel)
+                        .zoomFont(.callout)
                         .foregroundStyle(.secondary)
+                        .fixedSize()
+                    Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound))
+                        .layoutPriority(1)
+                        .disabled(!store.preferences.gammaEnabled)
+                    Text(KelvinFormatting.label(for: editedTemperature))
+                        .zoomFont(.callout)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .fixedSize()
                 }
-                .frame(maxWidth: .infinity)
 
-                Text(scheduleSummary)
-                    .zoomFont(.title3)
-                    .foregroundStyle(.blue.opacity(0.72))
+                if isFixed {
+                    Text("Holds a single warmth around the clock. Automatic instead warms on the day-and-night schedule below.")
+                        .zoomFont(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(spacing: 4) {
+                        Picker("Phase", selection: $selectedPhase) {
+                            ForEach(ColorPhase.allCases) { phase in
+                                Text(phase.label).tag(phase)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 380)
+                        // Switching phases is a fresh editing intent, so drop any scrub preview and
+                        // snap the time line back to "now" — the same reset we do on enter/leave.
+                        .onChange(of: selectedPhase) { _, _ in
+                            store.clearSchedulePreview()
+                        }
+
+                        Text("Pick a phase, then drag the slider above to set its warmth.")
+                            .zoomFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     .frame(maxWidth: .infinity)
 
-                FluxCurveEditor(
-                    dayTemperature: scheduleEditBinding(\.dayTemperature),
-                    sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
-                    nightTemperature: scheduleEditBinding(\.nightTemperature),
-                    schedule: schedule,
-                    timesLocked: followsSunset,
-                    wakeTickMinute: wakeTickMinute,
-                    previewMinute: store.schedulePreviewMinute,
-                    onPreview: { store.previewScheduleColor(atMinute: $0) },
-                    onTimeEdit: { phase, minute in commitTimeEdit(phase, rawMinute: minute) }
-                )
-                .background(
-                    // Semantic fill so the card reads in both appearances — flat white was
-                    // invisible against a light window background.
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.quaternary)
-                )
+                    Text(scheduleSummary)
+                        .zoomFont(.title3)
+                        .foregroundStyle(.blue.opacity(0.72))
+                        .frame(maxWidth: .infinity)
 
-                curveLegend
+                    FluxCurveEditor(
+                        dayTemperature: scheduleEditBinding(\.dayTemperature),
+                        sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
+                        nightTemperature: scheduleEditBinding(\.nightTemperature),
+                        schedule: schedule,
+                        timesLocked: followsSunset,
+                        wakeTickMinute: wakeTickMinute,
+                        previewMinute: store.schedulePreviewMinute,
+                        onPreview: { store.previewScheduleColor(atMinute: $0) },
+                        onTimeEdit: { phase, minute in commitTimeEdit(phase, rawMinute: minute) }
+                    )
+                    .background(
+                        // Semantic fill so the card reads in both appearances — flat white was
+                        // invisible against a light window background.
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(.quaternary)
+                    )
 
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    timeStepper(.daytime, title: "Wake", tint: .blue)
-                    Spacer(minLength: 8)
-                    timeStepper(.sunset, title: "Sunset", tint: .orange)
-                    Spacer(minLength: 8)
-                    timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
+                    curveLegend
                 }
             }
 
@@ -182,8 +170,20 @@ struct ColorScheduleView: View {
         }
     }
 
-    private var locationSection: some View {
-        Section("Location & Sun") {
+    /// The shared day-and-night timeline: the phase times, their source (Set times / Follow
+    /// sunset), and the fade. Warmth (when Automatic) and every monitor's scheduled brightness
+    /// and contrast ride these, so the section is always shown regardless of Warmth's mode —
+    /// hiding it would strand a scheduled brightness on times the user can no longer see.
+    private var scheduleSection: some View {
+        Section("Day & night schedule") {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                timeStepper(.daytime, title: "Wake", tint: .blue)
+                Spacer(minLength: 8)
+                timeStepper(.sunset, title: "Sunset", tint: .orange)
+                Spacer(minLength: 8)
+                timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
+            }
+
             Picker("Schedule from", selection: scheduleSourceBinding) {
                 ForEach(ScheduleSource.allCases) { source in
                     Text(source.label).tag(source)
@@ -197,7 +197,7 @@ struct ColorScheduleView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Picker("Bedtime starts", selection: scheduleEditBinding(\.bedtimeLeadMinutes)) {
+                Picker("Bedtime starts", selection: preferenceBinding(\.bedtimeLeadMinutes)) {
                     ForEach(bedtimeLeadOptions, id: \.self) { minutes in
                         Text(bedtimeLeadLabel(minutes)).tag(minutes)
                     }
@@ -207,7 +207,7 @@ struct ColorScheduleView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Picker("Mornings", selection: scheduleEditBinding(\.morningStart)) {
+                Picker("Mornings", selection: preferenceBinding(\.morningStart)) {
                     ForEach(MorningStart.allCases) { option in
                         Text(option.label).tag(option)
                     }
@@ -219,8 +219,6 @@ struct ColorScheduleView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Location only feeds the sun math, so these rows belong to Follow-sunset.
-                // In Set-times mode the schedule is purely the hand-set times below, and a
-                // latitude/longitude or "Use my location" button there is just confusing.
                 HStack {
                     TextField("Latitude", text: preferenceBinding(\.latitude))
                     TextField("Longitude", text: preferenceBinding(\.longitude))
@@ -237,7 +235,16 @@ struct ColorScheduleView: View {
                 LabeledContent("Sun today", value: sunTodayLabel)
             }
 
-            LabeledContent("Warmth", value: store.colorMessage)
+            Picker("Fade", selection: preferenceBinding(\.transitionMinutes)) {
+                ForEach(fadeOptions, id: \.self) { minutes in
+                    Text(fadeLabel(minutes)).tag(minutes)
+                }
+            }
+
+            Text("Warmth (when Automatic), and each monitor's scheduled brightness & contrast, all follow these times.")
+                .zoomFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -383,11 +390,11 @@ struct ColorScheduleView: View {
         }
     }
 
-    /// Like `preferenceBinding`, but editing the value also adopts the automatic schedule (Warmth on,
-    /// mode → Automatic). Touching a schedule shape — a phase temperature or the fade — means the user
-    /// wants the schedule, mirroring how dragging the time line switches to it. Used for the shape
-    /// controls that aren't time anchors (those use `timeAnchorBinding`, which additionally pins the
-    /// source to Set times); not for the Fixed-warmth or location settings.
+    /// Like `preferenceBinding`, but editing the value also turns Warmth on and adopts Automatic.
+    /// Only the warmth *phase temperatures* (the curve dots) use this: dragging a warmth value
+    /// means you want the warmth schedule. The shared timeline controls (times, source, fade,
+    /// bedtime lead, mornings) deliberately use plain `preferenceBinding` — they feed brightness
+    /// and contrast schedules too, so editing them must NOT change Warmth's mode.
     private func scheduleEditBinding<Value>(
         _ keyPath: WritableKeyPath<AppPreferences, Value>
     ) -> Binding<Value> {
@@ -424,9 +431,10 @@ struct ColorScheduleView: View {
         store.preferences.scheduleSource == .solar
     }
 
-    /// Fixed mode: one constant warmth (the slider), so the whole day-and-night schedule editor
-    /// — phases, curve, time steppers, Fade, Location & Sun — hides, leaving just the slider and
-    /// a one-line explainer. `.off` keeps the schedule visible (you may be about to turn it on).
+    /// Fixed mode: one constant warmth, so the hero shows just the slider and a one-line
+    /// explainer — the warmth *curve* (phases, chart, legend) hides, since a constant has no
+    /// phases. The shared Day & night schedule section stays put in every mode; it drives
+    /// brightness and contrast schedules too, not only warmth.
     private var isFixed: Bool {
         store.preferences.colorMode == .manual
     }
@@ -456,8 +464,11 @@ struct ColorScheduleView: View {
         }
     }
 
-    /// Commit a phase time edit (from a dragged dot or a stepper), staying on the Automatic
-    /// schedule (Warmth on; never Fixed).
+    /// Commit a phase time edit (from a dragged curve dot or a stepper). These are the shared
+    /// timeline anchors that brightness and contrast schedules also ride, so editing one must NOT
+    /// touch Warmth's mode — adjusting Wake for a scheduled brightness shouldn't flip Warmth from
+    /// Fixed/Off into Automatic. (The warmth curve dots that call this only appear in Automatic
+    /// anyway, so nothing regresses there.)
     ///
     /// While following the sun only the wake input is editable, and it lands unclamped — night
     /// shifts are legal, bedtime rides along at a fixed lead, and the resolver sorts the day out.
@@ -473,8 +484,6 @@ struct ColorScheduleView: View {
                 let clamped = ColorSchedule.clampedStartMinute(rawMinute, for: phase, preferences: preferences)
                 preferences.setStartMinutes(clamped, for: phase)
             }
-            preferences.gammaEnabled = true
-            preferences.colorMode = .clock
         }
     }
 

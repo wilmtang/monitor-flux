@@ -155,7 +155,7 @@ struct DisplayDetailView: View {
         let text: LocalizedStringKey
         switch store.brightnessControlKind(for: display) {
         case .hybrid:
-            text = "Uses the monitor's **own brightness** first; keep dragging below the notch to darken the **image** further in software. Contrast and volume are under Advanced."
+            text = "Uses the monitor's **own brightness** first; keep dragging below the notch to darken the **image** further with software dimming. Contrast and volume are under Advanced."
         case .hardwareOnly:
             text = display.isBuiltIn
                 ? "This is the **real backlight** — the same hardware level as macOS's own brightness control. To dim the **image** in software instead, leaving the backlight untouched, turn on Software dimming under Advanced."
