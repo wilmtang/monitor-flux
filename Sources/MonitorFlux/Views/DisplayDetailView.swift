@@ -20,23 +20,54 @@ struct DisplayDetailView: View {
     }
 
     var body: some View {
-        Form {
-            displaySection
-            if display.isVirtual {
-                // AirPlay/virtual display: no hardware controls and gamma is ignored, so the only
-                // thing that works is the overlay-based dimming. Everything else (warmth, DDC
-                // contrast/volume, software gamma, schedule) is hidden because it has no effect here.
-                airplayBrightnessSection
-            } else {
-                colorSection
-                // Brightness/contrast, ordered most-real first: the monitor's own controls stay
-                // up top; software (gamma) dimming and the day/night schedule tuck under Advanced.
-                realControlsSection
-                advancedSection
+        // Wrapped in a ScrollViewReader so the `MONITORFLUX_SCROLL_TO` screenshot hook can bring a
+        // below-the-fold section into view on launch — capturing the schedule charts etc. by window
+        // id then needs no live-UI scrolling. Inert without the env var.
+        ScrollViewReader { proxy in
+            Form {
+                displaySection
+                if display.isVirtual {
+                    // AirPlay/virtual display: no hardware controls and gamma is ignored, so the only
+                    // thing that works is the overlay-based dimming. Everything else (warmth, DDC
+                    // contrast/volume, software gamma, schedule) is hidden because it has no effect here.
+                    airplayBrightnessSection.id(ScrollAnchor.brightness)
+                } else {
+                    colorSection.id(ScrollAnchor.warmth)
+                    // Brightness/contrast, ordered most-real first: the monitor's own controls stay
+                    // up top; software (gamma) dimming and the day/night schedule tuck under Advanced.
+                    realControlsSection.id(ScrollAnchor.brightness)
+                    advancedSection.id(ScrollAnchor.advanced)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(display.name)
+            .onAppear { scrollToLaunchTarget(using: proxy) }
+        }
+    }
+
+    /// Named scroll targets for the `MONITORFLUX_SCROLL_TO` launch hook.
+    private enum ScrollAnchor {
+        static let warmth = "warmth"
+        static let brightness = "brightness"
+        static let advanced = "advanced"
+        static let schedule = "schedule"
+    }
+
+    /// Screenshot hook: `MONITORFLUX_SCROLL_TO=<anchor>` scrolls a named section into view shortly
+    /// after launch, so below-the-fold content (e.g. the schedule charts) can be captured by window
+    /// id with no live-UI control. Anchors: `warmth`, `brightness`, `advanced`, `schedule`. Pair
+    /// with `MONITORFLUX_EXPAND_ADVANCED=1` when the target lives inside Advanced. Read once.
+    private func scrollToLaunchTarget(using proxy: ScrollViewProxy) {
+        guard let anchor = ProcessInfo.processInfo.environment["MONITORFLUX_SCROLL_TO"],
+              !anchor.isEmpty else { return }
+        // Defer past the grouped Form's initial layout (and any expanded Advanced block); a
+        // scrollTo to an id that hasn't materialized yet is a silent no-op. Two nudges cover the
+        // case where the first fires before the rows exist.
+        for delay in [0.4, 0.9] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                proxy.scrollTo(anchor, anchor: .top)
             }
         }
-        .formStyle(.grouped)
-        .navigationTitle(display.name)
     }
 
     /// The only control an AirPlay/virtual display supports: overlay (“shade”) dimming, written
@@ -265,6 +296,7 @@ struct DisplayDetailView: View {
             gammaContent
             advancedDivider
             scheduleContent
+                .id(ScrollAnchor.schedule)
         }
         .padding(.top, 12)
         .padding(.bottom, 4)
