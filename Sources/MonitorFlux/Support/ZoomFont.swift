@@ -5,7 +5,7 @@ import SwiftUI
 // The window zoom (⌘+/⌘-/⌘0) is semantic: ContentView scales the root default
 // font from `fontSizeStep`, and body text follows it. Explicit text styles like
 // `.font(.caption)` are absolute, and Dynamic Type is inert on macOS (measured —
-// see docs/ZOOM_PLAN.md), so they would stay small while everything else grows.
+// see docs/DESIGN.md), so they would stay small while everything else grows.
 // `zoomFont` renders the same visual role at the current zoom.
 //
 // The scale rides the environment with a 1.0 default, so shared components used

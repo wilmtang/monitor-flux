@@ -8,7 +8,7 @@ set -euo pipefail
 #   SIGN_IDENTITY="Developer ID Application: …" \
 #     NOTARY_PROFILE="MonitorFlux" ./script/make_dmg.sh   -> signed + notarized + stapled
 #
-# See docs/DISTRIBUTION.md for the one-time Apple Developer setup. This app needs NO special
+# See docs/DEVELOPMENT.md for the one-time Apple Developer setup. This app needs NO special
 # entitlements: its private APIs (IOAVService via @_silgen_name, DisplayServices via dlopen)
 # all work under the hardened runtime that notarization requires (verified).
 
@@ -72,7 +72,7 @@ elif [ -n "$SIGN_IDENTITY" ]; then
   echo "Developer ID signed but NOT notarized (set NOTARY_PROFILE to notarize)."
 else
   echo "Ad-hoc signed (personal use). First launch: right-click ▸ Open."
-  echo "Set SIGN_IDENTITY + NOTARY_PROFILE for a notarized build — see docs/DISTRIBUTION.md."
+  echo "Set SIGN_IDENTITY + NOTARY_PROFILE for a notarized build — see docs/DEVELOPMENT.md."
 fi
 
 SIZE="$(du -h "$DMG_PATH" | cut -f1 | tr -d ' ')"

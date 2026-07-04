@@ -216,7 +216,7 @@ private struct SidebarRowLabelStyle: LabelStyle {
 // geometric transform anywhere: every transform mechanism (NSView bounds scaling,
 // CALayer transforms, NSScrollView.magnification, .scaleEffect) breaks click
 // routing for SwiftUI content hosted in a large NSHostingView. Measured in
-// prototype-zoom-matrix/; analysis in docs/ZOOM_PLAN.md.
+// prototype-zoom-matrix/; analysis in docs/DESIGN.md.
 extension AppPreferences {
     /// Body-text size derived from the zoom scale (13pt at 100%), half-point rounded.
     var settingsFontSize: CGFloat {

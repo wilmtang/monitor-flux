@@ -63,7 +63,7 @@ final class WindowCoordinator {
         // transform. Every transform-based zoom (NSView bounds scaling, CALayer
         // transforms, NSScrollView.magnification, .scaleEffect) breaks click routing
         // for SwiftUI content hosted in a large NSHostingView; measured evidence in
-        // docs/ZOOM_PLAN.md and prototype-zoom-matrix/.
+        // docs/DESIGN.md and prototype-zoom-matrix/.
         let root = ContentView()
             .environmentObject(store)
             .frame(

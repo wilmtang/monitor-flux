@@ -17,7 +17,7 @@ commands to hardware.
 drives the full UI but performs **no gamma/DDC/backlight writes** — so testing doesn't
 flicker the screen or fight f.lux/MonitorControl. Use it for any iteration where you only
 need to see the UI. All hardware-writing paths in `AppStore` are gated on `safeMode`. Full
-breakdown: [docs/SAFE_MODE.md](docs/SAFE_MODE.md).
+breakdown: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 Stop the running dev app before doing risky gamma work (or just use `--safe`):
 
@@ -63,7 +63,7 @@ pkill -x MonitorFlux || true
   scaling, CALayer transforms, `NSScrollView.magnification`, and `.scaleEffect` were each
   tried and ALL break click routing for SwiftUI content in a large `NSHostingView` — sidebar
   clicks surviving is a false positive (it's NSTableView-backed). Evidence + regression
-  harness: [docs/ZOOM_PLAN.md](docs/ZOOM_PLAN.md), `prototype-zoom-matrix/`.
+  harness: [docs/DESIGN.md](docs/DESIGN.md), `prototype-zoom-matrix/`.
 - `Services/HotKeyCenter.swift`: custom global shortcuts via Carbon `RegisterEventHotKey`
   (no Accessibility needed). Behind a `HotKeyRegistering` protocol so conflict bookkeeping is
   unit-tested with a fake. `Views/ShortcutRecorder.swift` captures combos with an app-level
@@ -147,13 +147,15 @@ pkill -x MonitorFlux || true
   stored prefs), plus each DDC external display's **scheduled brightness/contrast** at that time,
   sent transiently to the monitor firmware via `previewHardwareDDC` with **no stored-pref writes**
   (the live schedule is suspended while previewing; `restoreScheduledHardwareAfterPreview` puts the
-  now-targets back on exit). Dragging the marker — or editing **any** schedule control — adopts
-  Automatic mode (`colorMode = .clock`): phase temps and the fade go through `scheduleEditBinding`,
-  while the wake/sunset/bedtime **times** go through `timeAnchorBinding`, which additionally pins the
-  source to **Set times** (`.manualTimes`) — hand-placing a time means you're setting it, and a solar
-  source would otherwise recompute over it. `timeAnchorBinding` also *reads* the solar-adjusted
-  ("effective") anchor, so in Sunrise & sunset mode the curve, dots, and steppers show the computed
-  sunrise/sunset (`ColorSchedule.solarAdjustedPreferences`). The preview is always temporary:
+  now-targets back on exit). Dragging the marker, or dragging a warmth **curve dot's temperature**,
+  adopts Automatic mode (`colorMode = .clock`) via `scheduleEditBinding` — editing a warmth value
+  means you want the warmth schedule. The **shared timeline** controls — the wake/sunset/bedtime
+  **times**, the Set-times/Follow-sunset source, and the fade — use plain bindings and deliberately
+  do **not** change warmth's mode: the same times drive each monitor's scheduled brightness/contrast
+  too, so adjusting Wake for a scheduled brightness must not flip warmth from Off/Fixed into
+  Automatic. Time edits go through `timeAnchorBinding` → `commitTimeEdit`, which *reads* the
+  solar-adjusted ("effective") anchor, so in Follow-sunset mode the curve, dots, and steppers show
+  the computed sunrise/sunset (`ColorSchedule.resolved`). The preview is always temporary:
   `clearSchedulePreview` restores the live values whenever the Schedule pane reloads, the settings
   window loses key focus, the mode leaves clock, or Refresh is tapped.
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
@@ -218,7 +220,7 @@ pkill -x MonitorFlux || true
 - **AirPlay/virtual displays ignore gamma.** Detect them with `CoreDisplayInfo.isVirtual` and
   dim them through `ShadeController` (overlay), not gamma. `GammaPlan` excludes them, and their
   detail/popup UI hides the controls that don't work (warmth, DDC, gamma, schedule). The shade is
-  plain dimming, independent of the Warmth master, and darker-only.
+  plain dimming, independent of warmth's mode, and darker-only.
 - **Mirror sets:** gamma/shade writes target `DisplayInfo.effectiveID` (the mirror master via
   `CGDisplayMirrorsDisplay`), and `GammaPlan` dedupes a mirror set to one write through the master
   — never write gamma to a mirrored child.

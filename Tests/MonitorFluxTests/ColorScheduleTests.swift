@@ -255,7 +255,7 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertEqual(resolved.bedtimeStartMinutes, preferences.warmStartMinutes)
     }
 
-    // MARK: Follow-sunset resolution (docs/FOLLOW_SUNSET_PLAN.md §3)
+    // MARK: Follow-sunset resolution (docs/DESIGN.md)
 
     /// Seattle-winter-shaped day: wake 7:00, 9 h lead (bedtime 22:00), sunrise 7:57, sunset 16:25.
     private func winterSolar(morningStart: MorningStart) -> ResolvedSchedule {

@@ -46,7 +46,7 @@ Open windows appear on the built-in screen (AGENTS.md rule) and quit at the end.
 ## Results (2026-07-01, macOS 26)
 
 Probes: btn-top, toggle(NSSwitch), btn-trailing, btn-bottom, sidebar×2. See
-[docs/ZOOM_PLAN.md](../docs/ZOOM_PLAN.md) for the full analysis.
+[docs/DESIGN.md](../docs/DESIGN.md) for the full analysis.
 
 | mode | 1.0× | 1.5× | 2.0× |
 |---|---|---|---|

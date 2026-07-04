@@ -21,7 +21,7 @@ enum ColorMode: String, CaseIterable, Codable, Identifiable, Sendable {
 
 /// Where the schedule's time anchors come from: hand-set times, or the f.lux model — sunset
 /// and daytime follow the sun at your location, bedtime is derived from the one time you set
-/// (wake − `bedtimeLeadMinutes`). See `ColorSchedule.resolved` and docs/FOLLOW_SUNSET_PLAN.md.
+/// (wake − `bedtimeLeadMinutes`). See `ColorSchedule.resolved` and docs/DESIGN.md.
 enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
     case manualTimes
     case solar
@@ -66,7 +66,7 @@ enum MorningStart: String, CaseIterable, Codable, Identifiable, Sendable {
 /// — externals default to `.automatic` (hybrid), the built-in panel to `.hardware`. The
 /// built-in never dims hybrid: its choice is binary — all backlight or all software — so a
 /// user sensitive to low backlight levels can keep the backlight steady and dim purely in
-/// software (see docs/DIMMING_PLAN.md, built-in revision).
+/// software (see docs/DESIGN.md).
 enum DimmingMode: String, CaseIterable, Codable, Identifiable, Sendable {
     case automatic
     case hardware

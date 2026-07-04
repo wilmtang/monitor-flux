@@ -4,7 +4,7 @@ import Foundation
 /// engine, plus the effective per-phase display values the UI shows (chart handles, time
 /// steppers). In Set-times mode the events are the three stored anchors verbatim; in
 /// Follow-sunset mode they come from the sun and the wake time (see `ColorSchedule.resolved`
-/// and docs/FOLLOW_SUNSET_PLAN.md), and a day can carry a fourth event — the pre-dawn bridge.
+/// and docs/DESIGN.md), and a day can carry a fourth event — the pre-dawn bridge.
 struct ResolvedSchedule: Equatable, Sendable {
     /// One phase-change moment: `phase` begins at `minute`-of-day.
     struct Event: Equatable, Sendable {
@@ -127,7 +127,7 @@ enum ColorSchedule {
         return solar ?? .setTimes(preferences)
     }
 
-    /// The pure Follow-sunset resolution (§3 of docs/FOLLOW_SUNSET_PLAN.md), separated from
+    /// The pure Follow-sunset resolution (docs/DESIGN.md), separated from
     /// date/coordinate plumbing so the seasonal cases are directly unit-testable. Returns nil
     /// without a sunset (polar day/night) — the caller falls back to the stored anchors.
     static func solarResolved(

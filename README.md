@@ -182,7 +182,7 @@ Useful variants:
 `MONITORFLUX_SAFE_MODE=1`) runs the full app without any gamma/DDC/backlight writes, so
 testing doesn't flicker your screen or conflict with f.lux/MonitorControl. Use the plain
 `run` (no flag) when you actually want MonitorFlux to control your displays. See
-[docs/SAFE_MODE.md](docs/SAFE_MODE.md) for the full breakdown of what it disables.
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full breakdown of what it disables.
 
 ## Package a .dmg
 
@@ -203,7 +203,7 @@ NOTARY_PROFILE="MonitorFlux" ./script/make_dmg.sh
 
 This app needs **no special entitlements** to notarize — its private APIs work under the
 hardened runtime. Full setup (Developer ID cert, `notarytool` credentials, verification) is
-in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
+in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Test
 
