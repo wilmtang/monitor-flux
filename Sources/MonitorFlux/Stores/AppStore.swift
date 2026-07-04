@@ -141,6 +141,10 @@ final class AppStore: ObservableObject {
     private var pendingPreferencesSave: DispatchWorkItem?
     private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
+    /// Consecutive dirty LUT reads seen by `refreshGammaConflictState`. A conflict is declared
+    /// only at 2+, so a one-shot difference (wake-from-sleep, an ICC profile change) doesn't
+    /// flash the banner while a persistent foreign writer still trips it across successive checks.
+    private var gammaConflictStreak = 0
     private var cancellables = Set<AnyCancellable>()
 
     /// Observers for an in-flight `.regular`→`.accessory` drop smoothing pass (see
@@ -1393,11 +1397,19 @@ final class AppStore: ObservableObject {
     /// (which would mask the foreign change). A freshly-detected conflict un-dismisses the banner.
     private func refreshGammaConflictState() {
         guard !safeMode, preferences.mayWriteGamma else {
+            gammaConflictStreak = 0
             gammaConflictDetected = false
             gammaConflictApps = []
             return
         }
-        let detected = gammaService.detectsForeignGammaChange(displays: displays)
+        // Require two consecutive dirty reads before declaring a conflict. A single dirty read is
+        // ambiguous — waking from sleep or an ICC-profile change can momentarily leave the LUT
+        // differing from what we last wrote — and our own re-apply cleans a one-shot difference by
+        // the next check, so it resets the streak. A persistent foreign writer stays dirty across
+        // checks and still trips it (within ~2 timer cycles, an acceptable delay for a steady state).
+        let dirty = gammaService.detectsForeignGammaChange(displays: displays)
+        gammaConflictStreak = dirty ? gammaConflictStreak + 1 : 0
+        let detected = gammaConflictStreak >= 2
         let wasDetected = gammaConflictDetected
         if detected, !wasDetected {
             gammaConflictBannerDismissed = false
