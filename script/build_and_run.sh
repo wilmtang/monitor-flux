@@ -32,6 +32,14 @@ mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 
+# SwiftPM resources (the offline place index) build into a bundle beside the binary; ship it
+# in Contents/Resources, where PlaceIndex looks it up. Don't rely on Bundle.module: its
+# generated fallback is an absolute .build path that only exists on the machine that built it.
+BUILD_RESOURCE_BUNDLE="$(dirname "$BUILD_BINARY")/${APP_NAME}_${APP_NAME}.bundle"
+if [ -d "$BUILD_RESOURCE_BUNDLE" ]; then
+  cp -R "$BUILD_RESOURCE_BUNDLE" "$APP_RESOURCES/"
+fi
+
 # Generate the app icon on first build, then bundle it.
 if [ ! -f "$ICON_SOURCE" ] && [ -f "$ROOT_DIR/script/make_icon.swift" ]; then
   ( cd "$ROOT_DIR" && swift script/make_icon.swift ) >/dev/null 2>&1 || true

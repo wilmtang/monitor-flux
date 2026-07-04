@@ -96,6 +96,63 @@ sun and wake, so horizontal drags are ignored and the Sunset/Bedtime steppers ar
 Switching Follow-sunset → Set times freezes today's derived sunset and bedtime into the stored
 anchors so the chart doesn't jump.
 
+### Location lookup: city/ZIP search, offline (planned)
+
+The raw Latitude/Longitude fields become one f.lux-style **Location** row: it shows the resolved
+place name ("Seattle, Washington", or the coordinates when no name is known) with a Change
+button; editing turns it into a single search field with up to 5 inline suggestion rows (no
+floating popover — the settings window has enough hosting gotchas). One field parses three
+shapes: **city-name prefix**, **5-digit US ZIP**, and **raw `lat, lon`** — the coordinate form is
+the escape hatch that lets the two raw fields go away. Return accepts the top hit, Esc cancels.
+Search state is view-local `@State`; only the final pick writes preferences (one
+`updateGlobalPreferences` setting `latitude`/`longitude`/`locationName` together).
+
+**Resolution is a bundled offline index, not a geocoding service.** The options considered:
+
+- **MapKit** (`MKLocalSearchCompleter` + `MKLocalSearch`): free, no key, but network-required —
+  offline you can't change location at all, and it breaks the pane's "Computed on-device"
+  promise. `CLGeocoder` is out entirely: deprecated in the 2025 SDKs (macOS 26) in favor of
+  `MKGeocodingRequest`, which doesn't exist below macOS 26 — a two-headed availability fork.
+- **Third-party HTTP geocoders** (Nominatim, Open-Meteo): nothing over MapKit, plus a ToS,
+  rate limits, and a privacy disclosure. Rejected.
+- **Bundled index (chosen):** GeoNames `cities15000` (~27k cities worldwide, pop ≥ 15k;
+  CC BY 4.0 — attribution in the README) + the US Census ZCTA gazetteer (~33k ZIP centroids,
+  public domain), trimmed to ~1.5–2 MB. Sunset shifts ~1 min per ~20 km east–west, so a city
+  centroid is solar-grade; towns under 15k pop type their nearest city or coordinates.
+
+Shape: `script/make_place_index.swift` regenerates the committed resource (like
+`make_icon.swift`); `Support/PlaceIndex.swift` is a pure, tested planner — diacritic-folded
+prefix search ranked by population, ZIP/coordinate classification, and `nearest(lat:lon:)` so a
+Core Location fix ("Use my location") also gets a city name without a reverse-geocode call.
+`SolarCalculator` and `ColorSchedule.resolved` are untouched; the feature only changes the
+coordinates the schedule already consumes. Deferred until real users report misses: a one-shot
+`MKLocalSearch` "Search online" row appended under the local suggestions.
+
+**Traveling (timezone changes, stale locations).** Three pieces:
+
+- **A location-source bit.** `locationFollowsDevice: Bool = true` (the default matches today:
+  once authorized, Core Location re-fixes on every launch). "Use my location" sets it; picking
+  a search result or typing coordinates clears it. `applyLocation` only writes while it's set —
+  without the gate, the launch-time fix would silently clobber a manually chosen city.
+- **Timezone/clock observers.** The schedule tick re-reads `Calendar.current` every minute,
+  but Foundation caches the system timezone in-process — after a flight the app would keep
+  computing in the old zone. Observe `NSSystemTimeZoneDidChange` → `NSTimeZone
+  .resetSystemTimeZone()`, re-resolve the schedule immediately, then: follows-device and
+  authorized → request a fresh one-shot fix; manual city → run the staleness check below.
+  Observe `NSSystemClockDidChange` (big clock jumps) → re-resolve only. DST transitions ride
+  the same path; Set-times anchors are minutes-of-local-clock and need nothing.
+- **A staleness hint — never an auto-switch.** The index carries each city's IANA timezone
+  (a GeoNames column; ZIPs inherit their nearest city's). When the stored place's UTC offset
+  differs from the system zone's by ≥ 1 h (compare offsets *at now*, not zone ids — Madrid vs
+  Paris must not warn; offsets also get DST right, e.g. Phoenix/Denver in summer), show a
+  `WarningCard` in the Follow-sunset section — "Your Mac's clock is set to Tokyo time, but the
+  sunset schedule follows Seattle" — with a Use-my-location button and a dismiss. Dismissal is
+  remembered keyed on the (place, system-zone) pair, so it returns when either side changes.
+  A manual choice is never overwritten without the user acting (reversible & safe).
+
+The mismatch predicate is pure (`(placeZoneID, systemZone, now) → warn?`) and tested: equal
+offsets with different ids, the DST asymmetry cases, dismissal re-arming.
+
 ## Dimming: Hardware / Software / Automatic
 
 MonitorFlux presents **one Brightness slider** per display whose position is *perceived*
