@@ -417,6 +417,13 @@ final class AppStore: ObservableObject {
             return
         }
         for display in displays where !display.isBuiltIn {
+            // Only DDC monitors have hardware settings to restore. Skipping the rest avoids
+            // pushing a "doesn't expose DDC" status for every non-DDC/AirPlay external on each
+            // refresh — which read like an error when nothing was actually attempted. Their
+            // software brightness/shade is restored through the color/shade paths instead.
+            guard canUseDDC(for: display) else {
+                continue
+            }
             let displayPreferences = displayPreferences(for: display)
             if !displayPreferences.scheduleBrightness {
                 applyBrightness(for: display)

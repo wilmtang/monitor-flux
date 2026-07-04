@@ -173,6 +173,12 @@ is inert on current macOS and is not used.
   display.
 - Arm64 DDC writes retry 5× with 20 ms sleeps on a shared serial queue, so a dead monitor adds
   ~100 ms latency to other displays' writes.
+- **No DDC read-back.** An external display's brightness/contrast slider positions are the
+  *stored preferences*, not values read from the monitor — MonitorFlux only ever writes DDC/CI,
+  never queries it. So a change made with the monitor's own buttons doesn't move our sliders, and
+  `restoreHardwareSettings` re-asserts the saved value over it on the next launch/hotplug. (Lunar
+  and MonitorControl read VCP values back; MonitorFlux deliberately doesn't, to keep the DDC path
+  write-only and avoid the extra bus traffic and per-monitor quirks of reads.)
 
 ## Prior art
 
