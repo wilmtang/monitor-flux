@@ -569,29 +569,15 @@ final class AppStore: ObservableObject {
     /// dimming mode — so the popup card, the detail pane, and the media keys all route the
     /// same way.
     func brightnessControlKind(for display: DisplayInfo) -> BrightnessControlKind {
-        if display.isVirtual {
-            return .shade
-        }
-        if display.isBuiltIn {
-            guard canUseNativeBrightness(display) else {
-                // No backlight API at all: software dimming is the only path.
-                return .softwareOnly
-            }
-            // The built-in is binary — all backlight (default, macOS's own domain) or all
-            // software, flipped by the Advanced toggle. Never hybrid: a low-backlight-
-            // sensitive user picks software dimming exactly to keep the backlight steady,
-            // so the slider must not drive both.
-            return dimmingMode(for: display) == .software ? .softwareOnly : .hardwareOnly
-        }
-        let hasDDC = canUseDDC(for: display)
-        switch dimmingMode(for: display) {
-        case .automatic:
-            return hasDDC ? .hybrid : .softwareOnly
-        case .hardware:
-            return hasDDC ? .hardwareOnly : .unavailable
-        case .software:
-            return .softwareOnly
-        }
+        // The routing matrix is the pure `BrightnessRouting.controlKind`; the store only
+        // supplies this display's live capabilities and resolved mode.
+        BrightnessRouting.controlKind(
+            isVirtual: display.isVirtual,
+            isBuiltIn: display.isBuiltIn,
+            canUseNativeBrightness: canUseNativeBrightness(display),
+            canUseDDC: canUseDDC(for: display),
+            dimmingMode: dimmingMode(for: display)
+        )
     }
 
     /// The unified brightness position (0…1) — the single scale the everyday slider, the
