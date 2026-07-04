@@ -19,9 +19,9 @@ enum ColorMode: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
-/// Where the schedule's sunset anchor comes from: hand-set times, or the day's real sunset
-/// computed from your location. (Wake and bedtime are always your set times — only sunset
-/// follows the sun, matching f.lux.)
+/// Where the schedule's time anchors come from: hand-set times, or the f.lux model — sunset
+/// and daytime follow the sun at your location, bedtime is derived from the one time you set
+/// (wake − `bedtimeLeadMinutes`). See `ColorSchedule.resolved` and docs/FOLLOW_SUNSET_PLAN.md.
 enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
     case manualTimes
     case solar
@@ -34,6 +34,25 @@ enum ScheduleSource: String, CaseIterable, Codable, Identifiable, Sendable {
             "Set times"
         case .solar:
             "Follow sunset"
+        }
+    }
+}
+
+/// Follow-sunset only: what brightens the screen back to the daytime color in the morning.
+/// `.sunrise` is f.lux's behavior — after a pre-sunrise wake the screen holds the *sunset*
+/// warmth until the sun is really up; `.wakeTime` goes full daytime at wake, dark or not.
+enum MorningStart: String, CaseIterable, Codable, Identifiable, Sendable {
+    case sunrise
+    case wakeTime
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .sunrise:
+            "At sunrise"
+        case .wakeTime:
+            "At wake time"
         }
     }
 }
@@ -265,6 +284,11 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var sunsetStartMinutes = 20 * 60
     var transitionMinutes = 45
     var scheduleSource: ScheduleSource = .manualTimes
+    /// Follow-sunset only: bedtime warmth begins this many minutes before wake. Defaults to
+    /// f.lux's hardcoded 9 h (~8 h of sleep plus an hour of wind-down), made adjustable.
+    var bedtimeLeadMinutes = 540
+    /// Follow-sunset only: what ends the night in the morning (see `MorningStart`).
+    var morningStart: MorningStart = .sunrise
     var startAtLogin = false
     var showInDock = false
     var keyboardControlEnabled = false
@@ -320,6 +344,8 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case sunsetStartMinutes
         case transitionMinutes
         case scheduleSource
+        case bedtimeLeadMinutes
+        case morningStart
         case startAtLogin
         case showInDock
         case keyboardControlEnabled
@@ -348,6 +374,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         copy.coolStartMinutes = copy.coolStartMinutes.clamped(to: ControlRanges.minuteOfDay)
         copy.sunsetStartMinutes = copy.sunsetStartMinutes.clamped(to: ControlRanges.minuteOfDay)
         copy.transitionMinutes = copy.transitionMinutes.clamped(to: ControlRanges.transitionMinutes)
+        copy.bedtimeLeadMinutes = copy.bedtimeLeadMinutes.clamped(to: ControlRanges.bedtimeLeadMinutes)
         copy.fontSizeStep = copy.fontSizeStep.clamped(to: Self.fontSizeStepRange)
         copy.popupBackdropOpacity = min(max(copy.popupBackdropOpacity, 0), 1)
         copy.displayPreferences = copy.displayPreferences.mapValues { $0.normalized() }
@@ -375,6 +402,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
         transitionMinutes = (try container.decodeIfPresent(Int.self, forKey: .transitionMinutes) ?? 45)
             .clamped(to: ControlRanges.transitionMinutes)
         scheduleSource = try container.decodeIfPresent(ScheduleSource.self, forKey: .scheduleSource) ?? .manualTimes
+        bedtimeLeadMinutes = (try container.decodeIfPresent(Int.self, forKey: .bedtimeLeadMinutes) ?? 540)
+            .clamped(to: ControlRanges.bedtimeLeadMinutes)
+        morningStart = try container.decodeIfPresent(MorningStart.self, forKey: .morningStart) ?? .sunrise
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
         showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
@@ -410,6 +440,8 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(sunsetStartMinutes, forKey: .sunsetStartMinutes)
         try container.encode(transitionMinutes, forKey: .transitionMinutes)
         try container.encode(scheduleSource, forKey: .scheduleSource)
+        try container.encode(bedtimeLeadMinutes, forKey: .bedtimeLeadMinutes)
+        try container.encode(morningStart, forKey: .morningStart)
         try container.encode(startAtLogin, forKey: .startAtLogin)
         try container.encode(showInDock, forKey: .showInDock)
         try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
@@ -467,6 +499,8 @@ extension AppPreferences {
         var sunsetStartMinutes: Int
         var transitionMinutes: Int
         var scheduleSource: ScheduleSource
+        var bedtimeLeadMinutes: Int
+        var morningStart: MorningStart
         var latitude: String
         var longitude: String
         /// Per display: the gamma-affecting fields, keyed by display key.
@@ -486,6 +520,8 @@ extension AppPreferences {
             sunsetStartMinutes: sunsetStartMinutes,
             transitionMinutes: transitionMinutes,
             scheduleSource: scheduleSource,
+            bedtimeLeadMinutes: bedtimeLeadMinutes,
+            morningStart: morningStart,
             latitude: latitude,
             longitude: longitude,
             perDisplay: displayPreferences.mapValues { displayPreferences in

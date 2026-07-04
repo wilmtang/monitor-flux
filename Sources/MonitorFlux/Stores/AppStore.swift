@@ -290,11 +290,14 @@ final class AppStore: ObservableObject {
         locationService.request()
     }
 
+    /// A location fix refreshes the coordinates (keeping the solar schedule accurate when the
+    /// machine moves) but never touches the schedule source: Core Location re-delivers a fix
+    /// on *every* launch once authorized, and letting that flip `scheduleSource` back to
+    /// `.solar` made "Set times" impossible to keep across a relaunch.
     private func applyLocation(_ coordinate: CLLocationCoordinate2D) {
         updateGlobalPreferences { preferences in
             preferences.latitude = String(format: "%.4f", coordinate.latitude)
             preferences.longitude = String(format: "%.4f", coordinate.longitude)
-            preferences.scheduleSource = .solar
         }
     }
 
@@ -1412,6 +1415,7 @@ final class AppStore: ObservableObject {
         // `restoreScheduledHardwareAfterPreview` puts the now-targets back when it ends.
         let plan = SchedulePreview.plan(
             preferences: preferences,
+            schedule: ColorSchedule.resolved(preferences: preferences),
             displays: displays.map { display in
                 SchedulePreview.DisplayContext(
                     key: display.key,
@@ -1524,9 +1528,9 @@ final class AppStore: ObservableObject {
         guard schedulePreviewMinute == nil else {
             return
         }
-        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
         let calendar = Calendar.current
         let now = Date()
+        let schedule = ColorSchedule.resolved(preferences: preferences, date: now, calendar: calendar)
         let minute = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
 
         let contexts = displays.map { display in
@@ -1539,7 +1543,7 @@ final class AppStore: ObservableObject {
         }
         let (writes, state) = ScheduledHardware.plan(
             displays: contexts,
-            preferences: effective,
+            schedule: schedule,
             minuteOfDay: minute,
             state: scheduledHardwareState
         )

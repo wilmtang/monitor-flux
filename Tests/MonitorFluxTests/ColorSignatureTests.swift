@@ -51,6 +51,20 @@ final class ColorSignatureTests: XCTestCase {
         XCTAssertEqual(before.colorSignature, after.colorSignature)
     }
 
+    func testFollowSunsetInputsChangeColorSignature() {
+        // Bedtime lead and the morning rule reshape the resolved solar day, so editing them
+        // must trigger a gamma recompute like any other schedule-shape change.
+        let before = preferencesWithDisplay()
+
+        var lead = before
+        lead.bedtimeLeadMinutes = 8 * 60
+        XCTAssertNotEqual(before.colorSignature, lead.colorSignature)
+
+        var morning = before
+        morning.morningStart = .wakeTime
+        XCTAssertNotEqual(before.colorSignature, morning.colorSignature)
+    }
+
     func testManualTemperatureChangesColorSignature() {
         var before = preferencesWithDisplay()
         before.manualTemperature = 4000

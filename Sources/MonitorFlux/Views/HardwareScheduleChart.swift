@@ -2,18 +2,18 @@ import Foundation
 import SwiftUI
 
 /// A compact day→sunset→night curve for a per-display hardware level (brightness or contrast),
-/// the smaller sibling of the warmth `FluxCurveEditor`. It rides the identical global timeline
-/// (wake/sunset/bedtime anchors + fade) via `ColorSchedule.scheduledHardwareLevel`, so the shape
-/// always matches the warmth schedule's. One handle per phase sets that phase's target; they sit
-/// at the same anchors as the warmth handles and drag vertically only, because the times come
-/// from the Schedule screen, not per display.
+/// the smaller sibling of the warmth `FluxCurveEditor`. It rides the identical resolved timeline
+/// (events + fade) via `ColorSchedule.scheduledHardwareLevel`, so the shape always matches the
+/// warmth schedule's — including Follow-sunset days. One handle per phase sets that phase's
+/// target; they sit at the same anchors as the warmth handles and drag vertically only, because
+/// the times come from the Schedule screen, not per display.
 struct HardwareScheduleChart: View {
     @Binding var dayValue: Int
     @Binding var sunsetValue: Int
     @Binding var nightValue: Int
-    /// The global schedule shape (anchors + fade), read-only here. Same value the warmth curve
-    /// draws from, so the two charts line up in time.
-    let preferences: AppPreferences
+    /// The resolved global schedule (events + fade), read-only here. Same value the warmth
+    /// curve draws from, so the two charts line up in time.
+    let schedule: ResolvedSchedule
     /// Brightness vs contrast accent — the chart's only color, so the two read as different controls.
     let accent: Color
     /// Spoken name for the whole chart, e.g. "Brightness schedule curve".
@@ -106,7 +106,7 @@ struct HardwareScheduleChart: View {
                 dayValue: dayValue,
                 sunsetValue: sunsetValue,
                 nightValue: nightValue,
-                preferences: preferences,
+                schedule: schedule,
                 minuteOfDay: minute
             )
             let point = CGPoint(
@@ -124,7 +124,7 @@ struct HardwareScheduleChart: View {
     }
 
     private func handle(_ phase: ColorPhase, in size: CGSize) -> some View {
-        let x = CGFloat(preferences.startMinutes(for: phase)) / 1440.0 * size.width
+        let x = CGFloat(anchorMinute(for: phase)) / 1440.0 * size.width
         let y = yPosition(for: value(for: phase), height: size.height)
 
         return Circle()
@@ -145,6 +145,18 @@ struct HardwareScheduleChart: View {
                 let delta = direction == .increment ? 5 : -5
                 setValue((value(for: phase) + delta).clamped(to: range), for: phase)
             }
+    }
+
+    /// Where a phase's handle sits — the same effective anchors as the warmth chart.
+    private func anchorMinute(for phase: ColorPhase) -> Int {
+        switch phase {
+        case .daytime:
+            schedule.dayStartMinutes
+        case .sunset:
+            schedule.sunsetMinutes
+        case .bedtime:
+            schedule.bedtimeStartMinutes
+        }
     }
 
     private func value(for phase: ColorPhase) -> Int {

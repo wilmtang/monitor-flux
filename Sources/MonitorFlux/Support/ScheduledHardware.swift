@@ -59,7 +59,7 @@ enum ScheduledHardware {
     ///   even when the target happens to be unchanged.
     static func plan(
         displays: [DisplayContext],
-        preferences effective: AppPreferences,
+        schedule: ResolvedSchedule,
         minuteOfDay: Int,
         state: State
     ) -> (writes: [Write], state: State) {
@@ -75,7 +75,7 @@ enum ScheduledHardware {
                     dayValue: displayPreferences.dayBrightness,
                     sunsetValue: displayPreferences.sunsetBrightness,
                     nightValue: displayPreferences.nightBrightness,
-                    preferences: effective,
+                    schedule: schedule,
                     minuteOfDay: minuteOfDay
                 )
                 if state.brightness[display.id] != target {
@@ -91,7 +91,7 @@ enum ScheduledHardware {
                     dayValue: displayPreferences.dayContrast,
                     sunsetValue: displayPreferences.sunsetContrast,
                     nightValue: displayPreferences.nightContrast,
-                    preferences: effective,
+                    schedule: schedule,
                     minuteOfDay: minuteOfDay
                 )
                 if state.contrast[display.id] != target {

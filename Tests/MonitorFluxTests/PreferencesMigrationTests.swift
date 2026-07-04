@@ -52,6 +52,22 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.nightTemperature, 3000)
     }
 
+    func testAppPreferencesDecodeAddsFollowSunsetDefaults() throws {
+        // Payloads from before the f.lux-style Follow-sunset model omit both new keys; they
+        // must land on f.lux's values (9 h lead, sunrise mornings), and an out-of-range
+        // stored lead must clamp instead of resolving a nonsense day.
+        let legacy = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
+        XCTAssertEqual(legacy.bedtimeLeadMinutes, 9 * 60)
+        XCTAssertEqual(legacy.morningStart, .sunrise)
+
+        let clamped = try JSONDecoder().decode(
+            AppPreferences.self,
+            from: Data(#"{"bedtimeLeadMinutes": 8000, "morningStart": "wakeTime"}"#.utf8)
+        )
+        XCTAssertEqual(clamped.bedtimeLeadMinutes, ControlRanges.bedtimeLeadMinutes.upperBound)
+        XCTAssertEqual(clamped.morningStart, .wakeTime)
+    }
+
     func testNewPreferencesDefaultsAreBackwardCompatible() throws {
         // Older payloads omit the volume / keyboard-control / dock fields entirely.
         let displayPreferences = try JSONDecoder().decode(DisplayPreferences.self, from: Data("{}".utf8))

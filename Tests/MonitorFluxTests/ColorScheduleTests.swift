@@ -193,15 +193,34 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertLessThan(abs(after - before), 200)
     }
 
-    func testSolarScheduleReplacesOnlyTheSunsetAnchor() {
+    func testResolvedSetTimesUsesStoredAnchors() {
+        var preferences = AppPreferences.defaults
+        preferences.scheduleSource = .manualTimes
+        preferences.coolStartMinutes = 400
+        preferences.sunsetStartMinutes = 1100
+        preferences.warmStartMinutes = 1300
+
+        let resolved = ColorSchedule.resolved(preferences: preferences)
+
+        XCTAssertFalse(resolved.followsSun)
+        XCTAssertEqual(resolved.dayStartMinutes, 400)
+        XCTAssertEqual(resolved.wakeMinutes, 400)
+        XCTAssertEqual(resolved.sunsetMinutes, 1100)
+        XCTAssertEqual(resolved.bedtimeStartMinutes, 1300)
+        XCTAssertEqual(resolved.events.count, 3)
+    }
+
+    func testResolvedSolarDerivesEverythingFromSunAndWake() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock
         preferences.scheduleSource = .solar
         preferences.latitude = "47.6"
         preferences.longitude = "-122.3"
-        preferences.coolStartMinutes = 7 * 60   // hand-set wake — must be preserved
-        preferences.warmStartMinutes = 23 * 60  // hand-set bedtime — must be preserved
-        preferences.sunsetStartMinutes = 0      // placeholder that solar replaces
+        preferences.coolStartMinutes = 7 * 60   // the wake input
+        preferences.warmStartMinutes = 23 * 60  // stored Set-times bedtime — ignored while solar
+        preferences.sunsetStartMinutes = 0      // stored Set-times sunset — ignored while solar
+        preferences.bedtimeLeadMinutes = 9 * 60
+        preferences.morningStart = .sunrise
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
@@ -212,25 +231,159 @@ final class ColorScheduleTests: XCTestCase {
         components.hour = 12
         let date = calendar.date(from: components)!
 
-        let adjusted = ColorSchedule.solarAdjustedPreferences(preferences, date: date, calendar: calendar)
+        let resolved = ColorSchedule.resolved(preferences: preferences, date: date, calendar: calendar)
 
-        // Only sunset follows the sun now; wake and bedtime stay the times the user set (so the
-        // screen no longer jumps to daytime at ~5 AM sunrise in summer).
-        XCTAssertEqual(adjusted.coolStartMinutes, 7 * 60)
-        XCTAssertEqual(adjusted.warmStartMinutes, 23 * 60)
-        XCTAssertEqual(Double(adjusted.sunsetStartMinutes), 21 * 60 + 11, accuracy: 25)
+        XCTAssertTrue(resolved.followsSun)
+        // Sunset and day start come from the sun (June 21 in Seattle: ~5:11 / ~21:11)…
+        XCTAssertEqual(Double(resolved.sunsetMinutes), 21 * 60 + 11, accuracy: 25)
+        XCTAssertEqual(Double(resolved.dayStartMinutes), 5 * 60 + 11, accuracy: 25)
+        // …and bedtime is derived from the wake input, ignoring the stored bedtime anchor.
+        XCTAssertEqual(resolved.wakeMinutes, 7 * 60)
+        XCTAssertEqual(resolved.bedtimeStartMinutes, 22 * 60)
     }
 
-    func testManualScheduleSourceLeavesAnchorsUnchanged() {
+    func testResolvedFallsBackToStoredAnchorsWithoutCoordinates() {
         var preferences = AppPreferences.defaults
-        preferences.scheduleSource = .manualTimes
-        preferences.coolStartMinutes = 400
-        preferences.sunsetStartMinutes = 1100
+        preferences.scheduleSource = .solar
+        preferences.latitude = "not a number"
 
-        let adjusted = ColorSchedule.solarAdjustedPreferences(preferences)
+        let resolved = ColorSchedule.resolved(preferences: preferences)
 
-        XCTAssertEqual(adjusted.coolStartMinutes, 400)
-        XCTAssertEqual(adjusted.sunsetStartMinutes, 1100)
+        XCTAssertFalse(resolved.followsSun)
+        XCTAssertEqual(resolved.dayStartMinutes, preferences.coolStartMinutes)
+        XCTAssertEqual(resolved.sunsetMinutes, preferences.sunsetStartMinutes)
+        XCTAssertEqual(resolved.bedtimeStartMinutes, preferences.warmStartMinutes)
+    }
+
+    // MARK: Follow-sunset resolution (docs/FOLLOW_SUNSET_PLAN.md §3)
+
+    /// Seattle-winter-shaped day: wake 7:00, 9 h lead (bedtime 22:00), sunrise 7:57, sunset 16:25.
+    private func winterSolar(morningStart: MorningStart) -> ResolvedSchedule {
+        ColorSchedule.solarResolved(
+            wakeMinutes: 7 * 60,
+            bedtimeLeadMinutes: 9 * 60,
+            morningStart: morningStart,
+            sunriseMinutes: 7 * 60 + 57,
+            sunsetMinutes: 16 * 60 + 25,
+            transitionMinutes: 0
+        )!
+    }
+
+    func testWinterMorningBridgesWakeToSunrise() {
+        let schedule = winterSolar(morningStart: .sunrise)
+
+        // f.lux's morning: bedtime ends at wake, but the screen only steps up to the *sunset*
+        // color; full daytime waits for the real sunrise.
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 6 * 60 + 50), .bedtime)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 7 * 60 + 20), .sunset)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 8 * 60), .daytime)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 17 * 60), .sunset)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 23 * 60), .bedtime)
+    }
+
+    func testWakeTimeMorningSkipsTheBridge() {
+        let schedule = winterSolar(morningStart: .wakeTime)
+
+        XCTAssertEqual(schedule.dayStartMinutes, 7 * 60)
+        XCTAssertEqual(schedule.events.count, 3)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 7 * 60 + 20), .daytime)
+    }
+
+    func testSummerWakeAfterSunriseEndsBedtimeAtSunrise() {
+        let schedule = ColorSchedule.solarResolved(
+            wakeMinutes: 7 * 60,
+            bedtimeLeadMinutes: 9 * 60,
+            morningStart: .sunrise,
+            sunriseMinutes: 5 * 60 + 12,
+            sunsetMinutes: 21 * 60 + 11,
+            transitionMinutes: 0
+        )!
+
+        // No pre-dawn bridge: the sun is already up at wake. Daytime begins at sunrise —
+        // "daytime is whenever the sun is up".
+        XCTAssertFalse(schedule.sunsetSqueezed)
+        XCTAssertEqual(schedule.events.count, 3)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 4 * 60), .bedtime)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 5 * 60 + 30), .daytime)
+    }
+
+    func testEarlyWakeSqueezesOutTheSunset() {
+        // Wake 5:30 puts bedtime at 20:30, before the 21:11 sunset: bedtime wins over the sun
+        // (f.lux's circadian-first rule) and the evening sunset phase disappears rather than
+        // restarting mid-bedtime.
+        let schedule = ColorSchedule.solarResolved(
+            wakeMinutes: 5 * 60 + 30,
+            bedtimeLeadMinutes: 9 * 60,
+            morningStart: .sunrise,
+            sunriseMinutes: 5 * 60 + 12,
+            sunsetMinutes: 21 * 60 + 11,
+            transitionMinutes: 0
+        )!
+
+        XCTAssertTrue(schedule.sunsetSqueezed)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 20 * 60 + 45), .bedtime)
+        // After the (dropped) sunset time the phase must stay bedtime, not flip back to sunset.
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 21 * 60 + 30), .bedtime)
+        // The sunset anchor survives for the UI (handle placement) even though its event is gone.
+        XCTAssertEqual(schedule.sunsetMinutes, 21 * 60 + 11)
+    }
+
+    func testNightShiftWakeStillResolves() {
+        // f.lux's documented advice to night workers is "shift your wake time" — a 23:00 wake
+        // puts bedtime at 14:00 and the resolver must still produce a coherent day.
+        let schedule = ColorSchedule.solarResolved(
+            wakeMinutes: 23 * 60,
+            bedtimeLeadMinutes: 9 * 60,
+            morningStart: .wakeTime,
+            sunriseMinutes: 7 * 60 + 57,
+            sunsetMinutes: 16 * 60 + 25,
+            transitionMinutes: 0
+        )!
+
+        XCTAssertEqual(schedule.bedtimeStartMinutes, 14 * 60)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 15 * 60), .bedtime)
+        XCTAssertEqual(ColorSchedule.activePhase(schedule: schedule, minuteOfDay: 23 * 60 + 30), .daytime)
+    }
+
+    func testPolarDayHasNoSolarResolution() {
+        XCTAssertNil(ColorSchedule.solarResolved(
+            wakeMinutes: 7 * 60,
+            bedtimeLeadMinutes: 9 * 60,
+            morningStart: .sunrise,
+            sunriseMinutes: nil,
+            sunsetMinutes: nil,
+            transitionMinutes: 45
+        ))
+    }
+
+    func testBridgedDayFadesSmoothly() {
+        // The 4-event winter day must stay continuous even with a fade longer than the
+        // wake→sunrise gap — the same guarantee `testLongTransitionDoesNotSnapAtPhaseBoundary`
+        // pins for the 3-anchor Set-times day.
+        let schedule = ColorSchedule.solarResolved(
+            wakeMinutes: 7 * 60,
+            bedtimeLeadMinutes: 9 * 60,
+            morningStart: .sunrise,
+            sunriseMinutes: 7 * 60 + 57,
+            sunsetMinutes: 16 * 60 + 25,
+            transitionMinutes: 240
+        )!
+        let temperature = { (phase: ColorPhase) -> Int in
+            switch phase {
+            case .daytime: 6500
+            case .sunset: 3400
+            case .bedtime: 2700
+            }
+        }
+
+        var previous = ColorSchedule.scheduledValue(schedule: schedule, minuteOfDay: -1, value: temperature)
+        var maxStep = 0
+        for minute in 0..<1440 {
+            let value = ColorSchedule.scheduledValue(schedule: schedule, minuteOfDay: minute, value: temperature)
+            maxStep = max(maxStep, abs(value - previous))
+            previous = value
+        }
+        XCTAssertLessThan(maxStep, 200, "bridged day should fade smoothly (max step \(maxStep) K/min)")
     }
 
     private func threePhasePreferences() -> AppPreferences {

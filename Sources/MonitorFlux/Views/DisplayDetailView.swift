@@ -504,7 +504,7 @@ struct DisplayDetailView: View {
             dayValue: dayValue,
             sunsetValue: sunsetValue,
             nightValue: nightValue,
-            preferences: store.preferences,
+            schedule: ColorSchedule.resolved(preferences: store.preferences),
             accent: accent,
             accessibilityName: name
         )

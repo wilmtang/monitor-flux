@@ -22,15 +22,24 @@ struct FluxCurveEditor: View {
     @Binding var dayTemperature: Int
     @Binding var sunsetTemperature: Int
     @Binding var nightTemperature: Int
-    @Binding var warmStartMinutes: Int
-    @Binding var coolStartMinutes: Int
-    @Binding var sunsetStartMinutes: Int
-    let transitionMinutes: Int
+    /// The resolved day driving the curve shape and the handles' horizontal positions —
+    /// the same value the live engine applies, so the chart always shows the truth
+    /// (including Follow-sunset's pre-dawn bridge and squeezed-sunset days).
+    let schedule: ResolvedSchedule
+    /// Follow-sunset: the times come from the sun and the wake time, so horizontal drags are
+    /// ignored — handles adjust warmth only. Set-times leaves both axes live.
+    var timesLocked = false
+    /// A thin marker at the wake time, shown when wake isn't where any handle sits (sunrise
+    /// mornings put the daytime handle on the sunrise, not the wake).
+    var wakeTickMinute: Int? = nil
     /// The minute being scrub-previewed (drives the prominent marker), or `nil` for "showing now".
     var previewMinute: Int? = nil
     /// Called with the dragged minute-of-day as the user scrubs the time marker. Dragging works in
     /// any mode — the store switches to the clock schedule when it fires.
     var onPreview: (Int) -> Void = { _ in }
+    /// Called with a handle's phase and its dragged minute-of-day (already clamped into cyclic
+    /// order) while times are unlocked. The owner commits it to the store.
+    var onTimeEdit: (ColorPhase, Int) -> Void = { _, _ in }
 
     private let minKelvin = ControlRanges.kelvin.lowerBound
     private let maxKelvin = ControlRanges.kelvin.upperBound
@@ -47,6 +56,10 @@ struct FluxCurveEditor: View {
                     drawGrid(in: &context, size: canvasSize)
                     drawTemperatureFill(in: &context, size: canvasSize)
                     drawTemperatureCurve(in: &context, size: canvasSize)
+                }
+
+                if let wakeTickMinute {
+                    wakeTick(at: wakeTickMinute, in: size)
                 }
 
                 timeMarkers(in: size)
@@ -123,6 +136,18 @@ struct FluxCurveEditor: View {
         }
     }
 
+    /// The wake marker for locked-times days: quieter than the now line, tinted like the Wake
+    /// stepper so the two read as the same value.
+    private func wakeTick(at minute: Int, in size: CGSize) -> some View {
+        let x = CGFloat(((minute % 1440) + 1440) % 1440) / 1440.0 * size.width
+        return Capsule()
+            .fill(.blue.opacity(0.6))
+            .frame(width: 1.5, height: size.height)
+            .position(x: x, y: size.height / 2)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
     private static func minuteOfDay(from date: Date) -> Int {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         return (components.hour ?? 0) * 60 + (components.minute ?? 0)
@@ -173,17 +198,18 @@ struct FluxCurveEditor: View {
 
     private func temperaturePath(size: CGSize) -> Path {
         var path = Path()
-        let preferences = previewPreferences()
 
         for step in 0...144 {
             let minute = step * 10
-            let temperature = ColorSchedule.scheduledTemperature(
-                preferences: preferences,
+            let kelvin = ColorSchedule.scheduledValue(
+                schedule: schedule,
                 minuteOfDay: minute
-            )
+            ) { phase in
+                temperature(for: phase).clamped(to: ControlRanges.kelvin)
+            }
             let point = CGPoint(
                 x: CGFloat(minute) / 1440.0 * size.width,
-                y: yPosition(for: temperature, height: size.height)
+                y: yPosition(for: kelvin, height: size.height)
             )
 
             if step == 0 {
@@ -199,12 +225,16 @@ struct FluxCurveEditor: View {
     private func handle(_ handle: FluxCurveHandle, in size: CGSize) -> some View {
         let point = point(for: handle, in: size)
         let color = color(for: handle)
+        // A squeezed-out sunset (bedtime began before the sun went down) keeps its handle so
+        // the warmth stays tunable, but dimmed — matching its disabled stepper — to say
+        // "not part of today's curve".
+        let dimmed = handle == .sunset && schedule.sunsetSqueezed
 
         return Circle()
-            .fill(color.opacity(0.9))
+            .fill(color.opacity(dimmed ? 0.5 : 0.9))
             .frame(width: 20, height: 20)
-            .overlay(Circle().stroke(.white, lineWidth: 2))
-            .shadow(color: color.opacity(0.28), radius: 8, y: 3)
+            .overlay(Circle().stroke(.white.opacity(dimmed ? 0.55 : 1), lineWidth: 2))
+            .shadow(color: color.opacity(dimmed ? 0.12 : 0.28), radius: 8, y: 3)
             .position(point)
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -213,22 +243,22 @@ struct FluxCurveEditor: View {
                     }
             )
             .accessibilityLabel("\(phaseLabel(for: handle)) color handle, \(MinuteFormatting.label(for: startMinute(for: handle)))")
-            .accessibilityValue(KelvinFormatting.label(for: temperature(for: handle)))
+            .accessibilityValue(KelvinFormatting.label(for: temperature(for: handle.phase)))
             // VO ↑/↓ adjusts the handle's temperature in the same 100 K steps a drag rounds to;
             // the phase's *time* stays keyboard-editable through the steppers below the chart.
             .accessibilityAdjustableAction { direction in
                 let delta = direction == .increment ? 100 : -100
-                setTemperature((temperature(for: handle) + delta).clamped(to: ControlRanges.kelvin), for: handle)
+                setTemperature((temperature(for: handle.phase) + delta).clamped(to: ControlRanges.kelvin), for: handle)
             }
     }
 
-    private func temperature(for handle: FluxCurveHandle) -> Int {
-        switch handle {
-        case .day:
+    private func temperature(for phase: ColorPhase) -> Int {
+        switch phase {
+        case .daytime:
             dayTemperature
         case .sunset:
             sunsetTemperature
-        case .night:
+        case .bedtime:
             nightTemperature
         }
     }
@@ -266,75 +296,43 @@ struct FluxCurveEditor: View {
         }
     }
 
-    /// The minute-of-day anchor a handle sits on — its horizontal position, shown in its time pill.
+    /// The minute-of-day anchor a handle sits on — its horizontal position.
     private func startMinute(for handle: FluxCurveHandle) -> Int {
         switch handle {
         case .day:
-            coolStartMinutes
+            schedule.dayStartMinutes
         case .sunset:
-            sunsetStartMinutes
+            schedule.sunsetMinutes
         case .night:
-            warmStartMinutes
+            schedule.bedtimeStartMinutes
         }
     }
 
     private func point(for handle: FluxCurveHandle, in size: CGSize) -> CGPoint {
-        switch handle {
-        case .day:
-            CGPoint(
-                x: CGFloat(coolStartMinutes) / 1440.0 * size.width,
-                y: yPosition(for: dayTemperature, height: size.height)
-            )
-        case .sunset:
-            CGPoint(
-                x: CGFloat(sunsetStartMinutes) / 1440.0 * size.width,
-                y: yPosition(for: sunsetTemperature, height: size.height)
-            )
-        case .night:
-            CGPoint(
-                x: CGFloat(warmStartMinutes) / 1440.0 * size.width,
-                y: yPosition(for: nightTemperature, height: size.height)
-            )
-        }
+        CGPoint(
+            x: CGFloat(startMinute(for: handle)) / 1440.0 * size.width,
+            y: yPosition(for: temperature(for: handle.phase), height: size.height)
+        )
     }
 
     private func update(_ handle: FluxCurveHandle, location: CGPoint, size: CGSize) {
-        let rawMinute = roundedMinutes(from: location.x, width: size.width)
         let kelvin = roundedKelvin(from: location.y, height: size.height)
+        setTemperature(kelvin, for: handle)
+
+        guard !timesLocked else {
+            return
+        }
+        let rawMinute = roundedMinutes(from: location.x, width: size.width)
         // Keep the dragged anchor inside the daytime → sunset → bedtime order, so a handle can't be
         // pulled past its neighbors (e.g. sunset dragged before wake snaps back to just after wake).
         let minute = ColorSchedule.clampedStartMinute(
             rawMinute,
             for: handle.phase,
-            wake: coolStartMinutes,
-            sunset: sunsetStartMinutes,
-            bedtime: warmStartMinutes
+            wake: schedule.dayStartMinutes,
+            sunset: schedule.sunsetMinutes,
+            bedtime: schedule.bedtimeStartMinutes
         )
-
-        switch handle {
-        case .day:
-            coolStartMinutes = minute
-            dayTemperature = kelvin
-        case .sunset:
-            sunsetStartMinutes = minute
-            sunsetTemperature = kelvin
-        case .night:
-            warmStartMinutes = minute
-            nightTemperature = kelvin
-        }
-    }
-
-    private func previewPreferences() -> AppPreferences {
-        var preferences = AppPreferences.defaults
-        preferences.colorMode = .clock
-        preferences.dayTemperature = dayTemperature
-        preferences.sunsetTemperature = sunsetTemperature
-        preferences.nightTemperature = nightTemperature
-        preferences.warmStartMinutes = warmStartMinutes
-        preferences.coolStartMinutes = coolStartMinutes
-        preferences.sunsetStartMinutes = sunsetStartMinutes
-        preferences.transitionMinutes = transitionMinutes
-        return preferences
+        onTimeEdit(handle.phase, minute)
     }
 
     private func yPosition(for kelvin: Int, height: CGFloat) -> CGFloat {

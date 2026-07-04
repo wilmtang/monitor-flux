@@ -3,7 +3,7 @@ import XCTest
 
 final class ScheduledHardwareTests: XCTestCase {
     /// Anchors: wake 7:00, sunset 20:00, bedtime 21:00, 45-min fade (the defaults).
-    private let schedule = AppPreferences.defaults
+    private let schedule = ResolvedSchedule.setTimes(AppPreferences.defaults)
 
     private func context(
         id: CGDirectDisplayID = 1,
@@ -26,7 +26,7 @@ final class ScheduledHardwareTests: XCTestCase {
     func testUnchangedTargetEmitsOnlyOnce() {
         let noon = 12 * 60
         let first = ScheduledHardware.plan(
-            displays: [context()], preferences: schedule, minuteOfDay: noon,
+            displays: [context()], schedule: schedule, minuteOfDay: noon,
             state: ScheduledHardware.State()
         )
         XCTAssertEqual(
@@ -37,7 +37,7 @@ final class ScheduledHardwareTests: XCTestCase {
         // Same minute again — the target hasn't moved, so nothing is re-written and a manual
         // adjustment made in between would hold.
         let second = ScheduledHardware.plan(
-            displays: [context()], preferences: schedule, minuteOfDay: noon, state: first.state
+            displays: [context()], schedule: schedule, minuteOfDay: noon, state: first.state
         )
         XCTAssertTrue(second.writes.isEmpty)
         XCTAssertEqual(second.state, first.state)
@@ -45,12 +45,12 @@ final class ScheduledHardwareTests: XCTestCase {
 
     func testChangedTargetReEmits() {
         let noon = ScheduledHardware.plan(
-            displays: [context()], preferences: schedule, minuteOfDay: 12 * 60,
+            displays: [context()], schedule: schedule, minuteOfDay: 12 * 60,
             state: ScheduledHardware.State()
         )
         // 22:00 is past bedtime (21:00) + fade, so the night target (40) is due.
         let night = ScheduledHardware.plan(
-            displays: [context()], preferences: schedule, minuteOfDay: 22 * 60, state: noon.state
+            displays: [context()], schedule: schedule, minuteOfDay: 22 * 60, state: noon.state
         )
         XCTAssertEqual(
             night.writes,
@@ -62,7 +62,7 @@ final class ScheduledHardwareTests: XCTestCase {
         // macOS owns the built-in backlight (auto-brightness); the schedule must not fight it.
         let builtIn = context(isBuiltIn: true, hasControllableBacklight: true, scheduleContrast: true)
         let result = ScheduledHardware.plan(
-            displays: [builtIn], preferences: schedule, minuteOfDay: 12 * 60,
+            displays: [builtIn], schedule: schedule, minuteOfDay: 12 * 60,
             state: ScheduledHardware.State()
         )
         XCTAssertTrue(result.writes.isEmpty)
@@ -75,7 +75,7 @@ final class ScheduledHardwareTests: XCTestCase {
         // DDC-only and skips the built-in regardless.
         let builtIn = context(isBuiltIn: true, hasControllableBacklight: false, scheduleContrast: true)
         let result = ScheduledHardware.plan(
-            displays: [builtIn], preferences: schedule, minuteOfDay: 12 * 60,
+            displays: [builtIn], schedule: schedule, minuteOfDay: 12 * 60,
             state: ScheduledHardware.State()
         )
         XCTAssertEqual(
@@ -87,11 +87,11 @@ final class ScheduledHardwareTests: XCTestCase {
     func testDisablingScheduleClearsTrackingSoReEnablingReEmits() {
         let noon = 12 * 60
         let on = ScheduledHardware.plan(
-            displays: [context()], preferences: schedule, minuteOfDay: noon,
+            displays: [context()], schedule: schedule, minuteOfDay: noon,
             state: ScheduledHardware.State()
         )
         let off = ScheduledHardware.plan(
-            displays: [context(scheduleBrightness: false)], preferences: schedule,
+            displays: [context(scheduleBrightness: false)], schedule: schedule,
             minuteOfDay: noon, state: on.state
         )
         XCTAssertTrue(off.writes.isEmpty)
@@ -99,7 +99,7 @@ final class ScheduledHardwareTests: XCTestCase {
 
         // Re-enabling re-emits even though the target value never changed.
         let backOn = ScheduledHardware.plan(
-            displays: [context()], preferences: schedule, minuteOfDay: noon, state: off.state
+            displays: [context()], schedule: schedule, minuteOfDay: noon, state: off.state
         )
         XCTAssertEqual(backOn.writes.count, 1)
     }
@@ -107,7 +107,7 @@ final class ScheduledHardwareTests: XCTestCase {
     func testContrastIsPlannedIndependentlyOfBrightness() {
         let both = context(scheduleBrightness: true, scheduleContrast: true)
         let result = ScheduledHardware.plan(
-            displays: [both], preferences: schedule, minuteOfDay: 12 * 60,
+            displays: [both], schedule: schedule, minuteOfDay: 12 * 60,
             state: ScheduledHardware.State()
         )
         XCTAssertEqual(result.writes.count, 2)

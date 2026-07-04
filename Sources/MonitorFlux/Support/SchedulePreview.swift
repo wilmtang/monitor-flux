@@ -43,12 +43,14 @@ enum SchedulePreview {
 
     static func plan(
         preferences: AppPreferences,
+        schedule: ResolvedSchedule,
         displays: [DisplayContext],
         minuteOfDay minute: Int
     ) -> Plan {
-        let effective = ColorSchedule.solarAdjustedPreferences(preferences)
         let temperature = ColorSchedule.quantizedTemperature(
-            ColorSchedule.scheduledTemperature(preferences: effective, minuteOfDay: minute)
+            ColorSchedule.scheduledValue(schedule: schedule, minuteOfDay: minute) { phase in
+                preferences.temperature(for: phase).clamped(to: ControlRanges.kelvin)
+            }
         )
 
         // Apply through the normal gamma path by faking a manual target at the previewed
@@ -69,7 +71,7 @@ enum SchedulePreview {
                     dayValue: displayPreferences.dayBrightness,
                     sunsetValue: displayPreferences.sunsetBrightness,
                     nightValue: displayPreferences.nightBrightness,
-                    preferences: effective,
+                    schedule: schedule,
                     minuteOfDay: minute
                 )
                 let (hardware, gamma) = HybridBrightness.scheduledComponents(
@@ -96,7 +98,7 @@ enum SchedulePreview {
                     dayValue: displayPreferences.dayContrast,
                     sunsetValue: displayPreferences.sunsetContrast,
                     nightValue: displayPreferences.nightContrast,
-                    preferences: effective,
+                    schedule: schedule,
                     minuteOfDay: minute
                 )
                 hardwareWrites.append(

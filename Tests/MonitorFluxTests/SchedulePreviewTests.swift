@@ -40,7 +40,9 @@ final class SchedulePreviewTests: XCTestCase {
 
     func testPreviewOverlaysManualTargetWithoutTouchingScheduleShape() {
         let preferences = AppPreferences.defaults
-        let plan = SchedulePreview.plan(preferences: preferences, displays: [], minuteOfDay: noon)
+        let plan = SchedulePreview.plan(
+            preferences: preferences, schedule: .setTimes(preferences), displays: [], minuteOfDay: noon
+        )
 
         // The preview copy fakes a manual target at the previewed (quantized) temperature so
         // the normal gamma path applies it — the schedule's own fields stay untouched.
@@ -57,7 +59,8 @@ final class SchedulePreviewTests: XCTestCase {
         // never in the stored preferences.
         let preferences = preferencesWithScheduledDisplay()
         let plan = SchedulePreview.plan(
-            preferences: preferences, displays: [context()], minuteOfDay: lateNight
+            preferences: preferences,
+            schedule: .setTimes(preferences), displays: [context()], minuteOfDay: lateNight
         )
         XCTAssertEqual(
             plan.hardwareWrites,
@@ -73,7 +76,8 @@ final class SchedulePreviewTests: XCTestCase {
         var preferences = preferencesWithScheduledDisplay()
         preferences.displayPreferences["ext"]?.nightBrightness = 10
         let plan = SchedulePreview.plan(
-            preferences: preferences, displays: [context()], minuteOfDay: lateNight
+            preferences: preferences,
+            schedule: .setTimes(preferences), displays: [context()], minuteOfDay: lateNight
         )
         XCTAssertEqual(
             plan.hardwareWrites,
@@ -88,6 +92,7 @@ final class SchedulePreviewTests: XCTestCase {
         preferences.displayPreferences["ext"]?.nightBrightness = 40
         let plan = SchedulePreview.plan(
             preferences: preferences,
+            schedule: .setTimes(preferences),
             displays: [context(dimmingMode: .software)],
             minuteOfDay: lateNight
         )
@@ -104,6 +109,7 @@ final class SchedulePreviewTests: XCTestCase {
         let preferences = preferencesWithScheduledDisplay()
         let plan = SchedulePreview.plan(
             preferences: preferences,
+            schedule: .setTimes(preferences),
             displays: [context(isVirtual: true, hasHardwareControl: false)],
             minuteOfDay: lateNight
         )
@@ -115,6 +121,7 @@ final class SchedulePreviewTests: XCTestCase {
         let preferences = preferencesWithScheduledDisplay(key: "builtin")
         let plan = SchedulePreview.plan(
             preferences: preferences,
+            schedule: .setTimes(preferences),
             displays: [context(key: "builtin", id: 1, isBuiltIn: true, hasHardwareControl: false)],
             minuteOfDay: lateNight
         )
@@ -125,7 +132,8 @@ final class SchedulePreviewTests: XCTestCase {
     func testScheduledContrastEmitsContrastWrite() {
         let preferences = preferencesWithScheduledDisplay(scheduleBrightness: false, scheduleContrast: true)
         let plan = SchedulePreview.plan(
-            preferences: preferences, displays: [context()], minuteOfDay: noon
+            preferences: preferences,
+            schedule: .setTimes(preferences), displays: [context()], minuteOfDay: noon
         )
         XCTAssertEqual(
             plan.hardwareWrites,
@@ -136,7 +144,8 @@ final class SchedulePreviewTests: XCTestCase {
     func testUnscheduledDisplayContributesNothing() {
         let preferences = preferencesWithScheduledDisplay(scheduleBrightness: false)
         let plan = SchedulePreview.plan(
-            preferences: preferences, displays: [context()], minuteOfDay: lateNight
+            preferences: preferences,
+            schedule: .setTimes(preferences), displays: [context()], minuteOfDay: lateNight
         )
         XCTAssertTrue(plan.hardwareWrites.isEmpty)
         XCTAssertEqual(plan.previewPreferences.displayPreferences["ext"]?.gammaBrightness, 100)
