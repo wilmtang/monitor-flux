@@ -20,7 +20,7 @@ set -euo pipefail
 #                                            still opens and places its window.
 #
 # For deeper UI assertions ("a Brightness slider exists and moving it changes state"),
-# use XCUITest, which needs an Xcode app+UITest target — see README/agent.md.
+# use XCUITest, which needs an Xcode app+UITest target — see README/AGENTS.md.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="$ROOT_DIR/dist/MonitorFlux.app"

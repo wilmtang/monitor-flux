@@ -25,7 +25,7 @@ struct MonitorFluxApp: App {
         // The popup's "Settings… ⌘," row is only a click target; the key equivalent has to live
         // in the app's main menu — the same (hidden) menu whose Quit item makes ⌘Q work while the
         // popup is open. There is no `Settings` scene (it opens blank/duplicate windows from a
-        // `.window` MenuBarExtra — see agent.md), so provide the standard item ourselves.
+        // `.window` MenuBarExtra — see AGENTS.md), so provide the standard item ourselves.
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {

@@ -259,6 +259,9 @@ When a change is UI, hold it to this bar — and screenshot it before calling it
 
 ## Verifying UI changes (hard-won)
 
+- **Open test windows on the built-in screen, not the main external monitor** — keep
+  verification off the display you're working on. (This machine restores the main window onto
+  the external by default; move it there, or capture by window id, which is display-independent.)
 - **A passing smoke test does NOT mean the UI renders.** `smoke_test.sh` only checks window
   *geometry* (on-screen, sane size) via `CGWindowList` — it has twice passed on a window that
   was blank or wrongly sized. Always screenshot the actual window and read it.
