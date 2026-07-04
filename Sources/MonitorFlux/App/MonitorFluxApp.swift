@@ -119,14 +119,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // First-run welcome: show once on a fresh install. `MONITORFLUX_SHOW_ONBOARDING=1` forces
-        // it for a screenshot run; the main-window test hook suppresses it so the smoke geometry
-        // check finds only the titled main window, not the welcome sheet.
+        // Screenshot hook: capture the settings window's own pixels to a PNG and quit — a faithful,
+        // self-contained alternative to the external window-id capture (no `_shot_sck`, no live-UI
+        // scrolling). Frame the shot with SELECT / EXPAND_ADVANCED / SCROLL_TO. `=1` uses a default
+        // temp path. Runs last so it captures after the other launch hooks have applied.
         let env = ProcessInfo.processInfo.environment
+        if let snapshot = env["MONITORFLUX_SNAPSHOT"], !snapshot.isEmpty, let store {
+            let path = snapshot == "1"
+                ? (NSTemporaryDirectory() as NSString).appendingPathComponent("monitorflux-snapshot.png")
+                : snapshot
+            WindowSnapshot.captureAndQuit(to: path, store: store)
+        }
+
+        // First-run welcome: show once on a fresh install. `MONITORFLUX_SHOW_ONBOARDING=1` forces
+        // it for a screenshot run; the main-window and snapshot hooks suppress it so the geometry
+        // check (or the shot) finds only the titled main window, not the welcome sheet.
         if env["MONITORFLUX_SHOW_ONBOARDING"] == "1" {
             store?.showOnboarding()
         } else if store?.preferences.hasSeenOnboarding == false,
-                  env["MONITORFLUX_OPEN_MAIN"] == nil {
+                  env["MONITORFLUX_OPEN_MAIN"] == nil,
+                  env["MONITORFLUX_SNAPSHOT"] == nil {
             store?.showOnboarding()
         }
     }

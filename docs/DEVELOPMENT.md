@@ -53,6 +53,7 @@ MONITORFLUX_OPEN_MAIN=1`.
 | `MONITORFLUX_FAKE_DISPLAYS` | count (1–4) | inject mock displays (index 0 DDC, 1 non-DDC, 2 AirPlay/virtual…) alongside the real ones |
 | `MONITORFLUX_EXPAND_ADVANCED` | `1` | force a display pane's Advanced block open (persisted toggle is bypassed for the shot) |
 | `MONITORFLUX_SCROLL_TO` | `warmth` / `brightness` / `advanced` / `schedule` | scroll a display pane's section into view on launch, so below-the-fold content (e.g. the schedule charts) is captured by window id with no live-UI scrolling; pair with `EXPAND_ADVANCED` for the `advanced`/`schedule` anchors |
+| `MONITORFLUX_SNAPSHOT` | `<path>` / `1` | capture the settings window's *own* pixels to a PNG (ScreenCaptureKit) then quit — a faithful, self-contained shot with no external capture script and no live-UI control; frame it with `SELECT` / `EXPAND_ADVANCED` / `SCROLL_TO`. `1` → a default temp path. **Needs the app to hold Screen Recording permission** (the first run registers it and may return nothing; grant it once, then it's reliable) |
 | `MONITORFLUX_ZOOM_STEP` | `0`–`8` | settings-window zoom step |
 | `MONITORFLUX_OPEN_POPUP` | `1` | open the menu-bar popup |
 | `MONITORFLUX_SHOW_OSD` / `MONITORFLUX_OSD_FRACTION` / `MONITORFLUX_OSD_HOLD` | — / 0…1 / `1` | drive the OSD bezel for capture (`OSD_HOLD` keeps it up ~60 s) |
@@ -60,10 +61,15 @@ MONITORFLUX_OPEN_MAIN=1`.
 | `MONITORFLUX_SHOW_ONBOARDING` / `MONITORFLUX_ONBOARDING_PAGE` | `1` / page index | show onboarding at a given page |
 | `MONITORFLUX_DISMISS_HINT_AFTER` | seconds | auto-dismiss the "no external monitors" hint |
 
-Screenshots are taken by window id (`script/_shot_sck.swift`); the zoom harness lives in
-[`prototype-zoom-matrix/`](../prototype-zoom-matrix/). `swift test` covers the pure logic
-(schedule resolution, hybrid-brightness math, preference migration, color signature); deeper "a
-control exists and moving it changes state" assertions need XCUITest (an Xcode UITest target).
+Screenshots are taken by window id (`script/_shot_sck.swift`), or the app can shoot *itself* —
+`MONITORFLUX_SNAPSHOT` renders its real composited window to a PNG in one launch, so a
+below-the-fold check needs no external capture tool and never drives the live UI. (Both go
+through ScreenCaptureKit, so both are faithful to window materials/vibrancy — an offscreen
+`ImageRenderer` pass would flatten those. See `Services/WindowSnapshot.swift`.) The zoom harness
+lives in [`prototype-zoom-matrix/`](../prototype-zoom-matrix/). `swift test` covers the pure logic
+(schedule resolution, hybrid-brightness math, preference migration, color signature) — it renders
+nothing, so it says nothing about layout; deeper "a control exists and moving it changes state"
+assertions need XCUITest (an Xcode UITest target).
 
 ## Distributing (Developer ID signing + notarization)
 
