@@ -46,18 +46,29 @@ struct HardwareScheduleChart: View {
         .accessibilityLabel(accessibilityName)
     }
 
-    /// A thin, non-draggable line at the current minute — a quieter version of the warmth curve's
-    /// marker (no scrub preview here). Driven by `TimelineView(.everyMinute)`, the laziest cadence
-    /// that keeps it positioned to the schedule's one-minute resolution.
+    /// A non-draggable "now" line at the current minute, styled to match the warmth curve's live
+    /// marker — the same bright capsule with a dot cap on top — so the hardware charts and the main
+    /// scheduler read as one family (there's no scrub preview here, so it stays put). Driven by
+    /// `TimelineView(.everyMinute)`, the laziest cadence that keeps it at the schedule's one-minute
+    /// resolution.
     private func nowMarker(in size: CGSize) -> some View {
         TimelineView(.everyMinute) { context in
             let minute = Self.minuteOfDay(from: context.date)
             let x = CGFloat(minute) / 1440.0 * size.width
-            Capsule()
-                .fill(.white.opacity(0.65))
-                .frame(width: 1.5, height: size.height)
-                .position(x: x, y: size.height / 2)
-                .allowsHitTesting(false)
+            ZStack {
+                Capsule()
+                    .fill(.white.opacity(0.9))
+                    .frame(width: 2, height: size.height)
+                    .shadow(color: .white.opacity(0.4), radius: 3)
+                Circle()
+                    .fill(.white)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
+                    .offset(y: -size.height / 2)
+            }
+            .frame(width: 7, height: size.height)
+            .position(x: x, y: size.height / 2)
+            .allowsHitTesting(false)
         }
     }
 
@@ -127,10 +138,21 @@ struct HardwareScheduleChart: View {
         let x = CGFloat(anchorMinute(for: phase)) / 1440.0 * size.width
         let y = yPosition(for: value(for: phase), height: size.height)
 
-        return Circle()
-            .fill(accent.opacity(0.9))
+        // Two hues at once: the control's accent forms the ring (so brightness and contrast handles
+        // stay distinct from each other), and a phase-colored core — the same Wake/Sunset/Bedtime
+        // hues as the warmth curve's dots — marks which phase this handle sets. A white hairline
+        // keeps the core legible where the two colors are close (gold ring / yellow daytime core).
+        return ZStack {
+            Circle()
+                .fill(accent.opacity(0.95))
+            Circle()
+                .fill(Self.phaseColor(phase))
+                .frame(width: 8, height: 8)
+            Circle()
+                .strokeBorder(.white.opacity(0.9), lineWidth: 1.5)
+                .frame(width: 8, height: 8)
+        }
             .frame(width: 16, height: 16)
-            .overlay(Circle().stroke(.white, lineWidth: 2))
             .shadow(color: accent.opacity(0.28), radius: 6, y: 2)
             .position(x: x, y: y)
             .gesture(
@@ -145,6 +167,19 @@ struct HardwareScheduleChart: View {
                 let delta = direction == .increment ? 5 : -5
                 setValue((value(for: phase) + delta).clamped(to: range), for: phase)
             }
+    }
+
+    /// The Wake/Sunset/Bedtime hue for a phase's handle core — the same palette the warmth curve's
+    /// dots use, so a phase looks the same on every chart.
+    private static func phaseColor(_ phase: ColorPhase) -> Color {
+        switch phase {
+        case .daytime:
+            .phaseDaytime
+        case .sunset:
+            .phaseSunset
+        case .bedtime:
+            .phaseBedtime
+        }
     }
 
     /// Where a phase's handle sits — the same effective anchors as the warmth chart.

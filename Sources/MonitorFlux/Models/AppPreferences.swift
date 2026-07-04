@@ -301,6 +301,10 @@ struct AppPreferences: Codable, Equatable, Sendable {
     /// Show the developer-facing Diagnostics pane in the sidebar. Off by default (also reachable
     /// via ⌘⇧D); a toggle in General turns it on for people who want it.
     var showDiagnostics = false
+    /// Reveal each display's Advanced controls (software dimming, monitor extras, scheduling).
+    /// Off by default so the everyday brightness/contrast stays the focus; a per-display toggle
+    /// flips it, and being global it's remembered across displays and launches.
+    var showsAdvancedControls = false
     /// The popup's "No external monitors detected" hint was dismissed with its ✕ — never show
     /// it again. It's onboarding for what plugging a monitor in unlocks; once read, it's noise.
     var hideNoExternalsHint = false
@@ -352,6 +356,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case fineAdjustmentsEnabled
         case hasSeenOnboarding
         case showDiagnostics
+        case showsAdvancedControls
         case hideNoExternalsHint
         case fontSizeStep
         case popupBackdropOpacity
@@ -411,6 +416,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         fineAdjustmentsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fineAdjustmentsEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         showDiagnostics = try container.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? false
+        showsAdvancedControls = try container.decodeIfPresent(Bool.self, forKey: .showsAdvancedControls) ?? false
         hideNoExternalsHint = try container.decodeIfPresent(Bool.self, forKey: .hideNoExternalsHint) ?? false
         fontSizeStep = (try container.decodeIfPresent(Int.self, forKey: .fontSizeStep) ?? AppPreferences.defaultFontSizeStep)
             .clamped(to: AppPreferences.fontSizeStepRange)
@@ -448,6 +454,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(fineAdjustmentsEnabled, forKey: .fineAdjustmentsEnabled)
         try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(showDiagnostics, forKey: .showDiagnostics)
+        try container.encode(showsAdvancedControls, forKey: .showsAdvancedControls)
         try container.encode(hideNoExternalsHint, forKey: .hideNoExternalsHint)
         try container.encode(fontSizeStep, forKey: .fontSizeStep)
         try container.encode(popupBackdropOpacity, forKey: .popupBackdropOpacity)

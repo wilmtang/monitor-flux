@@ -3,10 +3,17 @@ import SwiftUI
 struct DisplayDetailView: View {
     @EnvironmentObject private var store: AppStore
     let display: DisplayInfo
-    /// Collapsed by default; `MONITORFLUX_EXPAND_ADVANCED=1` opens it on launch so UI
-    /// verification can screenshot the Advanced controls without a click (dev hook only).
-    @State private var advancedExpanded =
+    /// Dev hook: `MONITORFLUX_EXPAND_ADVANCED=1` forces Advanced open on launch so UI verification
+    /// can screenshot those controls without flipping the switch.
+    private let forceAdvancedOpen =
         ProcessInfo.processInfo.environment["MONITORFLUX_EXPAND_ADVANCED"] == "1"
+
+    /// Whether the Advanced block is revealed. Backed by a persisted global preference (so it
+    /// stays put across displays and launches until the user flips it again), or forced by the
+    /// dev hook above.
+    private var advancedShown: Bool {
+        store.preferences.showsAdvancedControls || forceAdvancedOpen
+    }
 
     private var displayPreferences: DisplayPreferences {
         store.displayPreferences(for: display)
@@ -181,38 +188,37 @@ struct DisplayDetailView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Software dimming + scheduling, collapsed by default so the everyday real brightness /
-    /// contrast above stays the focus. Nothing is removed — just tucked behind one disclosure.
+    /// Software dimming + scheduling, hidden by default so the everyday real brightness /
+    /// contrast above stays the focus. A switch reveals it — and, being a persisted preference,
+    /// it stays revealed across displays and launches until flipped off. Nothing is removed.
     private var advancedSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    withAnimation(.snappy(duration: 0.16)) {
-                        advancedExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "chevron.right")
-                            .zoomFont(size: 12, weight: .semibold)
-                            .rotationEffect(.degrees(advancedExpanded ? 90 : 0))
-                        Image(systemName: "slider.horizontal.3")
-                        Text("Advanced")
-                            .zoomFont(.headline)
-                        Spacer(minLength: 0)
-                    }
-                    // Order matters: pad and stretch to full width *first*, then take the
-                    // content shape last so the entire row — padding and the empty space out
-                    // to the trailing edge — is the tap target, not just the label glyphs.
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+            Toggle(isOn: advancedShownBinding) {
+                HStack(spacing: 12) {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(.secondary)
+                    Text("Advanced")
+                        .zoomFont(.headline)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(advancedExpanded ? "Collapse Advanced" : "Expand Advanced")
+            }
+            .settingsSwitch()
+            .padding(.vertical, 2)
 
-                if advancedExpanded {
-                    advancedContent
-                }
+            if advancedShown {
+                advancedContent
+            }
+        }
+    }
+
+    /// Drives the Advanced switch: reads/writes the persisted preference, animating the reveal so
+    /// the block slides in rather than snapping. The dev hook can force the content open without
+    /// touching the stored value, so the switch still reflects the real preference.
+    private var advancedShownBinding: Binding<Bool> {
+        Binding {
+            store.preferences.showsAdvancedControls
+        } set: { newValue in
+            withAnimation(.snappy(duration: 0.16)) {
+                store.updateGlobalPreferences { $0.showsAdvancedControls = newValue }
             }
         }
     }
