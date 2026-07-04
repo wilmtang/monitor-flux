@@ -177,9 +177,9 @@ struct QuickControlsView: View {
         .fixedSize()
     }
 
-    /// The mode the chip reflects: Off when the warmth master is disabled, else the color mode.
+    /// The mode the chip reflects — warmth on/off/mode is just `colorMode` now.
     private var currentMode: ColorMode {
-        store.preferences.gammaEnabled ? store.preferences.colorMode : .off
+        store.preferences.colorMode
     }
 
     private var modeChipAppearance: (icon: String, label: String, tint: Color) {
@@ -213,13 +213,13 @@ struct QuickControlsView: View {
             ) { newValue in
                 let rounded = Int((newValue / 100.0).rounded()) * 100
                 store.updateGlobalPreferences { preferences in
-                    preferences.gammaEnabled = true
                     if preferences.colorMode == .clock {
                         // On a schedule: warm/cool the phase that's active right now and stay
                         // Automatic — don't yank the whole schedule into Fixed.
                         let phase = ColorSchedule.currentPhase(preferences: preferences)
                         preferences.setTemperature(rounded, for: phase)
                     } else {
+                        // From Fixed or Off, a drag pins a Fixed override (turning warmth on).
                         preferences.colorMode = .manual
                         preferences.manualTemperature = rounded
                     }
@@ -250,12 +250,9 @@ struct QuickControlsView: View {
 
     private var modeBinding: Binding<ColorMode> {
         Binding {
-            store.preferences.gammaEnabled ? store.preferences.colorMode : .off
+            store.preferences.colorMode
         } set: { newMode in
             store.updateGlobalPreferences { preferences in
-                if newMode != .off {
-                    preferences.gammaEnabled = true
-                }
                 preferences.colorMode = newMode
             }
         }

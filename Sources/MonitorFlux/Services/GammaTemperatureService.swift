@@ -42,7 +42,7 @@ final class GammaTemperatureService {
 
     func apply(displays: [DisplayInfo], preferences: AppPreferences) -> GammaApplySummary {
         // The plan is the single truth for what (if anything) gets written: software dimming
-        // applies even with the Warmth master off, so don't short-circuit on `gammaEnabled` —
+        // applies even when warmth's mode is Off, so don't short-circuit on the mode —
         // an all-neutral plan restores instead.
         let adjustmentsByDisplay = GammaPlan.adjustments(displays: displays, preferences: preferences)
         if adjustmentsByDisplay.isEmpty {
@@ -52,7 +52,7 @@ final class GammaTemperatureService {
                 failedCount: 0,
                 // User-facing (the plain "Warmth" status row) — no "gamma" jargon here; that
                 // word stays in the ⓘ tooltip and the advanced Diagnostics pane.
-                message: preferences.gammaEnabled ? "No warming now" : "Off"
+                message: preferences.colorMode != .off ? "No warming now" : "Off"
             )
         }
 

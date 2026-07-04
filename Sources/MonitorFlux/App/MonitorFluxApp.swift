@@ -43,8 +43,7 @@ struct MonitorFluxApp: App {
     /// warmed (the warm side of the range), and stays neutral in cool daylight or when warmth is
     /// off — a glanceable "your screen is warm right now" without a permanently-colored menu-bar icon.
     private var menuBarTint: Color {
-        guard store.preferences.gammaEnabled,
-              store.preferences.colorMode != .off,
+        guard store.preferences.colorMode != .off,
               let temperature = store.currentTemperature,
               temperature < 4600 else {
             return .primary

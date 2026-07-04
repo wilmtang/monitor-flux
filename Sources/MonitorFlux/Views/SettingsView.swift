@@ -174,17 +174,18 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Enable warmth", isOn: Binding {
-                    store.preferences.gammaEnabled
+                    store.preferences.colorMode != .off
                 } set: { isOn in
                     store.updateGlobalPreferences { preferences in
-                        preferences.gammaEnabled = isOn
+                        // The one warmth on/off state is the mode: off ⇒ Off, on ⇒ Automatic.
+                        preferences.colorMode = isOn ? .clock : .off
                     }
                 })
                 .settingsSwitch()
-                Text("Master switch for warmth — warming the color and dimming the image via the display's color tables (\u{201C}gamma\u{201D}). Off means no warming or software dimming on **any** display (only the monitors' own controls and macOS color remain). On means each display follows its **own** Warmth and software-dimming settings on its Display screen. Same setting as \u{201C}Warmth\u{201D} on the Schedule screen; doesn't affect real backlight, the monitor's own DDC controls, or volume.")
+                Text("Turns warmth — the screen's color temperature — on or off everywhere. It's the same state as **Off** vs **Fixed / Automatic** on the Schedule screen. Warmth tints the image via the display's color tables (\u{201C}gamma\u{201D}); it never touches the real backlight, the monitor's own DDC controls, or volume. Software dimming is separate and keeps working with warmth off.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
-                Text("The built-in display has no DDC, so everything MonitorFlux changes on it — warmth and software dimming — goes through the color tables. With this off, the built-in display can't be adjusted here; only its real backlight brightness (the macOS brightness keys) still works.")
+                Text("The built-in display has no DDC, so its warmth goes through the color tables. With warmth off it simply isn't warmed; its real backlight brightness (the macOS brightness keys) works either way.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

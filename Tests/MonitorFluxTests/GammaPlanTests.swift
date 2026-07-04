@@ -6,20 +6,20 @@ final class GammaPlanTests: XCTestCase {
     func testDisabledGammaPlansNoDisplayWrites() {
         let displays = [makeDisplay(id: 1)]
         var preferences = AppPreferences.defaults
-        preferences.gammaEnabled = false
+        preferences.colorMode = .off
 
         XCTAssertTrue(GammaPlan.adjustments(displays: displays, preferences: preferences).isEmpty)
     }
 
-    func testSoftwareDimmingAppliesWithWarmthMasterOff() {
-        // Software dimming is plain dimming, not a color change — it must survive the Warmth
-        // master being off (the unified Brightness control relies on it), with no tint.
+    func testSoftwareDimmingAppliesWithWarmthOff() {
+        // Software dimming is plain dimming, not a color change — it must survive warmth's mode
+        // being Off (the unified Brightness control relies on it), with no tint.
         let display = makeDisplay(id: 1)
         var displayPreferences = DisplayPreferences()
         displayPreferences.gammaBrightness = 60
 
         var preferences = AppPreferences.defaults
-        preferences.gammaEnabled = false
+        preferences.colorMode = .off
         preferences.displayPreferences[display.key] = displayPreferences
 
         let adjustment = GammaPlan.adjustments(displays: [display], preferences: preferences)[display.id]

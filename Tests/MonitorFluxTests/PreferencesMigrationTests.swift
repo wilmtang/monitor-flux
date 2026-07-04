@@ -19,7 +19,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.gammaBrightness, 100)
     }
 
-    func testAppPreferencesDecodeAddsGammaDefaults() throws {
+    func testAppPreferencesDecodeKeepsModeWhenNoLegacyGamma() throws {
         let json = """
         {
           "colorMode": "clock",
@@ -30,9 +30,38 @@ final class PreferencesMigrationTests: XCTestCase {
 
         let preferences = try JSONDecoder().decode(AppPreferences.self, from: json)
 
-        XCTAssertTrue(preferences.gammaEnabled)
+        // No legacy `gammaEnabled` key → mode is left exactly as stored.
+        XCTAssertEqual(preferences.colorMode, .clock)
         XCTAssertEqual(preferences.dayTemperature, 6400)
         XCTAssertEqual(preferences.nightTemperature, 3300)
+    }
+
+    func testLegacyGammaDisabledMigratesToOff() throws {
+        // The old warmth master (`gammaEnabled`) is gone; a stored `false` folds into Off so an
+        // upgrading user who had warmth suppressed stays suppressed, whatever their mode was.
+        let json = """
+        {
+          "gammaEnabled": false,
+          "colorMode": "clock"
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: json)
+
+        XCTAssertEqual(preferences.colorMode, .off)
+    }
+
+    func testLegacyGammaEnabledLeavesModeAlone() throws {
+        let json = """
+        {
+          "gammaEnabled": true,
+          "colorMode": "manual"
+        }
+        """.data(using: .utf8)!
+
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: json)
+
+        XCTAssertEqual(preferences.colorMode, .manual)
     }
 
     func testAppPreferencesDecodeAddsSunsetDefaults() throws {
@@ -312,7 +341,7 @@ final class PreferencesMigrationTests: XCTestCase {
 
     func testPreferencesStoreExportImportRoundTripsNormalizedJSON() throws {
         var prefs = AppPreferences()
-        prefs.gammaEnabled = false
+        prefs.colorMode = .off
         prefs.displayPreferences["external"] = {
             var display = DisplayPreferences()
             display.hardwareBrightness = 42
@@ -323,7 +352,7 @@ final class PreferencesMigrationTests: XCTestCase {
         let data = try PreferencesStore.exportData(prefs)
         let imported = try PreferencesStore.importData(data)
 
-        XCTAssertEqual(imported.gammaEnabled, false)
+        XCTAssertEqual(imported.colorMode, .off)
         XCTAssertEqual(imported.displayPreferences["external"]?.hardwareBrightness, 42)
         XCTAssertEqual(
             imported.displayPreferences["external"]?.gammaBrightness,

@@ -65,11 +65,11 @@ struct DisplayDetailView: View {
         Section("Warmth") {
             Toggle("Warm this display", isOn: displayBinding(\.colorEnabled))
                 .settingsSwitch()
-                .disabled(!store.preferences.gammaEnabled)
+                .disabled(store.preferences.colorMode == .off)
             LabeledContent("Current", value: store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
-            Text(store.preferences.gammaEnabled
+            Text(store.preferences.colorMode != .off
                 ? "Opt this display into the global warmth schedule and manual warmth changes."
-                : "Enable Warmth on the Schedule screen to warm individual displays.")
+                : "Turn warmth on (Fixed or Automatic) on the Schedule screen to warm individual displays.")
                 .zoomFont(.caption)
                 .foregroundStyle(.secondary)
         }

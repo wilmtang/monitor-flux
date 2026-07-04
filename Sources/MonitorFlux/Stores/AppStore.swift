@@ -23,7 +23,7 @@ final class AppStore: ObservableObject {
             // Leaving the clock schedule (to Manual/Off, or Warmth off) ends any scrub preview —
             // there's no live schedule left to preview.
             let endPreview = schedulePreviewMinute != nil
-                && !(preferences.gammaEnabled && preferences.colorMode == .clock)
+                && preferences.colorMode != .clock
             if endPreview {
                 schedulePreviewMinute = nil
             }
@@ -1006,10 +1006,10 @@ final class AppStore: ObservableObject {
                 : preferences.manualTemperature)
         let next = (current + delta).clamped(to: ControlRanges.kelvin)
         updateGlobalPreferences { preferences in
-            preferences.gammaEnabled = true
             if preferences.colorMode == .clock {
                 preferences.setTemperature(next, for: activePhase)
             } else {
+                // From Fixed or Off, a nudge pins a Fixed override (turning warmth on if it was off).
                 preferences.colorMode = .manual
                 preferences.manualTemperature = next
             }
@@ -1296,9 +1296,9 @@ final class AppStore: ObservableObject {
         // `didSet` -> `reconcileColor` restores the tables, nils the temperature,
         // and updates `colorMessage` from the gamma service.
         updateGlobalPreferences { preferences in
-            preferences.gammaEnabled = false
-            // Software dimming is independent of the Warmth master, so the escape hatch must
-            // also neutralize it — otherwise the tables would stay darkened after "restore".
+            preferences.colorMode = .off
+            // Software dimming is independent of warmth's mode, so the escape hatch must also
+            // neutralize it — otherwise the tables would stay darkened after "restore".
             for key in preferences.displayPreferences.keys {
                 preferences.displayPreferences[key]?.gammaBrightness = 100
             }
@@ -1312,9 +1312,8 @@ final class AppStore: ObservableObject {
             applySchedulePreview(minute)
             return
         }
-        let target = preferences.gammaEnabled
-            ? ColorSchedule.targetTemperature(preferences: preferences)
-            : nil
+        // `.off` already resolves to nil here, so the mode is the only gate.
+        let target = ColorSchedule.targetTemperature(preferences: preferences)
         // Publish only real changes — each @Published set is a full objectWillChange.
         if currentTemperature != target {
             currentTemperature = target
@@ -1382,12 +1381,11 @@ final class AppStore: ObservableObject {
     func previewScheduleColor(atMinute minute: Int) {
         let clamped = minute.clamped(to: ControlRanges.minuteOfDay)
         schedulePreviewMinute = clamped
-        // Scrubbing the time line commits to the schedule: adopt clock mode (turning Warmth on if
-        // it was off, or switching from Manual), so the preview reflects the schedule the user is
-        // now exploring. That mode change is real and persists; the preview itself stays temporary.
-        if !preferences.gammaEnabled || preferences.colorMode != .clock {
+        // Scrubbing the time line commits to the schedule: adopt clock mode (from Off or Fixed),
+        // so the preview reflects the schedule the user is now exploring. That mode change is real
+        // and persists; the preview itself stays temporary.
+        if preferences.colorMode != .clock {
             updateGlobalPreferences { preferences in
-                preferences.gammaEnabled = true
                 preferences.colorMode = .clock
             }
             // updateGlobalPreferences → reconcileColor, which honors schedulePreviewMinute and

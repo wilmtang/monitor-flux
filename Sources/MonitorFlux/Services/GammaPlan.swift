@@ -10,12 +10,10 @@ enum GammaPlan {
         displays: [DisplayInfo],
         preferences: AppPreferences
     ) -> [CGDirectDisplayID: GammaAdjustment] {
-        // Warmth (temperature) rides the master switch; software *dimming* does not — it's
-        // plain dimming, not a color change, so the unified Brightness control keeps working
-        // with Warmth off.
-        let targetTemperature = preferences.gammaEnabled
-            ? ColorSchedule.targetTemperature(preferences: preferences)
-            : nil
+        // Warmth (temperature) rides the mode — `.off` resolves to nil here; software *dimming*
+        // does not — it's plain dimming, not a color change, so the unified Brightness control
+        // keeps working with warmth Off.
+        let targetTemperature = ColorSchedule.targetTemperature(preferences: preferences)
         var result: [CGDirectDisplayID: GammaAdjustment] = [:]
         for display in displays {
             // AirPlay / virtual displays ignore gamma writes — leave them to the shade overlay.

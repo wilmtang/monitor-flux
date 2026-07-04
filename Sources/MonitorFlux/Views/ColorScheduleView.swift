@@ -15,16 +15,6 @@ struct ColorScheduleView: View {
                     .listRowInsets(EdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18))
             }
 
-            Section {
-                Toggle(isOn: preferenceBinding(\.gammaEnabled)) {
-                    HStack(spacing: 8) {
-                        Text("Warmth")
-                        InfoButton(title: "What is gamma?", message: HelpText.gamma)
-                    }
-                }
-                .settingsSwitch()
-            }
-
             // The shared day-and-night timeline: the times, source, and fade that Warmth (when
             // Automatic) AND each monitor's scheduled brightness/contrast all ride. It's always
             // shown — those channels are independent, so hiding it based on Warmth's mode would
@@ -71,6 +61,8 @@ struct ColorScheduleView: View {
                     .zoomFont(.title2)
                     .fontWeight(.medium)
 
+                InfoButton(title: "What is warmth?", message: HelpText.gamma)
+
                 Spacer()
 
                 Picker("Mode", selection: preferenceBinding(\.colorMode)) {
@@ -100,7 +92,6 @@ struct ColorScheduleView: View {
                         .fixedSize()
                     Slider(value: temperatureSliderBinding, in: Double(ControlRanges.kelvin.lowerBound)...Double(ControlRanges.kelvin.upperBound))
                         .layoutPriority(1)
-                        .disabled(!store.preferences.gammaEnabled)
                     Text(KelvinFormatting.label(for: editedTemperature))
                         .zoomFont(.callout)
                         .foregroundStyle(.secondary)
@@ -269,9 +260,6 @@ struct ColorScheduleView: View {
     }
 
     private var statusHeadline: String {
-        guard store.preferences.gammaEnabled else {
-            return "Warmth is off"
-        }
         guard store.preferences.colorMode != .off else {
             return "Warmth is off"
         }
@@ -285,7 +273,7 @@ struct ColorScheduleView: View {
     /// A glyph that mirrors the headline: a sun by day, a warm moon at night, dimmed when
     /// color warming is off — instead of the abstract two-tone disc it replaces.
     private var statusIcon: (symbol: String, color: Color) {
-        guard store.preferences.gammaEnabled, store.preferences.colorMode != .off else {
+        guard store.preferences.colorMode != .off else {
             return ("moon.zzz.fill", .secondary)
         }
         return liveTemperature >= 5200
@@ -390,11 +378,11 @@ struct ColorScheduleView: View {
         }
     }
 
-    /// Like `preferenceBinding`, but editing the value also turns Warmth on and adopts Automatic.
-    /// Only the warmth *phase temperatures* (the curve dots) use this: dragging a warmth value
-    /// means you want the warmth schedule. The shared timeline controls (times, source, fade,
-    /// bedtime lead, mornings) deliberately use plain `preferenceBinding` — they feed brightness
-    /// and contrast schedules too, so editing them must NOT change Warmth's mode.
+    /// Like `preferenceBinding`, but editing the value also adopts Automatic (turning warmth on if
+    /// it was Off). Only the warmth *phase temperatures* (the curve dots) use this: dragging a
+    /// warmth value means you want the warmth schedule. The shared timeline controls (times, source,
+    /// fade, bedtime lead, mornings) deliberately use plain `preferenceBinding` — they feed
+    /// brightness and contrast schedules too, so editing them must NOT change Warmth's mode.
     private func scheduleEditBinding<Value>(
         _ keyPath: WritableKeyPath<AppPreferences, Value>
     ) -> Binding<Value> {
@@ -403,7 +391,6 @@ struct ColorScheduleView: View {
         } set: { newValue in
             store.updateGlobalPreferences { preferences in
                 preferences[keyPath: keyPath] = newValue
-                preferences.gammaEnabled = true
                 preferences.colorMode = .clock
             }
         }

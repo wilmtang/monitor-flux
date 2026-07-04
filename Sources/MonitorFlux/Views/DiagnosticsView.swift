@@ -63,7 +63,6 @@ struct DiagnosticsView: View {
 
     private var colorSection: some View {
         Section("Color Pipeline") {
-            LabeledContent("Warmth master", value: store.preferences.gammaEnabled ? "On" : "Off")
             LabeledContent("Mode", value: store.preferences.colorMode.label)
             LabeledContent("Schedule from", value: store.preferences.scheduleSource.label)
             LabeledContent("Current", value: store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")
@@ -326,7 +325,6 @@ struct DiagnosticsView: View {
 
         lines.append("")
         lines.append("Color pipeline")
-        lines.append("Warmth master: \(store.preferences.gammaEnabled ? "on" : "off")")
         lines.append("Mode: \(store.preferences.colorMode.label)")
         lines.append("Schedule from: \(store.preferences.scheduleSource.label)")
         lines.append("Current: \(store.currentTemperature.map(KelvinFormatting.label(for:)) ?? "Off")")

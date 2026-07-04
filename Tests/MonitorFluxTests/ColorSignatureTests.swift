@@ -74,11 +74,11 @@ final class ColorSignatureTests: XCTestCase {
         XCTAssertNotEqual(before.colorSignature, after.colorSignature)
     }
 
-    func testTogglingGammaChangesColorSignature() {
+    func testTurningWarmthOffChangesColorSignature() {
         var before = preferencesWithDisplay()
-        before.gammaEnabled = true
+        before.colorMode = .clock
         var after = before
-        after.gammaEnabled = false
+        after.colorMode = .off
 
         XCTAssertNotEqual(before.colorSignature, after.colorSignature)
     }

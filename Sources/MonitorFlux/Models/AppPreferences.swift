@@ -273,7 +273,9 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
 }
 
 struct AppPreferences: Codable, Equatable, Sendable {
-    var gammaEnabled = true
+    /// Warmth on/off/mode in one control: `.off` is the single "no warmth" state (there's no
+    /// separate master switch — a legacy `gammaEnabled` flag was folded into `.off` on load).
+    /// Off suppresses only the color temperature; software dimming is independent of it.
     var colorMode: ColorMode = .clock
     var manualTemperature = 4200
     var dayTemperature = 6500
@@ -388,8 +390,13 @@ struct AppPreferences: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        gammaEnabled = try container.decodeIfPresent(Bool.self, forKey: .gammaEnabled) ?? true
         colorMode = try container.decodeIfPresent(ColorMode.self, forKey: .colorMode) ?? .clock
+        // Legacy migration: warmth used to carry a separate master switch (`gammaEnabled`) above
+        // the mode. A stored `false` meant "no warmth regardless of mode", so fold it into Off —
+        // the single source of truth now. Absent (or `true`) leaves the stored mode alone.
+        if try container.decodeIfPresent(Bool.self, forKey: .gammaEnabled) == false {
+            colorMode = .off
+        }
         manualTemperature = (try container.decodeIfPresent(Int.self, forKey: .manualTemperature) ?? 4200)
             .clamped(to: ControlRanges.kelvin)
         dayTemperature = (try container.decodeIfPresent(Int.self, forKey: .dayTemperature) ?? 6500)
@@ -435,7 +442,8 @@ struct AppPreferences: Codable, Equatable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(gammaEnabled, forKey: .gammaEnabled)
+        // `gammaEnabled` is intentionally not re-encoded — it's a read-only legacy key kept in
+        // `CodingKeys` only so old payloads migrate into `.off` on load.
         try container.encode(colorMode, forKey: .colorMode)
         try container.encode(manualTemperature, forKey: .manualTemperature)
         try container.encode(dayTemperature, forKey: .dayTemperature)
@@ -495,7 +503,6 @@ extension AppPreferences {
     /// what keeps a hardware drag smooth. Time-of-day is excluded on purpose: the 60s
     /// timer drives clock-based temperature changes, not preference mutations.
     struct ColorSignature: Equatable {
-        var gammaEnabled: Bool
         var colorMode: ColorMode
         var manualTemperature: Int
         var dayTemperature: Int
@@ -516,7 +523,6 @@ extension AppPreferences {
 
     var colorSignature: ColorSignature {
         ColorSignature(
-            gammaEnabled: gammaEnabled,
             colorMode: colorMode,
             manualTemperature: manualTemperature,
             dayTemperature: dayTemperature,
@@ -540,11 +546,11 @@ extension AppPreferences {
         )
     }
 
-    /// True when MonitorFlux may currently be writing gamma tables: the Warmth master is on,
-    /// or some display carries a non-neutral software brightness (software dimming is plain
-    /// dimming, independent of the Warmth master). Gates gamma-conflict detection.
+    /// True when MonitorFlux may currently be writing gamma tables: warmth is on (any mode but
+    /// `.off`), or some display carries a non-neutral software brightness (software dimming is
+    /// plain dimming, independent of warmth's mode). Gates gamma-conflict detection.
     var mayWriteGamma: Bool {
-        gammaEnabled || displayPreferences.values.contains { $0.gammaBrightness != 100 }
+        colorMode != .off || displayPreferences.values.contains { $0.gammaBrightness != 100 }
     }
 
     /// The stored color temperature for a schedule phase.
