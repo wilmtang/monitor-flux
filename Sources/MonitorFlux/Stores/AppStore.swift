@@ -96,6 +96,13 @@ final class AppStore: ObservableObject {
     /// tests don't fight f.lux/MonitorControl or flicker the screen — the UI still updates.
     let safeMode: Bool
 
+    /// True when a dev/test launch hook has mutated in-memory-only state that must never reach
+    /// disk: `MONITORFLUX_ZOOM_STEP` (a transient zoom) or `MONITORFLUX_FAKE_DISPLAYS` (mock
+    /// displays that get seeded into `displayPreferences` and `displayOrder`). While set, every
+    /// preferences save is skipped, so a screenshot run can't overwrite the user's real config —
+    /// the same class of accident as seeding a UI-test state over live prefs.
+    private let persistenceSuppressed: Bool
+
     let locationService = LocationService()
     let keyboardService = KeyboardControlService()
     private let displayService = DisplayService()
@@ -130,7 +137,12 @@ final class AppStore: ObservableObject {
     private var dockDropSmoothing = Set<AnyCancellable>()
 
     init() {
-        safeMode = ProcessInfo.processInfo.environment["MONITORFLUX_SAFE_MODE"] == "1"
+        let environment = ProcessInfo.processInfo.environment
+        safeMode = environment["MONITORFLUX_SAFE_MODE"] == "1"
+        // Any hook that mutates prefs in memory only (a transient zoom, injected mock displays)
+        // must never persist — see `persistenceSuppressed`.
+        persistenceSuppressed = environment["MONITORFLUX_ZOOM_STEP"] != nil
+            || environment["MONITORFLUX_FAKE_DISPLAYS"] != nil
         preferences = PreferencesStore.load().normalized()
         // Test hook: `MONITORFLUX_ZOOM_STEP=N` opens the window at a given zoom step
         // (0…8) without persisting it, so a screenshot run can verify zoom rendering
@@ -689,6 +701,9 @@ final class AppStore: ObservableObject {
     /// a continuous slider drag doesn't encode + write the whole blob dozens of times a
     /// second. Flushed eagerly on quit so nothing is lost.
     private func schedulePreferencesSave() {
+        guard !persistenceSuppressed else {
+            return
+        }
         pendingPreferencesSave?.cancel()
         let snapshot = preferences
         let item = DispatchWorkItem { PreferencesStore.save(snapshot) }
@@ -697,6 +712,9 @@ final class AppStore: ObservableObject {
     }
 
     func flushPendingPreferencesSave() {
+        guard !persistenceSuppressed else {
+            return
+        }
         guard let pending = pendingPreferencesSave else {
             return
         }
