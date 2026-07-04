@@ -41,6 +41,16 @@ final class ColorSignatureTests: XCTestCase {
         XCTAssertEqual(before.colorSignature, after.colorSignature)
     }
 
+    func testPopupBackdropOpacityDoesNotAffectColorSignature() {
+        // The General-pane slider drags this continuously; a gamma recompute per tick
+        // would both stutter the drag and hammer the color pipeline.
+        let before = preferencesWithDisplay()
+        var after = before
+        after.popupBackdropOpacity = 0.2
+
+        XCTAssertEqual(before.colorSignature, after.colorSignature)
+    }
+
     func testManualTemperatureChangesColorSignature() {
         var before = preferencesWithDisplay()
         before.manualTemperature = 4000

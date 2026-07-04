@@ -74,12 +74,24 @@ struct SettingsView: View {
                             value: Binding(
                                 get: { store.preferences.popupBackdropOpacity },
                                 set: { newValue in
-                                    store.updateGlobalPreferences { $0.popupBackdropOpacity = newValue }
+                                    // Round to whole percent so most drag ticks are no-ops —
+                                    // raw values republish the store at mouse-event rate and
+                                    // stutter the drag (the warmth/DDC slider fix).
+                                    store.updateGlobalPreferences {
+                                        $0.popupBackdropOpacity = (newValue * 100).rounded() / 100
+                                    }
                                 }
                             ),
                             in: 0...1
                         )
                         .labelsHidden()
+                        Button("Reset") {
+                            store.updateGlobalPreferences {
+                                $0.popupBackdropOpacity = AppPreferences.defaultPopupBackdropOpacity
+                            }
+                        }
+                        .settingsPushButton()
+                        .disabled(store.preferences.popupBackdropOpacity == AppPreferences.defaultPopupBackdropOpacity)
                     }
                 }
                 Text("How solid the menu-bar popup looks — 0% keeps the standard translucent panel, 100% is fully solid.")
