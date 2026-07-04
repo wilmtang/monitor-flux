@@ -25,6 +25,9 @@ enum AppLog {
     static let ddc = Logger(subsystem: subsystem, category: "ddc")
     static let schedule = Logger(subsystem: subsystem, category: "schedule")
     static let keyboard = Logger(subsystem: subsystem, category: "keyboard")
+    /// Preferences load/save — notably a decode failure, so a corrupt blob leaves a trail
+    /// instead of a silent factory reset.
+    static let prefs = Logger(subsystem: subsystem, category: "prefs")
     /// Dev-only `MONITORFLUX_SNAPSHOT` window-capture hook — success/failure of the self-shot.
     static let snapshot = Logger(subsystem: subsystem, category: "snapshot")
 }
