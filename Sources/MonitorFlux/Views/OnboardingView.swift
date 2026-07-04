@@ -135,7 +135,7 @@ struct OnboardingView: View {
 
     /// A filled accent CTA drawn with an explicit capsule + white label via `.plain`, so it
     /// renders identically whether or not the window is key. The system `.borderedProminent`
-    /// default button drops its label on macOS 26 when the window isn't active — which a menu-bar
+    /// default button drops its label on recent macOS when the window isn't active — which a menu-bar
     /// app's welcome window often isn't (a status-item panel holds key).
     private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {

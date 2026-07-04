@@ -27,10 +27,8 @@ APP_BUNDLE="$ROOT_DIR/dist/MonitorFlux.app"
 
 pkill -x MonitorFlux >/dev/null 2>&1 || true
 
-# Build + sign the bundle (this also launches once; we stop it immediately).
-"$ROOT_DIR/script/build_and_run.sh" --verify >/dev/null 2>&1 || true
-pkill -x MonitorFlux >/dev/null 2>&1 || true
-sleep 1
+# Build + sign the bundle without launching it (the scenarios below do their own launches).
+"$ROOT_DIR/script/build_and_run.sh" --bundle >/dev/null 2>&1 || true
 
 # Safe mode: drive the UI but write no gamma/DDC/backlight, so the smoke test never
 # flickers the screen or fights f.lux/MonitorControl. The reopen scenario needs extra

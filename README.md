@@ -119,8 +119,9 @@ for warmth.
 When enabled (Settings ▸ Keyboard), MonitorFlux taps the keyboard's brightness and
 volume media keys and routes them to the external display **under your pointer** over
 DDC — so the same keys that dim the built-in panel now drive whichever monitor you're
-pointing at. Hold **Control** with the brightness keys to change contrast, or **Shift**
-with the brightness keys to make global warmth warmer/cooler. This media-key path must
+pointing at. Hold **Control** with the brightness keys to change contrast, **Shift**
+with the brightness keys to make global warmth warmer/cooler, or **Command** with the
+brightness keys to drive the built-in panel's own backlight. This media-key path must
 be enabled in Settings and needs Accessibility permission (System Settings ▸ Privacy &
 Security ▸ Accessibility), since swallowing HID key events is privileged. Implemented
 with a `CGEventTap` in `KeyboardControlService`. The built-in display's brightness
@@ -222,12 +223,13 @@ opening blank, opening duplicates, or opening off-screen), there's a launch smok
 ./script/smoke_test.sh
 ```
 
-It builds the app and runs two scenarios: `MONITORFLUX_OPEN_MAIN=1` (open the detailed
-window once) and `MONITORFLUX_OPEN_MAIN=reopen` (open, close, then reopen — what users hit
-by clicking Settings again after closing). For each it asserts via `CGWindowList` that
-exactly one sizable window is on screen **and substantially within a display** — the
-containment check is what catches a reopened window that orders front off-screen or
-oversized. For deeper assertions ("a Brightness slider exists and dragging it changes
+It builds the app and runs three scenarios: `MONITORFLUX_OPEN_MAIN=1` (open the detailed
+window once), `MONITORFLUX_OPEN_MAIN=reopen` (open, close, then reopen — what users hit
+by clicking Settings again after closing), and a Dock-policy pass (`MONITORFLUX_FORCE_DOCK`
+on/off, asserting the LaunchServices app type is Foreground vs UIElement with the window on
+screen either way). For each it asserts via `CGWindowList` that exactly one sizable window is
+on screen **and substantially within a display** — the containment check is what catches a
+reopened window that orders front off-screen or oversized. For deeper assertions ("a Brightness slider exists and dragging it changes
 state"), the right tool is **XCUITest** (Apple's accessibility-driven UI test framework) —
 it needs an Xcode app target + UI-test target, which a pure SwiftPM package doesn't provide.
 
