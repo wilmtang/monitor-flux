@@ -17,6 +17,9 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 ICON_SOURCE="$ROOT_DIR/Assets/AppIcon.icns"
 
+# Any invocation replaces a running instance: two copies would fight for the gamma tables.
+# The app installs a SIGTERM handler that restores the color tables before exiting, so this
+# pkill doesn't leave the screen frozen at the last warmth.
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 # BUILD_CONFIG=release produces an optimized binary (used by make_dmg.sh); defaults to debug.
@@ -140,6 +143,9 @@ case "$MODE" in
     open_app
     sleep 1
     pgrep -x "$APP_NAME" >/dev/null
+    # A launch smoke check, not a session to keep: stop the instance we just started so it
+    # doesn't sit in the menu bar (a safe-mode copy squatting over any real one) after verify.
+    pkill -x "$APP_NAME" >/dev/null 2>&1 || true
     ;;
   *)
     echo "usage: $0 [run|--safe|--bundle|--debug|--logs|--telemetry|--verify]" >&2

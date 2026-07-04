@@ -55,8 +55,11 @@ struct MonitorFluxApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var store: AppStore?
+    private var sigtermSource: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installSigtermHandler()
+
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -172,5 +175,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         store?.flushPendingPreferencesSave()
         store?.restoreColorTables()
+    }
+
+    /// Restore the color tables on SIGTERM (a `pkill`, or logout/shutdown), which bypasses
+    /// `applicationWillTerminate` — without this a kill leaves the gamma tables frozen at the
+    /// last warmth. Ignore the default disposition and handle the signal on the main queue so
+    /// the restore runs on the main actor before we exit.
+    private func installSigtermHandler() {
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler {
+            MainActor.assumeIsolated {
+                self.store?.restoreColorTables()
+                self.store?.flushPendingPreferencesSave()
+            }
+            exit(0)
+        }
+        source.resume()
+        sigtermSource = source
     }
 }
