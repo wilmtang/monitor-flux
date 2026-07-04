@@ -56,6 +56,9 @@ struct QuickControlsView: View {
             Color(nsColor: .windowBackgroundColor)
                 .opacity(store.preferences.popupBackdropOpacity)
         )
+        // Capture this panel so the dismiss path can close exactly it, not every panel-shaped
+        // window (which also caught open ⓘ popovers in the settings window).
+        .background(PopupWindowAccessor())
         // The popup content exists exactly while the MenuBarExtra panel is open, so its
         // appear/disappear is the reliable "is the popup showing?" signal for the ⌘, command.
         // Opening also re-reads the backlight, so the built-in card's slider reflects any
@@ -640,12 +643,43 @@ func openMenuBarPopup() {
 
 @MainActor
 private func closeMenuBarPopupWindows() {
+    // Close the tracked popup panel specifically. Fall back to the panel-shape heuristic only
+    // when the window was never captured — and even then never a popover (an open ⓘ in the
+    // settings window is one), which the width gate alone would wrongly close.
+    if let window = MenuBarPopupWindow.current, window.isVisible {
+        window.close()
+        return
+    }
     for window in NSApp.windows
     where window.isVisible
         && !window.styleMask.contains(.titled)
         && !window.ignoresMouseEvents
-        && window.frame.width >= 120 {
+        && window.frame.width >= 120
+        && !String(describing: type(of: window)).contains("Popover") {
         window.close()
+    }
+}
+
+/// The live `MenuBarExtra` panel, captured while the popup is on screen (see
+/// `PopupWindowAccessor`), so the dismiss path can target exactly it.
+@MainActor
+enum MenuBarPopupWindow {
+    static weak var current: NSWindow?
+}
+
+/// A zero-size backing view that records its host window — the popup panel — into
+/// `MenuBarPopupWindow.current`.
+private struct PopupWindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { MenuBarPopupWindow.current = view.window }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let window = nsView.window {
+            MenuBarPopupWindow.current = window
+        }
     }
 }
 
