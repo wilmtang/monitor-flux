@@ -929,6 +929,13 @@ final class AppStore: ObservableObject {
         updateGlobalPreferences { preferences in
             preferences.keyboardControlEnabled = isEnabled
         }
+        // In safe mode the tap must stay down: a real CGEventTap would swallow brightness/volume
+        // keys system-wide while writing no hardware, so the keys look dead. Mirrors init and
+        // applyReplacementPreferences, and keeps onboarding's "Enable…" safe under safe mode.
+        guard !safeMode else {
+            keyboardStatus = "Off (safe mode)"
+            return
+        }
         if isEnabled {
             if keyboardService.start() {
                 keyboardStatus = "Active"
