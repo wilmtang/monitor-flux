@@ -8,12 +8,16 @@ import SwiftUI
 @MainActor
 final class AppStore: ObservableObject {
     @Published private(set) var displays: [DisplayInfo] = []
-    @Published var preferences: AppPreferences {
+    @Published private(set) var preferences: AppPreferences {
         didSet {
+            // Self-heal an un-normalized assignment. This inner set does NOT re-enter didSet
+            // (Swift suppresses re-entry into a property's own observer), so we deliberately
+            // fall through and run the change-handling body below against the normalized value
+            // — the old early `return` here silently skipped the save + gamma reconcile whenever
+            // a caller happened to assign a raw value. `private(set)` keeps that path internal.
             let normalized = preferences.normalized()
-            guard normalized == preferences else {
+            if normalized != preferences {
                 preferences = normalized
-                return
             }
             // Coalesce disk writes and skip the gamma recompute unless a color-affecting
             // field actually changed. A continuous brightness/contrast/volume drag fires
