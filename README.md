@@ -236,3 +236,8 @@ MonitorFlux's Apple Silicon DDC, built-in backlight, media-key handling, native 
 (`OSDManager`), and AirPlay overlay dimming (the "shade") were developed by studying
 [MonitorControl](https://github.com/MonitorControl/MonitorControl) (MIT). See
 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and the full license.
+
+## License
+
+MonitorFlux is licensed under the GNU Affero General Public License v3.0. See
+[LICENSE](LICENSE).
