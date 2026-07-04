@@ -57,6 +57,23 @@ final class HotkeyBindingsTests: XCTestCase {
         XCTAssertNil(maps.media[MediaKeyShortcut(keyCode: MediaKey.brightnessDown, shift: true)])
     }
 
+    func testTwoActionsOnTheSameMediaComboAreFlaggedAsConflicts() {
+        // Record brightness-up's own media combo onto contrast-up: both now claim it, so both
+        // are flagged (only one can win the route) instead of one silently shadowing the other.
+        let combo = MediaKeyShortcut(keyCode: MediaKey.brightnessUp)
+        let maps = HotkeyBindings.maps(
+            bindings: [HotKeyAction.contrastUp.rawValue: .media(combo)],
+            fineAdjustmentsEnabled: false
+        )
+        XCTAssertTrue(maps.mediaConflicts.contains(.contrastUp))
+        XCTAssertTrue(maps.mediaConflicts.contains(.brightnessUp))
+    }
+
+    func testDistinctMediaCombosReportNoConflict() {
+        let maps = HotkeyBindings.maps(bindings: [:], fineAdjustmentsEnabled: true)
+        XCTAssertTrue(maps.mediaConflicts.isEmpty)
+    }
+
     func testFineCustomBindingIsInertWhileTheMasterIsOff() {
         let combo = GlobalShortcut(keyCode: 11, carbonModifiers: 2048)
         let off = HotkeyBindings.maps(

@@ -1135,7 +1135,9 @@ final class AppStore: ObservableObject {
             bindings: preferences.hotkeys,
             fineAdjustmentsEnabled: preferences.fineAdjustmentsEnabled
         )
-        hotkeyConflicts = hotKeyCenter.update(maps.carbon)
+        // Both kinds of collision surface through the same recorder warning: a Carbon combo
+        // another app already owns (register fails), and a media combo two actions share.
+        hotkeyConflicts = hotKeyCenter.update(maps.carbon).union(maps.mediaConflicts)
         keyboardService.mediaBindings = maps.media
     }
 

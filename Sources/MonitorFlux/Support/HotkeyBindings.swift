@@ -10,6 +10,10 @@ enum HotkeyBindings {
         var carbon: [HotKeyAction: GlobalShortcut] = [:]
         /// Media-key combos the event tap should route, including the un-overridden defaults.
         var media: [MediaKeyShortcut: HotKeyAction] = [:]
+        /// Actions whose media combo collides with another action's — only one can win the
+        /// route (last assignment), so both are flagged for the same "already used" warning the
+        /// Carbon path surfaces, rather than one silently shadowing the other.
+        var mediaConflicts: Set<HotKeyAction> = []
     }
 
     static func maps(
@@ -23,13 +27,16 @@ enum HotkeyBindings {
             !action.isFine || fineAdjustmentsEnabled
         }
 
+        // Collect every media assignment first — the built-in defaults for un-bound actions,
+        // then the recorded customs — so a shortcut claimed by two actions can be spotted.
+        var mediaAssignments: [(shortcut: MediaKeyShortcut, action: HotKeyAction)] = []
         for action in HotKeyAction.allCases where isActive(action) {
             guard bindings[action.rawValue] == nil,
                   let shortcut = action.mediaShortcut
             else {
                 continue
             }
-            maps.media[shortcut] = action
+            mediaAssignments.append((shortcut, action))
         }
 
         for (key, binding) in bindings {
@@ -40,9 +47,20 @@ enum HotkeyBindings {
             case .keyboard(let shortcut):
                 maps.carbon[action] = shortcut
             case .media(let shortcut):
-                maps.media[shortcut] = action
+                mediaAssignments.append((shortcut, action))
             }
         }
+
+        // Build the media route, flagging any combo claimed by more than one action.
+        var owner: [MediaKeyShortcut: HotKeyAction] = [:]
+        for (shortcut, action) in mediaAssignments {
+            if let existing = owner[shortcut], existing != action {
+                maps.mediaConflicts.insert(existing)
+                maps.mediaConflicts.insert(action)
+            }
+            owner[shortcut] = action
+        }
+        maps.media = owner
         return maps
     }
 }
