@@ -50,7 +50,9 @@ final class GammaTemperatureService {
             return GammaApplySummary(
                 appliedCount: 0,
                 failedCount: 0,
-                message: preferences.gammaEnabled ? "Gamma neutral" : "Gamma disabled"
+                // User-facing (the plain "Warmth" status row) — no "gamma" jargon here; that
+                // word stays in the ⓘ tooltip and the advanced Diagnostics pane.
+                message: preferences.gammaEnabled ? "No warming now" : "Off"
             )
         }
 
@@ -93,7 +95,7 @@ final class GammaTemperatureService {
                 return GammaApplySummary(
                     appliedCount: 0,
                     failedCount: 0,
-                    message: "Gamma unchanged"
+                    message: "Applied to \(skipped) display\(skipped == 1 ? "" : "s")"
                 )
             }
             // Applies happen at drag frequency (each distinct table), so .debug — not persisted.
@@ -103,7 +105,7 @@ final class GammaTemperatureService {
             return GammaApplySummary(
                 appliedCount: applied,
                 failedCount: failed,
-                message: "Applied gamma to \(applied) display\(applied == 1 ? "" : "s")"
+                message: "Applied to \(applied) display\(applied == 1 ? "" : "s")"
             )
         }
 
@@ -111,7 +113,7 @@ final class GammaTemperatureService {
         return GammaApplySummary(
             appliedCount: applied,
             failedCount: failed,
-            message: "Applied gamma to \(applied), failed \(failed)"
+            message: "Applied to \(applied), failed \(failed)"
         )
     }
 

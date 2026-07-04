@@ -47,7 +47,7 @@ final class AppStore: ObservableObject {
     /// minute-of-day, and gamma shows that instead of the live color. Cleared when the settings
     /// window reloads (`clearSchedulePreview`), so a preview never silently persists.
     @Published private(set) var schedulePreviewMinute: Int?
-    @Published private(set) var colorMessage = "Color disabled"
+    @Published private(set) var colorMessage = "Off"
     @Published private(set) var ddcMessage = "DDC idle"
     @Published private(set) var loginItemMessage = LoginItemService.statusLabel()
     /// True for a dev build that LaunchServices doesn't know as installed, so the login item
@@ -1320,7 +1320,7 @@ final class AppStore: ObservableObject {
             currentTemperature = target
         }
         guard !safeMode else {
-            colorMessage = "Safe mode — gamma not applied"
+            colorMessage = "Safe mode — warmth not applied"
             return
         }
         // Ending all gamma output (Warmth off and no software dimming) clears the conflict banner

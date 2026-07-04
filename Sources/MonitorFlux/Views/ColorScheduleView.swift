@@ -25,15 +25,20 @@ struct ColorScheduleView: View {
                 .settingsSwitch()
             }
 
-            Section("Transition") {
-                Picker("Fade", selection: scheduleEditBinding(\.transitionMinutes)) {
-                    ForEach(fadeOptions, id: \.self) { minutes in
-                        Text(fadeLabel(minutes)).tag(minutes)
+            // Fade (between phases) and the location/sun math only mean something for the
+            // day-and-night schedule, so they hide in Fixed mode — one constant warmth has no
+            // transitions and no sun.
+            if !isFixed {
+                Section("Transition") {
+                    Picker("Fade", selection: scheduleEditBinding(\.transitionMinutes)) {
+                        ForEach(fadeOptions, id: \.self) { minutes in
+                            Text(fadeLabel(minutes)).tag(minutes)
+                        }
                     }
                 }
-            }
 
-            locationSection
+                locationSection
+            }
 
             Section {
                 Button {
@@ -104,58 +109,68 @@ struct ColorScheduleView: View {
                     .fixedSize()
             }
 
-            VStack(spacing: 4) {
-                Picker("Phase", selection: $selectedPhase) {
-                    ForEach(ColorPhase.allCases) { phase in
-                        Text(phase.label).tag(phase)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 380)
-                .disabled(store.preferences.colorMode != .clock)
-                // Switching phases is a fresh editing intent, so drop any scrub preview and
-                // snap the time line back to "now" — the same reset we do on enter/leave.
-                .onChange(of: selectedPhase) { _, _ in
-                    store.clearSchedulePreview()
-                }
-
-                Text("Pick a phase, then drag the slider above to set its warmth.")
-                    .zoomFont(.caption)
+            if isFixed {
+                // Fixed mode is one constant warmth — the slider above is the whole control.
+                // The schedule apparatus (phases, curve, times) would only mislead here, so it
+                // hides; this line says what Fixed does and where the schedule lives.
+                Text("Holds a single warmth around the clock. Switch to Automatic to warm on a day-and-night schedule.")
+                    .zoomFont(.callout)
                     .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 4) {
+                    Picker("Phase", selection: $selectedPhase) {
+                        ForEach(ColorPhase.allCases) { phase in
+                            Text(phase.label).tag(phase)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 380)
+                    .disabled(store.preferences.colorMode != .clock)
+                    // Switching phases is a fresh editing intent, so drop any scrub preview and
+                    // snap the time line back to "now" — the same reset we do on enter/leave.
+                    .onChange(of: selectedPhase) { _, _ in
+                        store.clearSchedulePreview()
+                    }
 
-            Text(scheduleSummary)
-                .zoomFont(.title3)
-                .foregroundStyle(.blue.opacity(0.72))
+                    Text("Pick a phase, then drag the slider above to set its warmth.")
+                        .zoomFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 .frame(maxWidth: .infinity)
 
-            FluxCurveEditor(
-                dayTemperature: scheduleEditBinding(\.dayTemperature),
-                sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
-                nightTemperature: scheduleEditBinding(\.nightTemperature),
-                schedule: schedule,
-                timesLocked: followsSunset,
-                wakeTickMinute: wakeTickMinute,
-                previewMinute: store.schedulePreviewMinute,
-                onPreview: { store.previewScheduleColor(atMinute: $0) },
-                onTimeEdit: { phase, minute in commitTimeEdit(phase, rawMinute: minute) }
-            )
-            .background(
-                // Semantic fill so the card reads in both appearances — flat white was
-                // invisible against a light window background.
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(.quaternary)
-            )
+                Text(scheduleSummary)
+                    .zoomFont(.title3)
+                    .foregroundStyle(.blue.opacity(0.72))
+                    .frame(maxWidth: .infinity)
 
-            curveLegend
+                FluxCurveEditor(
+                    dayTemperature: scheduleEditBinding(\.dayTemperature),
+                    sunsetTemperature: scheduleEditBinding(\.sunsetTemperature),
+                    nightTemperature: scheduleEditBinding(\.nightTemperature),
+                    schedule: schedule,
+                    timesLocked: followsSunset,
+                    wakeTickMinute: wakeTickMinute,
+                    previewMinute: store.schedulePreviewMinute,
+                    onPreview: { store.previewScheduleColor(atMinute: $0) },
+                    onTimeEdit: { phase, minute in commitTimeEdit(phase, rawMinute: minute) }
+                )
+                .background(
+                    // Semantic fill so the card reads in both appearances — flat white was
+                    // invisible against a light window background.
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.quaternary)
+                )
 
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                timeStepper(.daytime, title: "Wake", tint: .blue)
-                Spacer(minLength: 8)
-                timeStepper(.sunset, title: "Sunset", tint: .orange)
-                Spacer(minLength: 8)
-                timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
+                curveLegend
+
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    timeStepper(.daytime, title: "Wake", tint: .blue)
+                    Spacer(minLength: 8)
+                    timeStepper(.sunset, title: "Sunset", tint: .orange)
+                    Spacer(minLength: 8)
+                    timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
+                }
             }
 
             if store.showsGammaConflictBanner {
@@ -202,22 +217,23 @@ struct ColorScheduleView: View {
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
 
-            HStack {
-                TextField("Latitude", text: preferenceBinding(\.latitude))
-                TextField("Longitude", text: preferenceBinding(\.longitude))
-            }
+                // Location only feeds the sun math, so these rows belong to Follow-sunset.
+                // In Set-times mode the schedule is purely the hand-set times below, and a
+                // latitude/longitude or "Use my location" button there is just confusing.
+                HStack {
+                    TextField("Latitude", text: preferenceBinding(\.latitude))
+                    TextField("Longitude", text: preferenceBinding(\.longitude))
+                }
 
-            Button {
-                store.requestLocation()
-            } label: {
-                Label("Use my location", systemImage: "location")
-            }
-            .settingsPushButton()
-            LabeledContent("Location access", value: store.locationStatus)
+                Button {
+                    store.requestLocation()
+                } label: {
+                    Label("Use my location", systemImage: "location")
+                }
+                .settingsPushButton()
+                LabeledContent("Location access", value: store.locationStatus)
 
-            if followsSunset {
                 LabeledContent("Sun today", value: sunTodayLabel)
             }
 
@@ -251,6 +267,10 @@ struct ColorScheduleView: View {
         }
         guard store.preferences.colorMode != .off else {
             return "Warmth is off"
+        }
+        // The day/night headlines describe the schedule; Fixed has neither, so give it its own.
+        if isFixed {
+            return "Fixed warmth"
         }
         return liveTemperature >= 5200 ? "The sun is up — go outside!" : "Warming down for the night"
     }
@@ -404,6 +424,13 @@ struct ColorScheduleView: View {
         store.preferences.scheduleSource == .solar
     }
 
+    /// Fixed mode: one constant warmth (the slider), so the whole day-and-night schedule editor
+    /// — phases, curve, time steppers, Fade, Location & Sun — hides, leaving just the slider and
+    /// a one-line explainer. `.off` keeps the schedule visible (you may be about to turn it on).
+    private var isFixed: Bool {
+        store.preferences.colorMode == .manual
+    }
+
     /// The wake marker on the chart — only when the daytime handle sits elsewhere (sunrise
     /// mornings put it on the sunrise), so the one time the user controls stays visible.
     private var wakeTickMinute: Int? {
@@ -496,20 +523,45 @@ struct ColorScheduleView: View {
     /// still worth reading; it just isn't yours to type).
     private func timeStepper(_ phase: ColorPhase, title: String, tint: Color) -> some View {
         let locked = followsSunset && phase != .daytime
-        return Stepper(value: timeAnchorBinding(phase), in: ControlRanges.minuteOfDay, step: 15) {
-            HStack(spacing: 5) {
+        // Build the row by hand rather than with `Stepper`'s own label: a labelled Stepper
+        // stretches, parking its chevrons at the cell's trailing edge, far from the time they
+        // change. A labels-hidden Stepper is just the chevrons, so the whole group hugs tight —
+        // "Wake 7:00 AM ⌃⌄" reads as one unit.
+        let minute = displayedMinutes(for: phase)
+        return HStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(title)
                     .zoomFont(.callout)
                     .foregroundStyle(tint.opacity(locked ? 0.5 : 0.9))
-                Text(MinuteFormatting.label(for: displayedMinutes(for: phase)))
+                // Reserve the column at a two-digit-hour width so the chevrons don't jump
+                // when the hour shrinks (12:00 → 1:00). The hidden placeholder keeps the same
+                // AM/PM as the value; the real time left-aligns inside the fixed slot.
+                Text(MinuteFormatting.label(for: widestSizingMinute(for: minute)))
                     .zoomFont(.title3)
-                    .foregroundStyle(tint.opacity(locked ? 0.55 : 1))
                     .monospacedDigit()
+                    .hidden()
+                    .overlay(alignment: .leading) {
+                        Text(MinuteFormatting.label(for: minute))
+                            .zoomFont(.title3)
+                            .foregroundStyle(tint.opacity(locked ? 0.55 : 1))
+                            .monospacedDigit()
+                    }
             }
             .lineLimit(1)
-            .fixedSize()
+            Stepper("", value: timeAnchorBinding(phase), in: ControlRanges.minuteOfDay, step: 15)
+                .labelsHidden()
+                .disabled(locked)
         }
-        .disabled(locked)
+        .fixedSize()
+    }
+
+    /// A minute whose time label is the widest the column can show for `minute`'s half of the
+    /// day: a two-digit hour (10:00) in the same AM/PM. With `.monospacedDigit()` every
+    /// two-digit-hour time is the same width, so reserving this keeps the stepper chevrons put
+    /// when the hour narrows to one digit. 12-hour and 24-hour locales both hold steady.
+    private func widestSizingMinute(for minute: Int) -> Int {
+        let normalized = ((minute % 1440) + 1440) % 1440
+        return normalized < 720 ? 600 : 1320 // 10:00 AM · 10:00 PM
     }
 
     /// Discrete "Bedtime starts" leads: 4–12 h in 30-min steps. The stored value is always
