@@ -65,6 +65,10 @@ final class AppStore: ObservableObject {
     /// can't register — drives the explanatory caption in General.
     var loginItemNeedsInstall: Bool { LoginItemService.needsInstall() }
     @Published private(set) var locationStatus = "Not requested"
+    /// Non-nil when the Mac's clock zone and the Follow-sunset place disagree (traveling with
+    /// a searched city pinned). Drives the dismissible hint in the Schedule pane — never an
+    /// automatic location change. See `LocationStaleness`.
+    @Published private(set) var locationMismatch: LocationStaleness.Mismatch?
     @Published private(set) var keyboardStatus = "Off"
     /// Whether the app currently has Accessibility permission (needed only for the media-key
     /// tap). Tracked live so Settings can warn when it's missing and clear the warning once
@@ -138,6 +142,8 @@ final class AppStore: ObservableObject {
     /// Serializes the actual I2C writes so a throttled drag can't overlap two writes to
     /// the same bus. `.userInitiated` keeps the monitor responsive during a drag.
     private let ddcQueue = DispatchQueue(label: "app.monitorflux.ddc", qos: .userInitiated)
+    /// Caches the one-time off-main parse of the offline place index; see `loadedPlaceIndex()`.
+    private var placeIndexTask: Task<PlaceIndex, Never>?
     private var pendingPreferencesSave: DispatchWorkItem?
     private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
@@ -210,6 +216,30 @@ final class AppStore: ObservableObject {
                 self.applyScheduledHardware()
             }
             .store(in: &cancellables)
+
+        // Traveling: a system timezone change invalidates the local-clock schedule math (and
+        // often the stored location). See `handleSystemTimeZoneChange`.
+        NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.handleSystemTimeZoneChange()
+            }
+            .store(in: &cancellables)
+
+        // A big clock jump (NTP correction, manual date change) moves "now" inside the
+        // schedule; recompute immediately instead of waiting out the current minute tick.
+        NotificationCenter.default.publisher(for: .NSSystemClockDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.reconcileColor()
+                self.applyScheduledHardware()
+            }
+            .store(in: &cancellables)
+
+        // Catch "launched after landing": the zone-change notification only helps a running
+        // instance, so evaluate the traveling hint once per launch too.
+        refreshLocationMismatch()
 
         // End any schedule-curve preview when the settings window loses key focus — switching
         // apps, clicking another window, or closing it — so a temporary preview never strands the
@@ -303,6 +333,12 @@ final class AppStore: ObservableObject {
     }
 
     func requestLocation() {
+        // The button's meaning is "follow this Mac again": a fix may now overwrite a searched
+        // city, and the traveling hint re-arms for whatever the new situation is.
+        updateGlobalPreferences { preferences in
+            preferences.locationFollowsDevice = true
+            preferences.dismissedLocationMismatchKey = ""
+        }
         locationService.request()
     }
 
@@ -320,12 +356,143 @@ final class AppStore: ObservableObject {
     /// A location fix refreshes the coordinates (keeping the solar schedule accurate when the
     /// machine moves) but never touches the schedule source: Core Location re-delivers a fix
     /// on *every* launch once authorized, and letting that flip `scheduleSource` back to
-    /// `.solar` made "Set times" impossible to keep across a relaunch.
+    /// `.solar` made "Set times" impossible to keep across a relaunch. Skipped entirely while
+    /// a searched place holds the location (`locationFollowsDevice == false`) — the same
+    /// every-launch re-delivery would silently clobber the manual choice.
     private func applyLocation(_ coordinate: CLLocationCoordinate2D) {
-        updateGlobalPreferences { preferences in
-            preferences.latitude = String(format: "%.4f", coordinate.latitude)
-            preferences.longitude = String(format: "%.4f", coordinate.longitude)
+        guard preferences.locationFollowsDevice else {
+            return
         }
+        let latitude = String(format: "%.4f", coordinate.latitude)
+        let longitude = String(format: "%.4f", coordinate.longitude)
+        guard latitude != preferences.latitude || longitude != preferences.longitude else {
+            // Same place as stored: keep its name, but the hint may still need re-checking
+            // (the system zone can have changed since the last evaluation).
+            refreshLocationMismatch()
+            return
+        }
+        updateGlobalPreferences { preferences in
+            preferences.latitude = latitude
+            preferences.longitude = longitude
+            preferences.locationName = "" // the row shows coordinates until the naming below lands
+        }
+        nameStoredLocation()
+        refreshLocationMismatch()
+    }
+
+    /// Commit a picked search result: coordinates and display name in one publish. A manual
+    /// pick pins the location — Core Location fixes stop overwriting it until the user taps
+    /// "Use my location" again.
+    func applyPlace(_ place: Place) {
+        updateGlobalPreferences { preferences in
+            preferences.latitude = String(format: "%.4f", place.latitude)
+            preferences.longitude = String(format: "%.4f", place.longitude)
+            preferences.locationName = place.displayName
+            preferences.locationFollowsDevice = false
+            preferences.dismissedLocationMismatchKey = ""
+        }
+        // The place itself stays out of the log (it's the user's location); the event is
+        // enough to explain a schedule change in a bug report.
+        AppLog.schedule.notice("Location set from place search")
+        refreshLocationMismatch()
+    }
+
+    /// The offline city/ZIP index, parsed off-main once on first use (~2 MB TSV) and cached
+    /// for the session. Falls back to an empty index (search shows only "no matches", the
+    /// app otherwise works) if the resource bundle is missing.
+    func loadedPlaceIndex() async -> PlaceIndex {
+        if let placeIndexTask {
+            return await placeIndexTask.value
+        }
+        let task = Task.detached(priority: .utility) { () -> PlaceIndex in
+            PlaceIndex.loadBundled() ?? PlaceIndex()
+        }
+        placeIndexTask = task
+        let index = await task.value
+        if index.isEmpty {
+            AppLog.schedule.error("Place index resource missing; location search degraded to coordinates")
+        }
+        return index
+    }
+
+    /// Label freshly fixed coordinates with the nearest indexed city — offline, no reverse
+    /// geocoding. Skipped if the stored location moved again (or stopped following the
+    /// device) while the index loaded.
+    private func nameStoredLocation() {
+        let latitude = preferences.latitude
+        let longitude = preferences.longitude
+        Task { [weak self] in
+            guard let self else { return }
+            let index = await self.loadedPlaceIndex()
+            guard let lat = Double(latitude), let lon = Double(longitude),
+                  let place = index.nearest(latitude: lat, longitude: lon),
+                  self.preferences.latitude == latitude,
+                  self.preferences.longitude == longitude,
+                  self.preferences.locationFollowsDevice
+            else { return }
+            self.updateGlobalPreferences { $0.locationName = place.displayName }
+        }
+    }
+
+    /// Re-evaluate the traveling hint (system clock zone vs the schedule's place zone).
+    /// Only Follow-sunset consumes the location, so every other mode clears the hint.
+    func refreshLocationMismatch() {
+        guard preferences.scheduleSource == .solar,
+              let latitude = Double(preferences.latitude),
+              let longitude = Double(preferences.longitude)
+        else {
+            setLocationMismatch(nil)
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            let index = await self.loadedPlaceIndex()
+            // Re-read after the await: the mode or dismissal may have changed meanwhile.
+            guard self.preferences.scheduleSource == .solar else {
+                self.setLocationMismatch(nil)
+                return
+            }
+            self.setLocationMismatch(LocationStaleness.check(
+                placeZoneID: index.timeZoneID(nearLatitude: latitude, longitude: longitude),
+                systemZone: TimeZone.current,
+                now: Date(),
+                dismissedKey: self.preferences.dismissedLocationMismatchKey
+            ))
+        }
+    }
+
+    func dismissLocationMismatch() {
+        guard let mismatch = locationMismatch else {
+            return
+        }
+        updateGlobalPreferences { $0.dismissedLocationMismatchKey = mismatch.dismissalKey }
+        setLocationMismatch(nil)
+    }
+
+    private func setLocationMismatch(_ mismatch: LocationStaleness.Mismatch?) {
+        // Equality-gated like every store publish: refresh runs on timers/notifications and
+        // must not re-render observers when nothing changed.
+        if locationMismatch != mismatch {
+            locationMismatch = mismatch
+        }
+    }
+
+    /// Travel handling. A system timezone change is both a math problem (the schedule
+    /// resolves in local clock time, and Foundation caches the system zone per process — the
+    /// minute timer would keep computing in the departure zone) and a location signal (the
+    /// strongest one a Mac gets). Reset the cache, re-resolve now, then refresh the fix when
+    /// the location follows the device, or check for staleness when a searched city pins it.
+    private func handleSystemTimeZoneChange() {
+        NSTimeZone.resetSystemTimeZone()
+        AppLog.schedule.notice(
+            "System time zone changed to \(TimeZone.current.identifier, privacy: .public); re-resolving schedule"
+        )
+        reconcileColor()
+        applyScheduledHardware()
+        if preferences.locationFollowsDevice, locationService.isAuthorized {
+            locationService.request() // already authorized — refreshes silently, no prompt
+        }
+        refreshLocationMismatch()
     }
 
     var ddcStatus: DDCBackendStatus {

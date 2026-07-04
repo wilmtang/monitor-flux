@@ -303,6 +303,32 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.popupBackdropOpacity, 1.0)
     }
 
+    func testLocationFieldsDefaultForLegacyPayloads() throws {
+        // Payloads from before the location search must keep today's behavior: coordinates
+        // follow the device (Core Location refreshes them each launch), no name, no dismissal.
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: "{}".data(using: .utf8)!)
+
+        XCTAssertEqual(preferences.locationName, "")
+        XCTAssertTrue(preferences.locationFollowsDevice)
+        XCTAssertEqual(preferences.dismissedLocationMismatchKey, "")
+    }
+
+    func testLocationFieldsRoundTrip() throws {
+        var preferences = AppPreferences()
+        preferences.locationName = "Tokyo, Japan"
+        preferences.locationFollowsDevice = false
+        preferences.dismissedLocationMismatchKey = "Asia/Tokyo|America/Los_Angeles"
+
+        let decoded = try JSONDecoder().decode(
+            AppPreferences.self,
+            from: JSONEncoder().encode(preferences)
+        )
+
+        XCTAssertEqual(decoded.locationName, "Tokyo, Japan")
+        XCTAssertFalse(decoded.locationFollowsDevice)
+        XCTAssertEqual(decoded.dismissedLocationMismatchKey, "Asia/Tokyo|America/Los_Angeles")
+    }
+
     func testLegacyGlobalShortcutHotkeysDecodeAsKeyboardBindings() throws {
         // Old format: hotkeys are bare GlobalShortcut values (keyCode + carbonModifiers).
         let json = """

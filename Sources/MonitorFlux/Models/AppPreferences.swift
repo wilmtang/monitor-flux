@@ -319,6 +319,18 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var popupBackdropOpacity = AppPreferences.defaultPopupBackdropOpacity
     var latitude = "47.6"
     var longitude = "-122.3"
+    /// Display label for the stored coordinates ("Seattle, Washington"). Empty when unknown —
+    /// a hand-typed coordinate, or a fresh Core Location fix the place index hasn't named
+    /// yet — and the Location row falls back to showing the numbers.
+    var locationName = ""
+    /// True while the coordinates track this Mac: Core Location re-fixes them on launch and
+    /// after a system timezone change. Picking a city/ZIP/coordinate in the location search
+    /// clears it so the choice is never silently overwritten; "Use my location" sets it back.
+    var locationFollowsDevice = true
+    /// Dismissal receipt for the traveling hint (`LocationStaleness.Mismatch.dismissalKey`).
+    /// Non-empty means "don't warn again for this exact place/system-zone pair" — the hint
+    /// re-arms when either side changes.
+    var dismissedLocationMismatchKey = ""
     var displayPreferences: [String: DisplayPreferences] = [:]
     /// Shortcut overrides, keyed by `HotKeyAction.rawValue`. Missing key means use that
     /// action's media-key default, when it has one.
@@ -364,6 +376,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case popupBackdropOpacity
         case latitude
         case longitude
+        case locationName
+        case locationFollowsDevice
+        case dismissedLocationMismatchKey
         case displayPreferences
         case hotkeys
         case displayOrder
@@ -432,6 +447,12 @@ struct AppPreferences: Codable, Equatable, Sendable {
                 ?? AppPreferences.defaultPopupBackdropOpacity, 0), 1)
         latitude = try container.decodeIfPresent(String.self, forKey: .latitude) ?? "47.6"
         longitude = try container.decodeIfPresent(String.self, forKey: .longitude) ?? "-122.3"
+        locationName = try container.decodeIfPresent(String.self, forKey: .locationName) ?? ""
+        locationFollowsDevice = try container.decodeIfPresent(Bool.self, forKey: .locationFollowsDevice) ?? true
+        dismissedLocationMismatchKey = try container.decodeIfPresent(
+            String.self,
+            forKey: .dismissedLocationMismatchKey
+        ) ?? ""
         displayPreferences = try container.decodeIfPresent(
             [String: DisplayPreferences].self,
             forKey: .displayPreferences
@@ -468,6 +489,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(popupBackdropOpacity, forKey: .popupBackdropOpacity)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
+        try container.encode(locationName, forKey: .locationName)
+        try container.encode(locationFollowsDevice, forKey: .locationFollowsDevice)
+        try container.encode(dismissedLocationMismatchKey, forKey: .dismissedLocationMismatchKey)
         try container.encode(displayPreferences, forKey: .displayPreferences)
         try container.encode(hotkeys, forKey: .hotkeys)
         try container.encode(displayOrder, forKey: .displayOrder)

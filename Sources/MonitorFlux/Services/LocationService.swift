@@ -11,6 +11,16 @@ final class LocationService: NSObject, ObservableObject {
     /// Invoked on the main actor whenever a fresh coordinate arrives.
     var onLocation: (@MainActor (CLLocationCoordinate2D) -> Void)?
 
+    /// Whether a fix can be requested without prompting (permission already granted).
+    var isAuthorized: Bool {
+        switch authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            true
+        default:
+            false
+        }
+    }
+
     private let manager = CLLocationManager()
 
     override init() {
