@@ -43,7 +43,13 @@ struct DisplayDetailView: View {
             }
             .formStyle(.grouped)
             .navigationTitle(display.name)
-            .onAppear { scrollToLaunchTarget(using: proxy) }
+            .onAppear {
+                scrollToLaunchTarget(using: proxy)
+                // A schedule scrub-preview is temporary — never let one persist across a pane
+                // change (same contract as the Schedule pane).
+                store.clearSchedulePreview()
+            }
+            .onDisappear { store.clearSchedulePreview() }
         }
     }
 
@@ -590,7 +596,11 @@ struct DisplayDetailView: View {
             nightValue: nightValue,
             schedule: ColorSchedule.resolved(preferences: store.preferences),
             accent: accent,
-            accessibilityName: name
+            accessibilityName: name,
+            previewMinute: store.schedulePreviewMinute,
+            // Scrub the shared preview without adopting Warmth's clock mode — dragging a
+            // brightness/contrast timeline previews the screen but must not flip Warmth on.
+            onPreview: { store.previewScheduleColor(atMinute: $0, adoptClockMode: false) }
         )
         .background(
             // Semantic fill so the card reads in both appearances — flat white was

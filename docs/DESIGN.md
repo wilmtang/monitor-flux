@@ -63,6 +63,34 @@ Off or Fixed would strand a scheduled brightness on times the user can't see. On
 *curve* (phase picker, chart, legend) is Automatic-only; the shared timeline is always editable,
 and editing it must not change warmth's mode.
 
+### Scheduled brightness/contrast behave like warmth
+
+The per-display brightness/contrast schedule (`HardwareScheduleChart` in the display pane's
+Advanced section) is the smaller sibling of the warmth curve, and shares its two live behaviors so
+the three read as one system:
+
+- **Draggable "now" line → scrub-preview.** Each hardware chart's white marker drags exactly like
+  the warmth curve's (same `marker` treatment: faint reference at real now, prominent draggable
+  marker at the scrubbed minute). Dragging calls the shared `AppStore.previewScheduleColor`, which
+  already drives *both* warmth (gamma) and every display's scheduled brightness/contrast to the
+  scrubbed time — so the whole screen previews together, and every chart's marker moves in lockstep
+  (they read the one `schedulePreviewMinute`). The hardware charts pass `adoptClockMode: false`:
+  scrubbing a brightness/contrast timeline previews the screen but must **not** flip Warmth from
+  Off/Fixed into Automatic (only the warmth marker adopts clock mode — editing warmth means you
+  want the warmth schedule). The preview is temporary; the display pane clears it on
+  appear/disappear, same contract as the Schedule pane.
+- **Popup slider re-levels the active phase.** When a display's brightness (resp. contrast)
+  schedule is on, dragging its **popup** slider edits the *currently active phase's* target
+  (`dayBrightness`/`sunsetBrightness`/`nightBrightness`, a unified position; the contrast trio, a
+  DDC percent) and stays on schedule — a real, persisted schedule edit, the exact analogue of the
+  popup warmth slider re-warming the live phase via `setTemperature(for: currentPhase)`. Without
+  this the popup wrote a manual value the schedule would overwrite at the next phase. The slider
+  also *reads* the active phase's anchor (`AppStore.scheduledBrightnessPosition` /
+  `scheduledContrastValue`), not the applied value — binding to the applied value would feed back
+  on itself as each drag tick re-applies the schedule (the same reason the warmth slider binds to
+  `editableTemperature`). Gated by `isBrightnessScheduled`/`isContrastScheduled`, which mirror the
+  planner's exclusions (never the macOS-managed built-in backlight; contrast is DDC-only).
+
 ### Follow sunset (the f.lux model)
 
 Two inputs — **location** and **wake time** — derive everything; the 9-hour bedtime rule and

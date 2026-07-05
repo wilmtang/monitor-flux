@@ -270,6 +270,58 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
         try container.encode(sunsetContrast, forKey: .sunsetContrast)
         try container.encode(nightContrast, forKey: .nightContrast)
     }
+
+    /// The scheduled brightness target for a phase (a unified 0…100 position, routed per
+    /// dimming mode by the executor). The popup slider reads and writes this while the
+    /// brightness schedule is on, so a drag re-levels the active phase — the same "edit the
+    /// live phase" contract warmth uses via `AppPreferences.temperature(for:)`.
+    func scheduledBrightness(for phase: ColorPhase) -> Int {
+        switch phase {
+        case .daytime:
+            dayBrightness
+        case .sunset:
+            sunsetBrightness
+        case .bedtime:
+            nightBrightness
+        }
+    }
+
+    mutating func setScheduledBrightness(_ value: Int, for phase: ColorPhase) {
+        let clamped = value.clamped(to: ControlRanges.hardwarePercent)
+        switch phase {
+        case .daytime:
+            dayBrightness = clamped
+        case .sunset:
+            sunsetBrightness = clamped
+        case .bedtime:
+            nightBrightness = clamped
+        }
+    }
+
+    /// The scheduled contrast target (a DDC percent) for a phase — the contrast analogue of
+    /// `scheduledBrightness(for:)`.
+    func scheduledContrast(for phase: ColorPhase) -> Int {
+        switch phase {
+        case .daytime:
+            dayContrast
+        case .sunset:
+            sunsetContrast
+        case .bedtime:
+            nightContrast
+        }
+    }
+
+    mutating func setScheduledContrast(_ value: Int, for phase: ColorPhase) {
+        let clamped = value.clamped(to: ControlRanges.hardwarePercent)
+        switch phase {
+        case .daytime:
+            dayContrast = clamped
+        case .sunset:
+            sunsetContrast = clamped
+        case .bedtime:
+            nightContrast = clamped
+        }
+    }
 }
 
 struct AppPreferences: Codable, Equatable, Sendable {

@@ -518,13 +518,25 @@ private struct DisplayCardView: View {
 
         // Contrast and volume are DDC-only, independent of how brightness dims.
         if store.canUseDDC(for: display) {
+            // On a contrast schedule, the slider re-levels the active phase and stays Automatic
+            // (like brightness and warmth above); otherwise it sets the manual contrast.
+            let contrastScheduled = store.isContrastScheduled(display)
+            let contrastValue = contrastScheduled
+                ? store.scheduledContrastValue(for: display)
+                : preferences.hardwareContrast
             ControlRow(
                 icon: "circle.lefthalf.filled",
                 label: "Contrast",
-                value: Double(preferences.hardwareContrast),
+                value: Double(contrastValue),
                 range: ControlRanges.hardwarePercent,
-                readout: "\(preferences.hardwareContrast)%"
-            ) { store.setHardwareContrast(Int($0.rounded()), for: display) }
+                readout: "\(contrastValue)%"
+            ) { newValue in
+                if contrastScheduled {
+                    store.setScheduledPhaseContrast(Int(newValue.rounded()), for: display)
+                } else {
+                    store.setHardwareContrast(Int(newValue.rounded()), for: display)
+                }
+            }
 
             // Volume only when the monitor actually has speakers (or the user forced it on)
             // — a speakerless display gets no useless volume slider.
@@ -543,10 +555,15 @@ private struct DisplayCardView: View {
     /// The one Brightness slider, on the unified 0…100 position scale for every path —
     /// backlight, DDC, hybrid (with the handoff notch), software, or shade. Below the notch
     /// the icon swaps sun → moon and the fill dims: the image is being darkened now, not the
-    /// backlight.
+    /// backlight. When this display's brightness is on a schedule, the slider re-levels the
+    /// active phase and stays Automatic — the same behavior as the warmth slider on a schedule,
+    /// rather than a manual value the schedule would overwrite at the next phase.
     private var brightnessRow: some View {
         let kind = store.brightnessControlKind(for: display)
-        let position = store.unifiedBrightness(for: display)
+        let scheduled = store.isBrightnessScheduled(display)
+        let position = scheduled
+            ? store.scheduledBrightnessPosition(for: display)
+            : store.unifiedBrightness(for: display)
         let notch = kind == .hybrid ? HybridBrightness.handoffFraction : nil
         let inSoftwareZone = notch.map { position < $0 } ?? false
         return ControlRow(
@@ -558,7 +575,11 @@ private struct DisplayCardView: View {
             notchFraction: notch,
             readout: "\(Int((position * 100).rounded()))%"
         ) { newValue in
-            store.setUnifiedBrightness(newValue / 100.0, for: display)
+            if scheduled {
+                store.setScheduledPhaseBrightness(newValue / 100.0, for: display)
+            } else {
+                store.setUnifiedBrightness(newValue / 100.0, for: display)
+            }
         }
     }
 

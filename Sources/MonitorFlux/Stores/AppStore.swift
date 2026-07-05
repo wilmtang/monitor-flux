@@ -1605,17 +1605,23 @@ final class AppStore: ObservableObject {
 
     // MARK: - Schedule preview (scrub the curve to preview the screen's warmth)
 
-    /// Scrub-preview the schedule: warm every gamma display to the curve's color at `minute`, so
-    /// the user can see how the screen will look then. Temporary by design — `clearSchedulePreview`
-    /// (called when the settings window reloads) restores the live color. The stored preferences
-    /// are never touched, so nothing about the real schedule changes.
-    func previewScheduleColor(atMinute minute: Int) {
+    /// Scrub-preview the schedule: warm every gamma display to the curve's color at `minute` and
+    /// drive each display's scheduled brightness/contrast to that time, so the user sees how the
+    /// screen will look then. Temporary by design — `clearSchedulePreview` (called when the settings
+    /// window reloads) restores the live values. The stored preferences are never touched, so
+    /// nothing about the real schedule changes.
+    ///
+    /// - Parameter adoptClockMode: when true (the warmth curve's marker), scrubbing commits to the
+    ///   warmth schedule by switching Warmth to Automatic — you're exploring the warmth curve. The
+    ///   hardware charts pass false: scrubbing the brightness/contrast timeline previews the screen
+    ///   but must not flip Warmth from Off/Fixed into Automatic as a side effect.
+    func previewScheduleColor(atMinute minute: Int, adoptClockMode: Bool = true) {
         let clamped = minute.clamped(to: ControlRanges.minuteOfDay)
         schedulePreviewMinute = clamped
-        // Scrubbing the time line commits to the schedule: adopt clock mode (from Off or Fixed),
+        // Scrubbing the warmth line commits to the schedule: adopt clock mode (from Off or Fixed),
         // so the preview reflects the schedule the user is now exploring. That mode change is real
         // and persists; the preview itself stays temporary.
-        if preferences.colorMode != .clock {
+        if adoptClockMode, preferences.colorMode != .clock {
             updateGlobalPreferences { preferences in
                 preferences.colorMode = .clock
             }
@@ -1841,6 +1847,59 @@ final class AppStore: ObservableObject {
         scheduledHardwareState.clear(display.id)
         // User-initiated (editing a schedule slider), so log the writes at .debug, not .notice.
         applyScheduledHardware(automatic: false)
+    }
+
+    // MARK: - Scheduled brightness/contrast: the popup re-levels the active phase (like warmth)
+
+    /// Whether the day/night brightness schedule currently governs this display — so the popup
+    /// slider should re-level the active phase rather than write a manual value the schedule
+    /// would overwrite at the next phase change. Mirrors the built-in-backlight exclusion in
+    /// `applyScheduledBrightness` (macOS owns that backlight, so it's never scheduled).
+    func isBrightnessScheduled(_ display: DisplayInfo) -> Bool {
+        displayPreferences(for: display).scheduleBrightness
+            && !(display.isBuiltIn && canUseNativeBrightness(display))
+    }
+
+    /// Whether the day/night contrast schedule currently governs this display. Contrast is
+    /// DDC-only, so it also needs a working DDC path.
+    func isContrastScheduled(_ display: DisplayInfo) -> Bool {
+        displayPreferences(for: display).scheduleContrast
+            && !display.isBuiltIn
+            && canUseDDC(for: display)
+    }
+
+    /// The active phase's scheduled brightness as a unified 0…1 position — what the popup thumb
+    /// binds to while scheduled. Reading the phase anchor (not the applied value) is what lets a
+    /// drag track 1:1: the applied value would feed back on itself as each drag tick re-applies
+    /// the schedule, the same reason warmth binds to `editableTemperature`, not the live color.
+    func scheduledBrightnessPosition(for display: DisplayInfo) -> Double {
+        let phase = ColorSchedule.currentPhase(preferences: preferences)
+        return Double(displayPreferences(for: display).scheduledBrightness(for: phase)) / 100.0
+    }
+
+    /// Re-level the active phase's scheduled brightness to a unified position and re-apply now —
+    /// a real, persisted schedule edit (like dragging the popup warmth slider re-warms the live
+    /// phase), not a manual override the next phase transition would revert.
+    func setScheduledPhaseBrightness(_ position01: Double, for display: DisplayInfo) {
+        let target = Int((position01.clamped(to: 0...1) * 100).rounded())
+        let phase = ColorSchedule.currentPhase(preferences: preferences)
+        updateDisplayPreferences(for: display) { $0.setScheduledBrightness(target, for: phase) }
+        reapplySchedule(for: display)
+    }
+
+    /// The active phase's scheduled contrast (a DDC percent) — the popup thumb value while
+    /// contrast is scheduled.
+    func scheduledContrastValue(for display: DisplayInfo) -> Int {
+        let phase = ColorSchedule.currentPhase(preferences: preferences)
+        return displayPreferences(for: display).scheduledContrast(for: phase)
+    }
+
+    /// Re-level the active phase's scheduled contrast and re-apply now — the contrast analogue of
+    /// `setScheduledPhaseBrightness`.
+    func setScheduledPhaseContrast(_ value: Int, for display: DisplayInfo) {
+        let phase = ColorSchedule.currentPhase(preferences: preferences)
+        updateDisplayPreferences(for: display) { $0.setScheduledContrast(value, for: phase) }
+        reapplySchedule(for: display)
     }
 
     private func seedMissingDisplayPreferences() -> Bool {

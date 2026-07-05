@@ -171,6 +171,15 @@ pkill -x MonitorFlux || true
   the computed sunrise/sunset (`ColorSchedule.resolved`). The preview is always temporary:
   `clearSchedulePreview` restores the live values whenever the Schedule pane reloads, the settings
   window loses key focus, the mode leaves clock, or Refresh is tapped.
+- `Views/HardwareScheduleChart.swift`: the per-display brightness/contrast schedule chart (display
+  pane ▸ Advanced), the smaller sibling of `FluxCurveEditor`. Its "now" line is draggable and
+  scrub-previews through the same `previewScheduleColor` — but passes `adoptClockMode: false` so
+  scrubbing the hardware timeline never flips Warmth into Automatic. When a display's brightness or
+  contrast schedule is on, the **popup** slider re-levels the *active phase* (via
+  `AppStore.setScheduledPhaseBrightness`/`setScheduledPhaseContrast`, reading through
+  `scheduledBrightnessPosition`/`scheduledContrastValue`) and stays on schedule — the exact
+  analogue of the popup warmth slider re-warming the live phase. Gated by `isBrightnessScheduled`/
+  `isContrastScheduled`. See "Scheduled brightness/contrast behave like warmth" in `docs/DESIGN.md`.
 - `script/make_icon.swift`: regenerates `Assets/AppIcon.icns` from code.
 - `Tests/`: pure behavior tests; avoid tests that write real gamma or DDC.
 

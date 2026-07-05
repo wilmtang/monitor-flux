@@ -18,6 +18,13 @@ struct HardwareScheduleChart: View {
     let accent: Color
     /// Spoken name for the whole chart, e.g. "Brightness schedule curve".
     let accessibilityName: String
+    /// The minute being scrub-previewed (drives the prominent marker), or `nil` for "showing now".
+    /// Shared with the warmth curve via `AppStore.schedulePreviewMinute`, so every chart's marker
+    /// moves together while scrubbing.
+    var previewMinute: Int? = nil
+    /// Called with the dragged minute-of-day as the user scrubs the time marker, so the screen
+    /// previews how it will look then. `{ _ in }` leaves the marker static (no preview wired).
+    var onPreview: (Int) -> Void = { _ in }
 
     private let range = ControlRanges.hardwarePercent
     /// Vertical breathing room (handle radius + stroke) so a handle at 0%/100% stays fully inside
@@ -34,7 +41,7 @@ struct HardwareScheduleChart: View {
                     drawCurve(in: &context, size: canvasSize)
                 }
 
-                nowMarker(in: size)
+                timeMarkers(in: size)
 
                 handle(.daytime, in: size)
                 handle(.sunset, in: size)
@@ -46,29 +53,65 @@ struct HardwareScheduleChart: View {
         .accessibilityLabel(accessibilityName)
     }
 
-    /// A non-draggable "now" line at the current minute, styled to match the warmth curve's live
-    /// marker — the same bright capsule with a dot cap on top — so the hardware charts and the main
-    /// scheduler read as one family (there's no scrub preview here, so it stays put). Driven by
-    /// `TimelineView(.everyMinute)`, the laziest cadence that keeps it at the schedule's one-minute
-    /// resolution.
-    private func nowMarker(in size: CGSize) -> some View {
+    /// The live "now" line, and — while a preview is scrubbed — a faint reference at the real
+    /// current time plus a prominent, draggable marker at the previewed minute. Identical
+    /// treatment to the warmth curve's `timeMarkers`, so dragging either scrubs the same shared
+    /// preview and the hardware charts read as one family with the main scheduler. Driven by
+    /// `TimelineView(.everyMinute)`, the laziest cadence that keeps the position at the schedule's
+    /// one-minute resolution.
+    private func timeMarkers(in size: CGSize) -> some View {
         TimelineView(.everyMinute) { context in
-            let minute = Self.minuteOfDay(from: context.date)
-            let x = CGFloat(minute) / 1440.0 * size.width
+            let nowMinute = Self.minuteOfDay(from: context.date)
             ZStack {
-                Capsule()
-                    .fill(.white.opacity(0.9))
-                    .frame(width: 2, height: size.height)
-                    .shadow(color: .white.opacity(0.4), radius: 3)
-                Circle()
-                    .fill(.white)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
-                    .offset(y: -size.height / 2)
+                // A faint marker at the real "now" while the preview is held elsewhere, so the
+                // user keeps a sense of the actual clock.
+                if previewMinute != nil {
+                    marker(at: nowMinute, in: size, prominent: false, draggable: false)
+                }
+                // The active marker — the live now, or the scrubbed preview. Always draggable;
+                // dragging previews the screen's brightness/contrast (and warmth) at that time.
+                marker(at: previewMinute ?? nowMinute, in: size, prominent: true, draggable: true)
             }
-            .frame(width: 7, height: size.height)
-            .position(x: x, y: size.height / 2)
-            .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private func marker(at minute: Int, in size: CGSize, prominent: Bool, draggable: Bool) -> some View {
+        let x = CGFloat(minute) / 1440.0 * size.width
+        let visual = ZStack {
+            Capsule()
+                .fill(.white.opacity(prominent ? 0.9 : 0.3))
+                .frame(width: prominent ? 2 : 1.5, height: size.height)
+                .shadow(color: .white.opacity(prominent ? 0.4 : 0), radius: 3)
+            Circle()
+                .fill(.white.opacity(prominent ? 1 : 0.45))
+                .frame(width: 7, height: 7)
+                .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
+                .offset(y: -size.height / 2)
+        }
+
+        if draggable {
+            // A wide invisible grab strip around the thin line so it's easy to catch. `.position`
+            // reports the drag in the chart's space (not the moving strip's), so the marker tracks
+            // the cursor without feeding back on itself.
+            visual
+                .frame(width: 26, height: size.height)
+                .contentShape(Rectangle())
+                .position(x: x, y: size.height / 2)
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { value in
+                            guard size.width > 0 else { return }
+                            let dragged = Int((value.location.x / size.width * 1440).rounded())
+                                .clamped(to: ControlRanges.minuteOfDay)
+                            onPreview(dragged)
+                        }
+                )
+        } else {
+            visual
+                .frame(width: 7, height: size.height)
+                .position(x: x, y: size.height / 2)
+                .allowsHitTesting(false)
         }
     }
 
