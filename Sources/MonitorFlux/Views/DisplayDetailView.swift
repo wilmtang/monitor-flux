@@ -274,7 +274,7 @@ struct DisplayDetailView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "slider.horizontal.3")
                         .foregroundStyle(.secondary)
-                    Text("Show Advanced Settings")
+                    Text("Advanced Settings")
                         .zoomFont(.headline)
                 }
             }
