@@ -29,6 +29,12 @@ enum NativeOSD {
         "showImage:onDisplayID:priority:msecUntilFade:filledChiclets:totalChiclets:locked:"
     )
 
+    /// `-[OSDManager fadeClassicImageOnDisplay:]` — fades out whatever standard bezel is currently
+    /// on the display. Takes the display ID, like the show methods' `onDisplayID:`.
+    private typealias FadeIMP = @convention(c) (AnyObject, Selector, UInt32) -> Void
+
+    private static let fadeSelector = NSSelectorFromString("fadeClassicImageOnDisplay:")
+
     /// The shared `OSDManager`, resolved once. `nil` if the private API isn't present (so the
     /// caller falls back to the custom panel).
     private static let manager: AnyObject? = {
@@ -70,6 +76,21 @@ enum NativeOSD {
             UInt32(max(1, total)),
             ObjCBool(false)
         )
+        return true
+    }
+
+    /// Fade out any native bezel currently on `displayID`. We use it to clear a lingering
+    /// brightness/volume bezel before drawing our own contrast/warmth panel in the same spot —
+    /// the native bezel sits at a much higher window level (≈2005 vs. our floating panel) and
+    /// would otherwise cover it. No-op (returns false) when the private API is unavailable.
+    @discardableResult
+    static func fadeCurrent(onDisplay displayID: CGDirectDisplayID) -> Bool {
+        guard let manager,
+              let method = class_getInstanceMethod(object_getClass(manager), fadeSelector) else {
+            return false
+        }
+        let invoke = unsafeBitCast(method_getImplementation(method), to: FadeIMP.self)
+        invoke(manager, fadeSelector, displayID)
         return true
     }
 }

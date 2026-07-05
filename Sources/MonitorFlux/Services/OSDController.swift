@@ -73,6 +73,14 @@ final class OSDController {
             }
         }
 
+        // The custom panel (contrast/warmth, or a fallback) lands in the exact spot the native
+        // brightness/volume bezel uses, and that native bezel sits at a much higher window level
+        // (≈2005 vs. our floating panel) — so one still fading from a moment ago would cover this.
+        // Ask OSDManager to fade it out first so our OSD is never hidden behind it. Skipped under
+        // the capture hook, where no native bezel is in play.
+        if !wantsCapture {
+            NativeOSD.fadeCurrent(onDisplay: displayID ?? CGMainDisplayID())
+        }
         showCustomPanel(kind, fraction: clampedFraction, onDisplay: displayID)
     }
 
