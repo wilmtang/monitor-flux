@@ -240,6 +240,13 @@ MonitorFlux's Apple Silicon DDC, built-in backlight, media-key handling, native 
 [MonitorControl](https://github.com/MonitorControl/MonitorControl) (MIT). See
 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and the full license.
 
+The offline city/ZIP search in the Follow-sunset schedule is built from
+[GeoNames](https://www.geonames.org/) place data (licensed
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and US ZIP-code-area centroids from
+the [US Census Bureau ZCTA gazetteer](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html)
+(public domain). The data is bundled so the schedule computes on-device, with nothing sent to a
+geocoding service; regenerate it with `swift script/make_place_index.swift`.
+
 ## License
 
 MonitorFlux is licensed under the GNU Affero General Public License v3.0. See

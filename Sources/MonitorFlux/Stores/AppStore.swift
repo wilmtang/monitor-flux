@@ -164,6 +164,7 @@ final class AppStore: ObservableObject {
         // must never persist — see `persistenceSuppressed`.
         persistenceSuppressed = environment["MONITORFLUX_ZOOM_STEP"] != nil
             || environment["MONITORFLUX_FAKE_DISPLAYS"] != nil
+            || environment["MONITORFLUX_LOCATION_DEMO"] != nil
         preferences = PreferencesStore.load().normalized()
         // Test hook: `MONITORFLUX_ZOOM_STEP=N` opens the window at a given zoom step
         // (0…8) without persisting it, so a screenshot run can verify zoom rendering
@@ -171,6 +172,19 @@ final class AppStore: ObservableObject {
         if let raw = ProcessInfo.processInfo.environment["MONITORFLUX_ZOOM_STEP"],
            let step = Int(raw) {
             preferences.fontSizeStep = step.clamped(to: AppPreferences.fontSizeStepRange)
+        }
+        // Test hook: `MONITORFLUX_LOCATION_DEMO=<search query>` renders the Schedule pane in
+        // Follow-sunset with that place pinned, as if picked in the location search — e.g.
+        // "tokyo" exercises the traveling hint on a Pacific-time machine. In-memory only
+        // (persistence is suppressed above), screenshot verification only.
+        if let demo = environment["MONITORFLUX_LOCATION_DEMO"], !demo.isEmpty {
+            preferences.scheduleSource = .solar
+            Task { [weak self] in
+                guard let self, let place = await self.loadedPlaceIndex().search(demo).first else {
+                    return
+                }
+                self.applyPlace(place)
+            }
         }
         refreshDisplays()
         startTimer()

@@ -344,6 +344,12 @@ struct AppPreferences: Codable, Equatable, Sendable {
     static let defaultFontSizeStep = 3
     static let defaultPopupBackdropOpacity = 0.85
 
+    /// What the Location row (and the traveling hint) calls the stored location: the place
+    /// name, or the bare coordinates when none is known.
+    var locationDisplayLabel: String {
+        locationName.isEmpty ? "\(latitude), \(longitude)" : locationName
+    }
+
     /// Maps fontSizeStep to a window zoom scale factor (1.0 = default, VS Code-style).
     var settingsZoomScale: CGFloat {
         let scales: [CGFloat] = [0.70, 0.80, 0.90, 1.00, 1.10, 1.25, 1.50, 1.75, 2.00]

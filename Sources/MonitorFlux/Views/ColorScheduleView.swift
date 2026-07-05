@@ -5,10 +5,19 @@ struct ColorScheduleView: View {
     @State private var selectedPhase: ColorPhase = .daytime
 
     var body: some View {
-        // One grouped form for the whole pane: the hero (slider + curve) is the first card,
-        // so its edges line up with the setting cards below at every window width — no
-        // hand-tuned padding to drift out of sync — and the pane has a single scroll view
-        // instead of a Form nested inside a ScrollView.
+        // ScrollViewReader mirrors DisplayDetailView: the `MONITORFLUX_SCROLL_TO=schedule`
+        // screenshot hook brings the below-the-fold schedule section (the Location rows) into
+        // view on launch. Inert without the env var.
+        ScrollViewReader { proxy in
+            form
+                .onAppear { scrollToLaunchTarget(using: proxy) }
+        }
+    }
+
+    // One grouped form for the whole pane: the hero (slider + curve) is the first card, so its
+    // edges line up with the setting cards below at every window width — no hand-tuned padding to
+    // drift out of sync — and the pane has a single scroll view instead of a Form nested in one.
+    private var form: some View {
         Form {
             Section {
                 hero
@@ -20,6 +29,7 @@ struct ColorScheduleView: View {
             // shown — those channels are independent, so hiding it based on Warmth's mode would
             // strand a scheduled brightness on times you can't see.
             scheduleSection
+                .id("schedule")
 
             Section {
                 Button {
@@ -44,6 +54,9 @@ struct ColorScheduleView: View {
         .onAppear {
             store.clearSchedulePreview()
             selectedPhase = ColorSchedule.currentPhase(preferences: store.preferences)
+            // Opening the pane is the moment the traveling hint is readable — re-evaluate it
+            // (cheap, and a no-op publish when nothing changed).
+            store.refreshLocationMismatch()
         }
         .onDisappear { store.clearSchedulePreview() }
     }
@@ -210,9 +223,22 @@ struct ColorScheduleView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Location only feeds the sun math, so these rows belong to Follow-sunset.
-                HStack {
-                    TextField("Latitude", text: preferenceBinding(\.latitude))
-                    TextField("Longitude", text: preferenceBinding(\.longitude))
+                LocationField()
+
+                if let mismatch = store.locationMismatch {
+                    // Traveling: the Mac's clock and the schedule's place disagree. A hint
+                    // only — the searched location is never overwritten without the user.
+                    WarningCard(
+                        title: "Traveling?",
+                        message: "Your Mac's clock is set to \(mismatch.systemClockLabel) time, "
+                            + "but the sunset schedule follows \(store.preferences.locationDisplayLabel).",
+                        onClose: { store.dismissLocationMismatch() },
+                        closeHelp: "Dismiss. Reappears if your Mac's time zone changes again."
+                    ) {
+                        Button("Use my location") {
+                            store.requestLocation()
+                        }
+                    }
                 }
 
                 Button {
@@ -418,6 +444,19 @@ struct ColorScheduleView: View {
         store.preferences.scheduleSource == .solar
     }
 
+    /// Screenshot hook (same contract as DisplayDetailView's): `MONITORFLUX_SCROLL_TO=schedule`
+    /// scrolls the Day & night section into view shortly after launch. Two nudges, since a
+    /// scrollTo before the grouped Form materializes its rows is a silent no-op.
+    private func scrollToLaunchTarget(using proxy: ScrollViewProxy) {
+        guard let anchor = ProcessInfo.processInfo.environment["MONITORFLUX_SCROLL_TO"],
+              !anchor.isEmpty else { return }
+        for delay in [0.4, 0.9] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        }
+    }
+
     /// Fixed mode: one constant warmth, so the hero shows just the slider and a one-line
     /// explainer — the warmth *curve* (phases, chart, legend) hides, since a constant has no
     /// phases. The shared Day & night schedule section stays put in every mode; it drives
@@ -510,6 +549,9 @@ struct ColorScheduleView: View {
             if newSource == .solar {
                 store.requestLocationIfNeverAsked()
             }
+            // The traveling hint only applies to Follow-sunset: entering evaluates it,
+            // leaving clears it.
+            store.refreshLocationMismatch()
         }
     }
 

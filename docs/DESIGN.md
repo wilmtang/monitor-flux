@@ -96,16 +96,17 @@ sun and wake, so horizontal drags are ignored and the Sunset/Bedtime steppers ar
 Switching Follow-sunset → Set times freezes today's derived sunset and bedtime into the stored
 anchors so the chart doesn't jump.
 
-### Location lookup: city/ZIP search, offline (planned)
+### Location lookup: city/ZIP search, offline
 
-The raw Latitude/Longitude fields become one f.lux-style **Location** row: it shows the resolved
-place name ("Seattle, Washington", or the coordinates when no name is known) with a Change
-button; editing turns it into a single search field with up to 5 inline suggestion rows (no
-floating popover — the settings window has enough hosting gotchas). One field parses three
-shapes: **city-name prefix**, **5-digit US ZIP**, and **raw `lat, lon`** — the coordinate form is
-the escape hatch that lets the two raw fields go away. Return accepts the top hit, Esc cancels.
-Search state is view-local `@State`; only the final pick writes preferences (one
-`updateGlobalPreferences` setting `latitude`/`longitude`/`locationName` together).
+The raw Latitude/Longitude fields are replaced by one f.lux-style **Location** row
+(`Views/LocationField.swift`): it shows the resolved place name ("Seattle, Washington", or the
+coordinates when no name is known — `AppPreferences.locationDisplayLabel`) with a Change button;
+editing turns it into a single search field with up to 5 inline suggestion rows (no floating
+popover — the settings window has enough hosting gotchas). One field parses three shapes:
+**city-name prefix**, **5-digit US ZIP**, and **raw `lat, lon`** — the coordinate form is the
+escape hatch that let the two raw fields go away. Return accepts the top hit, Esc cancels.
+Search state is view-local `@State`; only the final pick writes preferences (`AppStore.applyPlace`,
+one `updateGlobalPreferences` setting `latitude`/`longitude`/`locationName` together).
 
 **Resolution is a bundled offline index, not a geocoding service.** The options considered:
 
@@ -115,43 +116,57 @@ Search state is view-local `@State`; only the final pick writes preferences (one
   `MKGeocodingRequest`, which doesn't exist below macOS 26 — a two-headed availability fork.
 - **Third-party HTTP geocoders** (Nominatim, Open-Meteo): nothing over MapKit, plus a ToS,
   rate limits, and a privacy disclosure. Rejected.
-- **Bundled index (chosen):** GeoNames `cities15000` (~27k cities worldwide, pop ≥ 15k;
-  CC BY 4.0 — attribution in the README) + the US Census ZCTA gazetteer (~33k ZIP centroids,
-  public domain), trimmed to ~1.5–2 MB. Sunset shifts ~1 min per ~20 km east–west, so a city
-  centroid is solar-grade; towns under 15k pop type their nearest city or coordinates.
+- **Bundled index (chosen):** GeoNames `cities15000` (~34k cities worldwide, pop ≥ 15k;
+  CC BY 4.0 — attribution in the README) + the US Census ZCTA gazetteer (~34k ZIP centroids,
+  public domain). Sunset shifts ~1 min per ~20 km east–west, so a city centroid is solar-grade;
+  towns under 15k pop type their nearest city or coordinates.
 
-Shape: `script/make_place_index.swift` regenerates the committed resource (like
-`make_icon.swift`); `Support/PlaceIndex.swift` is a pure, tested planner — diacritic-folded
-prefix search ranked by population, ZIP/coordinate classification, and `nearest(lat:lon:)` so a
-Core Location fix ("Use my location") also gets a city name without a reverse-geocode call.
-`SolarCalculator` and `ColorSchedule.resolved` are untouched; the feature only changes the
-coordinates the schedule already consumes. Deferred until real users report misses: a one-shot
-`MKLocalSearch` "Search online" row appended under the local suggestions.
+`script/make_place_index.swift` regenerates the committed `Resources/places.tsv` (like
+`make_icon.swift` for the icon). The file is a line-oriented TSV that dictionary-encodes the two
+repeated columns — IANA timezone ids (`T` rows) and admin1/state names (`A` rows) — so cities and
+ZIPs reference them by index; the whole thing is ~2.3 MB. It ships via the SwiftPM resource
+bundle, which `build_and_run.sh` copies into `Contents/Resources` (`PlaceIndex.loadBundled`
+deliberately avoids `Bundle.module`, whose generated fallback is an absolute `.build` path that
+only resolves on the build machine). `Support/PlaceIndex.swift` is the pure, tested planner —
+diacritic-folded word-prefix search ranked by population, ZIP/coordinate classification, and
+`nearest(latitude:longitude:)` so a Core Location fix ("Use my location") also gets a city name
+(and a timezone) without a reverse-geocode call. The ~2 MB parse runs once off-main
+(`AppStore.loadedPlaceIndex`, cached for the session). `SolarCalculator` and
+`ColorSchedule.resolved` are untouched; the feature only changes the coordinates the schedule
+already consumes. Deferred until real users report misses: a one-shot `MKLocalSearch` "Search
+online" row appended under the local suggestions.
 
 **Traveling (timezone changes, stale locations).** Three pieces:
 
-- **A location-source bit.** `locationFollowsDevice: Bool = true` (the default matches today:
-  once authorized, Core Location re-fixes on every launch). "Use my location" sets it; picking
-  a search result or typing coordinates clears it. `applyLocation` only writes while it's set —
-  without the gate, the launch-time fix would silently clobber a manually chosen city.
-- **Timezone/clock observers.** The schedule tick re-reads `Calendar.current` every minute,
-  but Foundation caches the system timezone in-process — after a flight the app would keep
-  computing in the old zone. Observe `NSSystemTimeZoneDidChange` → `NSTimeZone
-  .resetSystemTimeZone()`, re-resolve the schedule immediately, then: follows-device and
-  authorized → request a fresh one-shot fix; manual city → run the staleness check below.
-  Observe `NSSystemClockDidChange` (big clock jumps) → re-resolve only. DST transitions ride
-  the same path; Set-times anchors are minutes-of-local-clock and need nothing.
-- **A staleness hint — never an auto-switch.** The index carries each city's IANA timezone
-  (a GeoNames column; ZIPs inherit their nearest city's). When the stored place's UTC offset
-  differs from the system zone's by ≥ 1 h (compare offsets *at now*, not zone ids — Madrid vs
-  Paris must not warn; offsets also get DST right, e.g. Phoenix/Denver in summer), show a
-  `WarningCard` in the Follow-sunset section — "Your Mac's clock is set to Tokyo time, but the
-  sunset schedule follows Seattle" — with a Use-my-location button and a dismiss. Dismissal is
-  remembered keyed on the (place, system-zone) pair, so it returns when either side changes.
-  A manual choice is never overwritten without the user acting (reversible & safe).
+- **A location-source bit.** `locationFollowsDevice: Bool = true` (the default matches the prior
+  behavior: once authorized, Core Location re-fixes on every launch). `AppStore.requestLocation`
+  ("Use my location") sets it; picking a search result or typing coordinates (`applyPlace`) clears
+  it. `applyLocation` returns early unless it's set — without the gate, the every-launch fix would
+  silently clobber a manually chosen city.
+- **Timezone/clock observers** (in `AppStore.init`). The schedule tick re-reads `Calendar.current`
+  every minute, but Foundation caches the system timezone in-process — after a flight the app would
+  keep computing in the departure zone. `NSSystemTimeZoneDidChange` →
+  `handleSystemTimeZoneChange`: `NSTimeZone.resetSystemTimeZone()`, re-resolve the schedule
+  immediately, then follows-device-and-authorized requests a fresh (silent, no prompt) fix while a
+  manual city runs the staleness check. `NSSystemClockDidChange` (big clock jumps) re-resolves
+  only. DST transitions ride the same path; Set-times anchors are minutes-of-local-clock and need
+  nothing. The hint is also evaluated once per launch (catches "launched after landing") and when
+  the Schedule pane appears.
+- **A staleness hint — never an auto-switch** (`Support/LocationStaleness.swift`). Each city
+  carries its IANA timezone (a GeoNames column; ZIPs borrow their nearest city's). When the stored
+  place's UTC offset differs from the system zone's by ≥ 1 h (compare offsets *at now*, not zone
+  ids — Madrid vs Paris must not warn; offsets also get DST right, e.g. Phoenix/Denver in summer),
+  `AppStore.locationMismatch` is set and the Follow-sunset section shows a `WarningCard` — "Your
+  Mac's clock is set to Tokyo time, but the sunset schedule follows Seattle" — with a
+  Use-my-location button and a dismiss. Dismissal is remembered keyed on the (place, system-zone)
+  pair (`dismissedLocationMismatchKey`), so it returns when either side changes. A manual choice is
+  never overwritten without the user acting (reversible & safe).
 
-The mismatch predicate is pure (`(placeZoneID, systemZone, now) → warn?`) and tested: equal
-offsets with different ids, the DST asymmetry cases, dismissal re-arming.
+The mismatch predicate is pure (`LocationStaleness.check(placeZoneID:systemZone:now:dismissedKey:)`)
+and tested: equal offsets with different ids, the DST asymmetry cases, dismissal re-arming. The
+Schedule pane's location states are verifiable offline via the `MONITORFLUX_LOCATION_DEMO=<query>`
+(pins a searched place — `tokyo` trips the hint on a Pacific-time Mac) and
+`MONITORFLUX_LOCATION_QUERY=<prefix>` (opens the row mid-search) launch hooks.
 
 ## Dimming: Hardware / Software / Automatic
 
