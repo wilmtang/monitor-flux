@@ -144,8 +144,9 @@ pkill -x MonitorFlux || true
   shown right after. The custom panel counters that by living **just below the shielding level**
   (above the native bezel, below the lock-screen shield), so a lingering native bezel is covered
   and simply fades out underneath. Do **not** dismiss the native bezel via
-  `-[OSDManager fadeClassicImageOnDisplay:]`: on a bezel that's already mid-fade it re-displays it
-  at full opacity first, which reads as a blink.
+  `-[OSDManager fadeClassicImageOnDisplay:]`: on a bezel that's already mid-fade it re-brightens it
+  to full first, which reads as a blink (verified empirically; it's a private, undocumented API).
+  Full writeup + the glyph optical-sizing note: see `docs/DESIGN.md`.
 - `Services/ShadeController.swift` + `Services/CoreDisplayInfo.swift`: software dimming for
   **AirPlay/virtual** displays. They ignore gamma, so `CoreDisplayInfo` detects them (private
   `CoreDisplay_DisplayCreateInfoDictionary`, `kCGDisplayIsAirPlay`/virtual) and `ShadeController`

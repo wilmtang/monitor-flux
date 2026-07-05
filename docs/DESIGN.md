@@ -265,6 +265,41 @@ probe at every zoom. General law: any mechanism that makes visual geometry diffe
 view-frame geometry across an `NSHostingView` boundary will desync something. `dynamicTypeSize`
 is inert on current macOS and is not used.
 
+## On-screen display (OSD) bezel
+
+Brightness and volume use the **native macOS bezel** through the private `OSDManager`
+(OSD.framework), so they're pixel-identical to what macOS itself draws. Contrast and warmth have
+no native bezel image (macOS's contrast code draws the level bar with no glyph, and there's no
+color-temperature bezel at all), so they use a **custom SwiftUI panel** in the same 200×200 spot —
+also the fallback if the private API is ever unavailable.
+
+**Covering, not flushing (the blink).** The native bezel and the custom panel occupy the exact
+same screen position, and the native bezel is a window at level ~2005 (owned by `OSDUIHelper`), so
+a native brightness/volume bezel still fading would sit *over* a contrast/warmth panel triggered
+right after — hiding it. Two approaches were tried:
+
+- **Dismiss the native bezel** via the private `-[OSDManager fadeClassicImageOnDisplay:]`. This
+  works when the bezel is at full opacity, but on a bezel that's **already mid-fade it re-brightens
+  it to full first**, then fades again — a visible blink. This was verified with a controlled
+  frame-by-frame screen recording: same setup (show a bezel, let it start fading), differing only
+  in whether the call fires ~150 ms into the fade. Without it, the bezel fades to nothing; with it,
+  the bezel jumps back to full and restarts its fade. `OSDManager` is a private, **undocumented**
+  API, so this is empirical, not a guarantee — but it's reproducible.
+- **Cover it (chosen).** The custom panel's window level is set to `CGShieldingWindowLevel() - 1`
+  — above the native bezel so a lingering one is covered and simply fades out underneath, but
+  below the lock-screen shield so, like the native bezel, the OSD never floats over the login
+  window. No call touches the native bezel, so there's nothing to blink; a recording confirms the
+  custom OSD cleanly covers a still-visible native bezel with no ghost. Anchoring to
+  `CGShieldingWindowLevel()` (not a hard-coded 2005) survives the native level shifting between
+  macOS versions — worst case it degrades to the old "covered" bug, never a crash.
+
+**Per-symbol glyph sizing.** The custom panel's glyph point size is tuned per symbol
+(`Kind.glyphPointSize`), not fixed: SF Symbols fill their box very differently, so at one size the
+solid contrast disc and the filled `thermometer.sun.fill` look much larger than `sun.max`'s airy
+outline (measured against the native bezel at the same scale: sun ~110 pt, contrast disc ~105 pt
+but solid, warmth ~127 pt). The filled glyphs are sized down (contrast 82, warmth 76) to read at
+the sun's visual weight.
+
 ## Known limitations (cosmetic, no action planned)
 
 - `MonitorSlider` maps the pointer across the full track width while the knob travels an inset
