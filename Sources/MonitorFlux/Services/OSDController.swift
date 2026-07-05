@@ -51,6 +51,22 @@ final class OSDController {
             case .contrast, .color: nil
             }
         }
+
+        /// Optical point size for the custom panel's glyph, tuned **per symbol** so the denser
+        /// custom icons read at the same visual size as the native brightness bezel's thin sun.
+        /// SF Symbols fill their box very differently — a single point size makes the solid
+        /// contrast disc and the filled `thermometer.sun.fill` look much larger than `sun.max`'s
+        /// airy outline (measured: at 106 pt the sun footprint is ~110 pt, the contrast disc
+        /// ~105 pt but solid, the warmth glyph ~127 pt). These sizes bring the filled glyphs down
+        /// to the sun's visual weight.
+        var glyphPointSize: CGFloat {
+            switch self {
+            case .brightness: 106 // sun.max — matches the native sun (fallback/capture only)
+            case .volume: 100     // speaker.wave — fallback/capture only
+            case .contrast: 82    // circle.lefthalf.filled — a solid disc, sized down
+            case .color: 76       // thermometer.sun.fill — tall and filled, sized down most
+            }
+        }
     }
 
     /// Flash the OSD for `kind` at `fraction` (0...1) on the display with `displayID`
@@ -94,7 +110,12 @@ final class OSDController {
         // Warmth keeps the app's cool→warm tint; brightness/contrast/volume stay white like
         // macOS's native overlays.
         let tint: Color = kind == .color ? .warmth(for: clampedFraction) : .white
-        let view = OSDView(systemImage: kind.systemImage(fraction: clampedFraction), fraction: clampedFraction, tint: tint)
+        let view = OSDView(
+            systemImage: kind.systemImage(fraction: clampedFraction),
+            fraction: clampedFraction,
+            tint: tint,
+            glyphSize: kind.glyphPointSize
+        )
         (panel.contentView as? NSHostingView<OSDView>)?.rootView = view
 
         let screen = displayID.flatMap(Self.screen(for:)) ?? NSScreen.main
@@ -167,7 +188,10 @@ final class OSDController {
 /// The OSD's content: a large glyph over a 16-segment level bar on a dark HUD panel, laid out
 /// to match the macOS brightness/volume bezel **pixel-for-pixel** (measured from a screenshot
 /// of OSDUIHelper's 200×200 window on macOS 15.7):
-/// - glyph: thin-stroke, ~112 pt tall, centered at (100, 87), ~55%-white gray (not bright white)
+/// - glyph: centered at (100, 87), ~55%-white gray (not bright white). Its point size is
+///   per-symbol (`Kind.glyphPointSize`): the native sun's thin outline reads ~110 pt tall, but a
+///   single point size makes filled symbols (contrast's disc, warmth's thermometer) look far
+///   bigger, so those are sized down to match the sun's visual weight.
 /// - level bar: 159×6 pt whose *center* sits at (100, 176) — a continuous darker-than-panel
 ///   track under 9 pt lit chiclets with 1 pt gaps (the empty side is the bare track; the
 ///   native bezel draws no per-chiclet outlines there)
@@ -176,6 +200,8 @@ private struct OSDView: View {
     let systemImage: String
     let fraction: Double
     var tint: Color = .white
+    /// Per-symbol optical size (see `Kind.glyphPointSize`); defaults to the native sun's size.
+    var glyphSize: CGFloat = 106
 
     private let segments = 16
     private let segmentWidth: CGFloat = 9
@@ -201,7 +227,7 @@ private struct OSDView: View {
     var body: some View {
         ZStack {
             Image(systemName: systemImage)
-                .font(.system(size: 106, weight: .regular))
+                .font(.system(size: glyphSize, weight: .regular))
                 .foregroundStyle(tint.opacity(markOpacity))
                 .position(x: 100, y: 87)
 
