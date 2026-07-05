@@ -423,7 +423,7 @@ struct DisplayDetailView: View {
                 // MonitorFlux doesn't schedule it, so it can't fight macOS or jump on launch.
                 advancedCaption("macOS manages the built-in brightness (auto-brightness), so it isn't scheduled. Scheduling applies to external monitors.")
             } else {
-                advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness))
+                advancedToggleRow("Schedule brightness", isOn: scheduleBinding(\.scheduleBrightness), prominent: true, tint: .scheduleBrightness)
                 if displayPreferences.scheduleBrightness {
                     scheduleChart(
                         dayValue: scheduleBinding(\.dayBrightness),
@@ -440,7 +440,7 @@ struct DisplayDetailView: View {
                 // Contrast is DDC-only, so a non-DDC monitor can't schedule it — hide the toggle
                 // rather than offer a control whose writes are silently dropped.
                 if !display.isBuiltIn, store.canUseDDC(for: display) {
-                    advancedToggleRow("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast))
+                    advancedToggleRow("Schedule contrast", isOn: scheduleBinding(\.scheduleContrast), prominent: true, tint: .scheduleContrast)
                     if displayPreferences.scheduleContrast {
                         scheduleChart(
                             dayValue: scheduleBinding(\.dayContrast),
@@ -513,12 +513,21 @@ struct DisplayDetailView: View {
         _ title: String,
         icon: String? = nil,
         isOn: Binding<Bool>,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        prominent: Bool = false,
+        tint: Color? = nil
     ) -> some View {
         // A plain Toggle keeps the native row layout (label leading, switch trailing —
         // the pairing settingsSwitch() centers exactly). With an icon, it fills the same
         // 18 pt column as the slider rows; without one, a leading pad lines the title up
         // with that column either way.
+        //
+        // `prominent` marks a toggle that *heads a revealable sub-block* (the schedule
+        // curves + their target sliders), as opposed to a leaf setting like "Allow dimming to
+        // black". It gets header weight (semibold), clear air above, and — via `tint` — its
+        // curve's accent (gold brightness / blue contrast), so "Schedule contrast" reads as a
+        // colored section header tied to its chart, unmistakable next to the neutral "Night
+        // brightness" slider label right above it.
         let zoomScale = store.preferences.settingsZoomScale
         return Toggle(isOn: isOn) {
             if let icon {
@@ -532,13 +541,15 @@ struct DisplayDetailView: View {
                 }
             } else {
                 Text(title)
-                    .zoomFont(.body, weight: .medium)
+                    .zoomFont(prominent ? .headline : .body, weight: prominent ? .semibold : .medium)
+                    .foregroundStyle(tint ?? .primary)
                     .padding(.leading, advancedLeadingPad)
             }
         }
         .settingsSwitch()
         .disabled(!isEnabled)
         .padding(.vertical, 3)
+        .padding(.top, prominent ? 10 : 0)
     }
 
     private func advancedSliderRow(
