@@ -386,6 +386,45 @@ final class ColorScheduleTests: XCTestCase {
         XCTAssertLessThan(maxStep, 200, "bridged day should fade smoothly (max step \(maxStep) K/min)")
     }
 
+    func testScheduledPhaseMixSettledPhaseHasNoFade() {
+        let schedule = ResolvedSchedule.setTimes(threePhasePreferences())
+        // Late morning — well past the wake fade, so it's a single, settled phase.
+        let mix = ColorSchedule.scheduledPhaseMix(schedule: schedule, minuteOfDay: 10 * 60)
+        XCTAssertEqual(mix.from, .daytime)
+        XCTAssertEqual(mix.to, .daytime)
+        XCTAssertEqual(mix.progress, 1, accuracy: 0.0001)
+    }
+
+    func testScheduledPhaseMixBlendsThroughFade() {
+        let schedule = ResolvedSchedule.setTimes(threePhasePreferences()) // sunset @ 19:00, fade 60
+        // Halfway into the sunset fade: easing from the daytime color to the sunset color.
+        let mid = ColorSchedule.scheduledPhaseMix(schedule: schedule, minuteOfDay: 19 * 60 + 30)
+        XCTAssertEqual(mid.from, .daytime)
+        XCTAssertEqual(mid.to, .sunset)
+        XCTAssertEqual(mid.progress, 0.5, accuracy: 0.0001)
+
+        // At the exact event minute the fade hasn't started — still fully the previous phase.
+        let start = ColorSchedule.scheduledPhaseMix(schedule: schedule, minuteOfDay: 19 * 60)
+        XCTAssertEqual(start.from, .daytime)
+        XCTAssertEqual(start.to, .sunset)
+        XCTAssertEqual(start.progress, 0, accuracy: 0.0001)
+    }
+
+    func testScheduledPhaseMixRidesTheSameTimelineAsScheduledValue() {
+        // The fill color blends `from`→`to` by `progress`; this proves that blend lands on the
+        // identical curve as the numeric schedule at every minute, so the shading tracks the warmth.
+        let schedule = ResolvedSchedule.setTimes(threePhasePreferences())
+        let values: [ColorPhase: Int] = [.daytime: 6000, .sunset: 4000, .bedtime: 2000]
+
+        for minute in stride(from: 0, to: 1440, by: 7) {
+            let numeric = ColorSchedule.scheduledValue(schedule: schedule, minuteOfDay: minute) { values[$0]! }
+            let mix = ColorSchedule.scheduledPhaseMix(schedule: schedule, minuteOfDay: minute)
+            let from = Double(values[mix.from]!)
+            let blended = from + (Double(values[mix.to]!) - from) * mix.progress
+            XCTAssertEqual(Double(numeric), blended, accuracy: 1.0, "minute \(minute)")
+        }
+    }
+
     private func threePhasePreferences() -> AppPreferences {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock

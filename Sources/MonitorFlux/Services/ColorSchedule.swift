@@ -413,6 +413,48 @@ enum ColorSchedule {
         scheduledValue(schedule: .setTimes(preferences), minuteOfDay: minuteOfDay, value: value)
     }
 
+    /// The phase mix in effect at `minuteOfDay`: the active phase, the phase it's fading out of,
+    /// and how far (0…1) that fade has progressed. During a transition window right after an event
+    /// the result runs `from` the previous phase `to` the active one; outside a window (and when
+    /// there's only one anchor) `from == to` and `progress == 1` — a single, settled phase.
+    ///
+    /// Mirrors `scheduledValue`'s interpolation exactly, so a visual that can't be expressed as an
+    /// Int (the curve's per-phase fill color) can blend on the identical timeline as the numeric
+    /// schedule instead of hard-cutting at each phase boundary. Pure + unit-tested.
+    static func scheduledPhaseMix(
+        schedule: ResolvedSchedule,
+        minuteOfDay: Int
+    ) -> (from: ColorPhase, to: ColorPhase, progress: Double) {
+        let minute = normalizedMinute(minuteOfDay)
+        let transition = schedule.transitionMinutes.clamped(to: ControlRanges.transitionMinutes)
+
+        let anchors = schedule.events
+            .map { event in (since: circularMinutes(from: event.minute, to: minute), phase: event.phase) }
+            .sorted { $0.since < $1.since }
+
+        guard let active = anchors.first else {
+            return (.daytime, .daytime, 1)
+        }
+        guard anchors.count > 1 else {
+            return (active.phase, active.phase, 1)
+        }
+
+        let previous = anchors[1]
+        // Same fade cap as `scheduledValue`: the transition can't outlast the gap to the next event.
+        let maxSince = anchors[anchors.count - 1].since
+        let gapToNextEvent = active.since + 1440 - maxSince
+        let effectiveTransition = min(transition, gapToNextEvent)
+
+        if effectiveTransition > 0, active.since < effectiveTransition {
+            return (
+                from: previous.phase,
+                to: active.phase,
+                progress: Double(active.since) / Double(effectiveTransition)
+            )
+        }
+        return (active.phase, active.phase, 1)
+    }
+
     private static func normalizedMinute(_ minute: Int) -> Int {
         ((minute % 1440) + 1440) % 1440
     }

@@ -181,11 +181,11 @@ struct ColorScheduleView: View {
     private var scheduleSection: some View {
         Section("Day & night schedule") {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                timeStepper(.daytime, title: "Wake", tint: .blue)
+                timeStepper(.daytime, title: "Wake", tint: .phaseDaytime)
                 Spacer(minLength: 8)
-                timeStepper(.sunset, title: "Sunset", tint: .orange)
+                timeStepper(.sunset, title: "Sunset", tint: .phaseSunset)
                 Spacer(minLength: 8)
-                timeStepper(.bedtime, title: "Bedtime", tint: .indigo)
+                timeStepper(.bedtime, title: "Bedtime", tint: .phaseBedtime)
             }
 
             Picker("Schedule from", selection: scheduleSourceBinding) {

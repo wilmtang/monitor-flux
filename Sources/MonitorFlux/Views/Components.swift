@@ -1,11 +1,20 @@
 import AppKit
 import SwiftUI
 
-/// Schedule-phase accent colors, shared by the curve editor handles, the legend, and the
-/// status icon so a phase looks the same everywhere. Sunset is a saturated "real" orange so
-/// it reads as clearly distinct from the daytime yellow next to it.
+/// Schedule-phase accent colors — the single source of truth for Daytime/Sunset/Bedtime, shared
+/// by the curve editor handles and its fill, the legend, the time steppers, the status icon, and
+/// each monitor's own brightness/contrast schedule, so a phase looks the same everywhere.
+///
+/// Daytime is a high-contrast "sun" gold that adapts per appearance: a vivid warm yellow reads as
+/// a dot on the dark curve card in dark mode, while a deeper amber stays legible as label text on
+/// the light form — plain `Color.yellow` was invisible as text on white. Sunset is a saturated
+/// "real" orange, clearly distinct from the daytime gold next to it; Bedtime is the system indigo.
 extension Color {
-    static let phaseDaytime = Color.yellow
+    static let phaseDaytime = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 1.0, green: 0.80, blue: 0.16, alpha: 1)
+            : NSColor(srgbRed: 0.82, green: 0.56, blue: 0.02, alpha: 1)
+    })
     static let phaseSunset = Color(red: 1.0, green: 0.42, blue: 0.0)
     static let phaseBedtime = Color.indigo
 }

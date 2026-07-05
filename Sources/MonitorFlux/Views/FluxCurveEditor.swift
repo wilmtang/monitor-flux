@@ -41,6 +41,10 @@ struct FluxCurveEditor: View {
     /// order) while times are unlocked. The owner commits it to the store.
     var onTimeEdit: (ColorPhase, Int) -> Void = { _, _ in }
 
+    /// Resolves the phase fill colors (some are appearance-adaptive) to concrete sRGB here in the
+    /// view — where the appearance is known — so the fill can blend them numerically inside `Canvas`.
+    @Environment(\.self) private var environment
+
     private let minKelvin = ControlRanges.kelvin.lowerBound
     private let maxKelvin = ControlRanges.kelvin.upperBound
     /// Vertical breathing room (handle radius + stroke) so a handle parked at the warmest/coolest
@@ -141,7 +145,7 @@ struct FluxCurveEditor: View {
     private func wakeTick(at minute: Int, in size: CGSize) -> some View {
         let x = CGFloat(((minute % 1440) + 1440) % 1440) / 1440.0 * size.width
         return Capsule()
-            .fill(.blue.opacity(0.6))
+            .fill(Color.phaseDaytime.opacity(0.7))
             .frame(width: 1.5, height: size.height)
             .position(x: x, y: size.height / 2)
             .allowsHitTesting(false)
@@ -168,57 +172,122 @@ struct FluxCurveEditor: View {
         context.stroke(grid, with: .color(.white.opacity(0.42)), lineWidth: 1)
     }
 
+    /// Shade the area under the curve with each phase's own color — wake→sunset as daytime gold,
+    /// sunset→bedtime as sunset orange, the night wings as bedtime indigo — but blended *through*
+    /// the fade windows instead of hard-cut at each boundary, so the shading eases from one phase's
+    /// color to the next exactly as the curve's warmth does. The horizontal hue runs as a gradient
+    /// across the whole area (blended per 10-min sample via `scheduledPhaseMix`), and a top-down
+    /// alpha mask gives the band its area-chart falloff (stronger at the curve, fainter at the floor).
     private func drawTemperatureFill(in context: inout GraphicsContext, size: CGSize) {
         var area = temperaturePath(size: size)
         area.addLine(to: CGPoint(x: size.width, y: size.height))
         area.addLine(to: CGPoint(x: 0, y: size.height))
         area.closeSubpath()
 
-        let gradient = Gradient(colors: [
-            .blue.opacity(0.18),
-            .phaseSunset.opacity(0.30),
-            .phaseSunset.opacity(0.14)
-        ])
-        context.fill(area, with: .linearGradient(
-            gradient,
-            startPoint: CGPoint(x: 0, y: size.height),
-            endPoint: CGPoint(x: size.width, y: 0)
-        ))
+        let stops = (0...144).map { step -> Gradient.Stop in
+            let minute = step * fillStep
+            let mix = ColorSchedule.scheduledPhaseMix(schedule: schedule, minuteOfDay: minute)
+            return Gradient.Stop(
+                color: blendedFillColor(from: mix.from, to: mix.to, progress: mix.progress),
+                location: Double(minute) / 1440.0
+            )
+        }
+        let hue = Gradient(stops: stops)
+
+        // Confine everything to a layer so the two clips don't leak onto the curve/handles drawn next.
+        context.drawLayer { layer in
+            layer.clip(to: area)
+            // The vertical falloff, applied as an alpha mask so it composes with the horizontal hue.
+            layer.clipToLayer { mask in
+                mask.fill(
+                    Path(CGRect(origin: .zero, size: size)),
+                    with: .linearGradient(
+                        Gradient(colors: [.white.opacity(0.34), .white.opacity(0.10)]),
+                        startPoint: CGPoint(x: 0, y: 0),
+                        endPoint: CGPoint(x: 0, y: size.height)
+                    )
+                )
+            }
+            layer.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .linearGradient(
+                    hue,
+                    startPoint: CGPoint(x: 0, y: size.height / 2),
+                    endPoint: CGPoint(x: size.width, y: size.height / 2)
+                )
+            )
+        }
+    }
+
+    private func fillColor(for phase: ColorPhase) -> Color {
+        switch phase {
+        case .daytime:
+            .phaseDaytime
+        case .sunset:
+            .phaseSunset
+        case .bedtime:
+            .phaseBedtime
+        }
+    }
+
+    /// The two phases' fill colors mixed by `progress`, resolved to concrete sRGB against the
+    /// current appearance so it's stable inside `Canvas`. `progress == 1` (or from == to) is the
+    /// settled phase color; a value in between is a point in that phase's fade.
+    private func blendedFillColor(from: ColorPhase, to: ColorPhase, progress: Double) -> Color {
+        let a = fillColor(for: from).resolve(in: environment)
+        let b = fillColor(for: to).resolve(in: environment)
+        let t = Float(progress.clamped(to: 0...1))
+        return Color(
+            .sRGB,
+            red: Double(a.red + (b.red - a.red) * t),
+            green: Double(a.green + (b.green - a.green) * t),
+            blue: Double(a.blue + (b.blue - a.blue) * t)
+        )
     }
 
     private func drawTemperatureCurve(in context: inout GraphicsContext, size: CGSize) {
         let curve = temperaturePath(size: size)
         context.stroke(curve, with: .color(.phaseSunset.opacity(0.85)), lineWidth: 2.5)
 
+        // A neutral ground line under the bands — the fill's phase colors carry the palette now, so
+        // the old blue floor would read as a stray fourth color.
         var baseline = Path()
         baseline.move(to: CGPoint(x: 0, y: size.height - 3))
         baseline.addLine(to: CGPoint(x: size.width, y: size.height - 3))
-        context.stroke(baseline, with: .color(.blue.opacity(0.55)), lineWidth: 3)
+        context.stroke(baseline, with: .color(.white.opacity(0.22)), lineWidth: 3)
+    }
+
+    private let fillStep = 10
+
+    private func xPosition(for minute: Int, width: CGFloat) -> CGFloat {
+        CGFloat(minute) / 1440.0 * width
+    }
+
+    /// The point on the temperature curve at `minute` — shared by the curve stroke and the
+    /// per-phase fill so the bands' tops sit exactly on the drawn line.
+    private func curvePoint(atMinute minute: Int, size: CGSize) -> CGPoint {
+        let kelvin = ColorSchedule.scheduledValue(
+            schedule: schedule,
+            minuteOfDay: minute
+        ) { phase in
+            temperature(for: phase).clamped(to: ControlRanges.kelvin)
+        }
+        return CGPoint(
+            x: xPosition(for: minute, width: size.width),
+            y: yPosition(for: kelvin, height: size.height)
+        )
     }
 
     private func temperaturePath(size: CGSize) -> Path {
         var path = Path()
-
         for step in 0...144 {
-            let minute = step * 10
-            let kelvin = ColorSchedule.scheduledValue(
-                schedule: schedule,
-                minuteOfDay: minute
-            ) { phase in
-                temperature(for: phase).clamped(to: ControlRanges.kelvin)
-            }
-            let point = CGPoint(
-                x: CGFloat(minute) / 1440.0 * size.width,
-                y: yPosition(for: kelvin, height: size.height)
-            )
-
+            let point = curvePoint(atMinute: step * fillStep, size: size)
             if step == 0 {
                 path.move(to: point)
             } else {
                 path.addLine(to: point)
             }
         }
-
         return path
     }
 
