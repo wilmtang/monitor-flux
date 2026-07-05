@@ -33,9 +33,11 @@ struct DisplayDetailView: View {
                     airplayBrightnessSection.id(ScrollAnchor.brightness)
                 } else {
                     colorSection.id(ScrollAnchor.warmth)
-                    // Brightness/contrast, ordered most-real first: the monitor's own controls stay
-                    // up top; software (gamma) dimming and the day/night schedule tuck under Advanced.
+                    // Brightness, then contrast in its own section, ordered most-real first: the
+                    // monitor's own controls stay up top; software (gamma) dimming and the day/night
+                    // schedule tuck under Advanced.
                     realControlsSection.id(ScrollAnchor.brightness)
+                    contrastSection
                     advancedSection.id(ScrollAnchor.advanced)
                 }
             }
@@ -118,27 +120,32 @@ struct DisplayDetailView: View {
                 sectionHeader("Brightness", help: HelpText.backlight, helpTitle: "Backlight")
             }
         } else {
-            let hasContrast = store.canUseDDC(for: display)
             Section {
                 unifiedBrightnessRow
                 dimmingMethodRow
                 brightnessCaption
-                if hasContrast {
-                    contrastRow
-                }
             } header: {
-                sectionHeader(
-                    hasContrast ? "Brightness & contrast" : "Brightness",
-                    help: HelpText.ddc,
-                    helpTitle: hasContrast ? "Brightness & contrast (DDC/CI)" : "Monitor brightness (DDC/CI)"
-                )
+                sectionHeader("Brightness", help: HelpText.ddc, helpTitle: "Monitor brightness (DDC/CI)")
             }
         }
     }
 
-    /// Contrast — a monitor-native DDC control, promoted out of Advanced to sit under the
-    /// Brightness slider. Same `MonitorSlider` + label/readout columns as the hero row above,
-    /// so the two tracks share their left/right edges.
+    /// Contrast stands in its own section — like Warmth — rather than riding under the
+    /// Brightness slider. A monitor-native DDC control, so it's shown only for wired externals
+    /// whose panel answers DDC.
+    @ViewBuilder
+    private var contrastSection: some View {
+        if !display.isBuiltIn, store.canUseDDC(for: display) {
+            Section {
+                contrastRow
+            } header: {
+                sectionHeader("Contrast", help: HelpText.contrast, helpTitle: "Monitor contrast (DDC/CI)")
+            }
+        }
+    }
+
+    /// Contrast — a monitor-native DDC control. Same `MonitorSlider` + label/readout columns as
+    /// the Brightness hero row, so the two tracks share their left/right edges.
     private var contrastRow: some View {
         let zoomScale = store.preferences.settingsZoomScale
         return HStack(spacing: 10) {

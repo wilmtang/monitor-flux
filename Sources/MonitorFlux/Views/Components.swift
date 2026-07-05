@@ -65,6 +65,11 @@ enum HelpText {
     the same settings as its physical buttons. Support varies by monitor and cable.
     """
 
+    static let contrast = """
+    Sets the monitor's own contrast over the video cable, the same control as its physical \
+    buttons. Support varies by monitor.
+    """
+
     static let backlight = """
     Sets the real backlight — the same level as the keyboard brightness keys and the menu-bar \
     slider. Works on the built-in and Apple displays.
