@@ -140,9 +140,12 @@ pkill -x MonitorFlux || true
   bezel, so they use a custom tinted SwiftUI panel (also the fallback if the private API is absent).
   `NativeOSD` binds `OSDManager` dynamically (dlopen + IMP cast), no bridging header. The custom
   panel and the native bezel share the exact same screen spot, and the native bezel sits at window
-  level ~2005 (vs. the panel's `.floating` = 3), so a native brightness/volume bezel still fading
-  would cover a contrast/warmth panel shown right after — `OSDController` flushes it first via
-  `NativeOSD.fadeCurrent` (`-[OSDManager fadeClassicImageOnDisplay:]`).
+  level ~2005, so a native brightness/volume bezel still fading would cover a contrast/warmth panel
+  shown right after. The custom panel counters that by living **just below the shielding level**
+  (above the native bezel, below the lock-screen shield), so a lingering native bezel is covered
+  and simply fades out underneath. Do **not** dismiss the native bezel via
+  `-[OSDManager fadeClassicImageOnDisplay:]`: on a bezel that's already mid-fade it re-displays it
+  at full opacity first, which reads as a blink.
 - `Services/ShadeController.swift` + `Services/CoreDisplayInfo.swift`: software dimming for
   **AirPlay/virtual** displays. They ignore gamma, so `CoreDisplayInfo` detects them (private
   `CoreDisplay_DisplayCreateInfoDictionary`, `kCGDisplayIsAirPlay`/virtual) and `ShadeController`

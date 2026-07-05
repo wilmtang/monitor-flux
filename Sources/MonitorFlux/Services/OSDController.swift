@@ -90,13 +90,11 @@ final class OSDController {
         }
 
         // The custom panel (contrast/warmth, or a fallback) lands in the exact spot the native
-        // brightness/volume bezel uses, and that native bezel sits at a much higher window level
-        // (≈2005 vs. our floating panel) — so one still fading from a moment ago would cover this.
-        // Ask OSDManager to fade it out first so our OSD is never hidden behind it. Skipped under
-        // the capture hook, where no native bezel is in play.
-        if !wantsCapture {
-            NativeOSD.fadeCurrent(onDisplay: displayID ?? CGMainDisplayID())
-        }
+        // brightness/volume bezel uses. That native bezel sits at a much higher window level, so a
+        // still-visible one would cover this — the panel counters that by living above it (see
+        // `makePanel`'s level), so a lingering brightness bezel just fades out underneath. We do
+        // *not* ask OSDManager to dismiss it: `fadeClassicImageOnDisplay:` re-displays a bezel
+        // that's already mid-fade at full opacity first, which reads as a blink.
         showCustomPanel(kind, fraction: clampedFraction, onDisplay: displayID)
     }
 
@@ -162,7 +160,12 @@ final class OSDController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.level = .floating
+        // Sit just below the shielding level — above the native brightness/volume bezel
+        // (OSDUIHelper's window, measured at ~2005) so a lingering one is covered by this panel
+        // rather than covering it, but still below the lock-screen shield so, like the native
+        // bezel, this OSD never floats over the login window. Robust to the exact native level
+        // shifting between macOS versions (no hard-coded 2005).
+        panel.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) - 1)
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.contentView = NSHostingView(rootView: OSDView(systemImage: "sun.max.fill", fraction: 0))
