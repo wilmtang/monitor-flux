@@ -284,6 +284,14 @@ struct DisplayDetailView: View {
             if advancedShown {
                 advancedContent
             }
+        } header: {
+            // Extra air above the Advanced tier so the disclosure reads as a section break, not
+            // one more card in the same rhythm as Brightness/Contrast. macOS grouped Forms have
+            // no `listSectionSpacing`, and a spacer *section* would draw an empty card — a section
+            // header reserves the space with no card background, which is exactly what's wanted.
+            Color.clear
+                .frame(height: 14)
+                .accessibilityHidden(true)
         }
     }
 
