@@ -138,7 +138,11 @@ pkill -x MonitorFlux || true
   Brightness/volume use the **private `OSDManager`** (OSD.framework) so they're pixel-identical
   to macOS's own bezel (the MonitorControl approach); contrast and color/warmth have no native
   bezel, so they use a custom tinted SwiftUI panel (also the fallback if the private API is absent).
-  `NativeOSD` binds `OSDManager` dynamically (dlopen + IMP cast), no bridging header.
+  `NativeOSD` binds `OSDManager` dynamically (dlopen + IMP cast), no bridging header. The custom
+  panel and the native bezel share the exact same screen spot, and the native bezel sits at window
+  level ~2005 (vs. the panel's `.floating` = 3), so a native brightness/volume bezel still fading
+  would cover a contrast/warmth panel shown right after — `OSDController` flushes it first via
+  `NativeOSD.fadeCurrent` (`-[OSDManager fadeClassicImageOnDisplay:]`).
 - `Services/ShadeController.swift` + `Services/CoreDisplayInfo.swift`: software dimming for
   **AirPlay/virtual** displays. They ignore gamma, so `CoreDisplayInfo` detects them (private
   `CoreDisplay_DisplayCreateInfoDictionary`, `kCGDisplayIsAirPlay`/virtual) and `ShadeController`
