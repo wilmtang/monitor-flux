@@ -13,11 +13,10 @@ set -euo pipefail
 # all work under the hardened runtime that notarization requires (verified).
 
 APP_NAME="MonitorFlux"
-APP_VERSION="0.1.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
-DMG_PATH="$ROOT_DIR/dist/$APP_NAME-$APP_VERSION.dmg"
+INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 STAGING_PARENT="$(mktemp -d)"
 STAGING="$STAGING_PARENT/$APP_NAME"
 
@@ -33,6 +32,8 @@ trap cleanup EXIT
 # 1. Build an optimized .app bundle (no launch). build_and_run.sh ad-hoc signs it.
 BUILD_CONFIG=release "$ROOT_DIR/script/build_and_run.sh" --bundle >/dev/null
 [ -d "$APP_BUNDLE" ] || { echo "error: $APP_BUNDLE was not built" >&2; exit 1; }
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
+DMG_PATH="$ROOT_DIR/dist/$APP_NAME-$APP_VERSION.dmg"
 
 # 2. For distribution, re-sign with a Developer ID + the hardened runtime (required for
 #    notarization) and a secure timestamp. The single binary has no nested code to sign.

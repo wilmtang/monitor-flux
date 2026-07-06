@@ -1,27 +1,71 @@
 # MonitorFlux
 
-MonitorFlux is a macOS display-control app that combines f.lux-style color
-temperature scheduling with MonitorControl-style per-display controls.
+MonitorFlux is a menu-bar display controller for Mac users who want
+**MonitorControl-style monitor sliders** and **f.lux-style warmth scheduling** in
+one app.
 
-The important design rule is that MonitorFlux owns exactly one gamma pipeline.
-Warmth, gamma brightness, and gamma contrast are composed into one transfer
-table per display, so those features do not overwrite each other or flicker by
-fighting for the same macOS gamma table.
+Use it when an external monitor stays too bright at night, your brightness keys
+only control the built-in screen, or you want warmth, brightness, and contrast to
+follow one day/night schedule. MonitorFlux uses real monitor controls when they
+exist, then falls back to software dimming or an AirPlay overlay when they do not.
 
-## How It Works
+![MonitorFlux tour](docs/media/monitorflux-tour.gif)
+
+## Why use it
+
+- **Control real monitor brightness from the menu bar.** External displays get
+  brightness, contrast, and volume sliders over DDC/CI; the built-in display uses
+  its real backlight.
+- **Warm the screen on a schedule.** Fixed and Automatic warmth modes cover the
+  f.lux/Night Shift use case without giving up per-display monitor controls.
+- **Schedule monitor levels too.** External-display brightness and contrast can
+  ride the same day/night timeline as warmth, so night mode is not just a color
+  tint.
+- **Keep non-DDC displays usable.** When hardware brightness is unavailable,
+  MonitorFlux falls back to software dimming; AirPlay/virtual displays use a
+  darker-only overlay.
+- **Stay out of your way.** It is menu-bar-first, has native-looking OSD feedback,
+  and can keep the Dock icon hidden unless the settings window is open.
+
+## MonitorFlux vs MonitorControl
+
+[MonitorControl](https://github.com/MonitorControl/MonitorControl) is the mature
+baseline for external monitor control. MonitorFlux is for people who want that
+style of control plus warmth and scheduled day/night levels in the same app.
+
+| Feature | MonitorFlux | MonitorControl |
+|---|---|---|
+| Menu-bar sliders per display | Yes | Yes |
+| External brightness / contrast / volume over DDC | Yes | Yes |
+| Built-in display brightness | Yes, real backlight | Yes, native Apple protocol |
+| Software dimming below the hardware floor | Yes, gamma or overlay | Yes, gamma or shade |
+| AirPlay / virtual display dimming | Yes, overlay | Yes, shade |
+| Standard brightness and media keys | Yes, routed to the display under the pointer | Yes |
+| Custom keyboard shortcuts | Yes | Yes |
+| Native brightness / volume OSD | Yes | Yes |
+| Warmth / color temperature control | Built in | Requested separately |
+| Day/night warmth schedule | Built in | Not advertised |
+| Follow-sunset schedule | Built in, computed on-device | Not advertised |
+| Per-display brightness / contrast schedule | Built in | Requested separately |
+| Sync externals to built-in ambient-light changes | No | Yes |
+
+MonitorControl's column is based on its public README and public feature
+requests for [color temperature](https://github.com/MonitorControl/MonitorControl/issues/989)
+and [day/night presets](https://github.com/MonitorControl/MonitorControl/issues/1851).
+
+## How it works
 
 MonitorFlux has two separate control paths:
 
-- **Gamma path:** color temperature and software brightness. These are pixel-level
-  adjustments, planned in `GammaPlan`, composed in `GammaCompositor`, and applied by
-  `GammaTemperatureService`. (AirPlay/wireless displays ignore gamma, so their software
-  dimming uses a black overlay window — `ShadeController` — instead.)
-- **Hardware DDC path:** brightness and contrast commands sent to external
-  monitor firmware. These use native macOS IOKit I2C/DDC APIs first, with
-  `ddcctl` only as an optional fallback if it already exists on the machine.
+- **Color / software path:** color temperature (warmth) and software brightness. These
+  are pixel-level adjustments made by rewriting the display's gamma table. (AirPlay/wireless
+  displays ignore gamma, so their software dimming uses a black overlay window instead.)
+- **Hardware (DDC) path:** brightness and contrast commands sent to an external monitor's
+  firmware over DDC/CI, using native macOS APIs first, with the `ddcctl` command-line tool
+  only as an optional fallback if it already exists on the machine.
 
-Gamma can be disabled globally. When disabled, MonitorFlux restores system color
-tables and stops writing gamma. Hardware DDC controls can still be used.
+Warmth can be turned off entirely. When it is, MonitorFlux restores the system color
+tables and stops writing gamma. The hardware controls keep working either way.
 
 ## What the brightness percentages mean
 
@@ -32,7 +76,7 @@ mean different things depending on the display:
 | Path | `0%` means | `100%` means |
 |---|---|---|
 | **External monitor (DDC)** | the monitor's **minimum** brightness — dim but still **lit**, not black | the monitor's max for its current **SDR** picture mode — **not** its HDR/peak capability |
-| **Built-in, real backlight** (DisplayServices) | the dimmest backlight (still lit) | the panel's **true** maximum |
+| **Built-in, real backlight** | the dimmest backlight (still lit) | the panel's **true** maximum |
 | **Built-in, software dimming** (gamma, when no backlight API) | a software-darkened, near-black image | **neutral — no change**; it can't exceed the backlight (the slider even allows up to 150%, a clipped fake-boost) |
 
 For an external monitor the slider sends DDC/CI VCP code `0x10` ("luminance") straight to
@@ -73,46 +117,39 @@ the banding, plus the warm tone. Stacking gamma brightness on an already-low bac
 where banding shows up, so lean on the hardware slider for brightness and the ambience slider
 for warmth.
 
-## UI
+## The app
 
-- The **menu bar popup** (`QuickControlsView`, `.menuBarExtraStyle(.window)`) is
-  modeled after MonitorControl: a card per display with live brightness, contrast,
-  and volume sliders (a custom `MonitorSlider` — rounded track, icon-in-track, no
-  tick marks), plus a global warmth (color-temperature) slider and an
-  Off/Fixed/Automatic mode. (On a schedule, dragging the warmth slider re-warms the
-  phase that's active right now and stays Automatic, rather than switching to Fixed.)
-  Cards **drag-to-reorder** by their grip with an iOS-app-icon
-  lift-and-shuffle animation. DDC writes are debounced so dragging doesn't flood the
-  I2C bus. The Settings/Quit rows highlight on hover and show their shortcuts. The
-  app is menu-bar-first; a "Show in Dock" setting (off by default) gives the settings window a
-  Dock icon and ⌘-Tab while it's open, disappearing again when you close it.
-- The **on-screen display** (`OSDController`) flashes a level bezel when a control changes
-  by keyboard. Brightness and volume use the **private `OSDManager`** (OSD.framework) so they
-  look identical to macOS's own bezel; contrast and warmth use a custom tinted panel (macOS has
-  no native bezel for those). See `NativeOSD`.
-- The **Schedule** screen is modeled after f.lux preferences: three phase
-  temperatures (Daytime / Sunset / Bedtime) over the same Kelvin range, a phase
-  selector, a draggable three-handle schedule curve, **wake / sunset / bedtime** time
-  steppers, and a **Set times / Follow sunset** source. In **Follow sunset** mode the sunset
-  anchor comes from your location (CoreLocation + `SolarCalculator`) and the curve, dots, and
+- The **menu bar popup** is modeled after MonitorControl: a card per display with live
+  brightness, contrast, and volume sliders, plus a global warmth (color-temperature) slider
+  and an Off/Fixed/Automatic mode. (On a schedule, dragging the warmth slider re-warms the
+  phase that's active right now and stays Automatic, rather than switching to Fixed.) Cards
+  **drag-to-reorder** by their grip with an iOS-app-icon lift-and-shuffle animation, and DDC
+  writes are throttled so dragging doesn't flood the monitor. The app is menu-bar-first; a
+  "Show in Dock" setting (off by default) gives the settings window a Dock icon and ⌘-Tab
+  while it's open, disappearing again when you close it.
+- The **on-screen display** flashes a level bezel when a control changes by keyboard.
+  Brightness and volume reuse the same bezel macOS itself draws, so they look identical;
+  contrast and warmth (which macOS has no bezel for) use a matching custom panel.
+- The **Schedule** screen is modeled after f.lux preferences: three phase temperatures
+  (Daytime / Sunset / Bedtime), a phase selector, a draggable three-handle schedule curve,
+  **wake / sunset / bedtime** time steppers, and a **Set times / Follow sunset** source. In
+  **Follow sunset** mode the sunset time comes from your location and the curve, dots, and
   steppers show that computed sunset — but **wake and bedtime stay the times you set** (f.lux
-  does the same: only sunset follows the sun, so the screen doesn't jump to daytime at the ~5 AM
-  summer sunrise). A **"now" marker** rides the curve at the current time. **Drag it to preview** how
-  the screen will look at any time of day — the warmth *and* any scheduled brightness/contrast —
-  and it adopts the **Automatic** schedule if you weren't already on it (so does editing any dot,
-  a time, a phase temperature, or the fade). Editing the **sunset** dot/stepper switches the source
-  to **Set times** (you're placing it by hand); editing wake or bedtime just sets them. The preview is always
-  temporary: it resets when you leave or reload the Schedule screen, switch away from the window,
-  change the mode off the schedule, or hit Refresh — and the real current-time marker stays visible
-  (fainter) while you scrub.
-  In-app ⓘ tooltips are short summaries; the deeper explanations live here in the README.
-- Each **Display** screen keeps the monitor's everyday controls — brightness and contrast (DDC),
-  or the built-in backlight — on the main pane, with warmth enablement on top. **Show Advanced
-  Settings** reveals software gamma dimming, the day/night brightness & contrast schedule, and
-  monitor extras (volume, DDC index). **AirPlay/wireless** displays get a stripped-down pane —
-  overlay dimming only — because they have no hardware controls and ignore gamma.
-- The settings window supports **⌘+ / ⌘− / ⌘0** to zoom its text. The chosen size is remembered,
-  and zoom uses SwiftUI semantic text sizing rather than visual scaling so controls stay clickable.
+  does the same: only sunset follows the sun, so the screen doesn't jump to daytime at the
+  ~5 AM summer sunrise). A **"now" marker** rides the curve at the current time. **Drag it to
+  preview** how the screen will look at any time of day — the warmth *and* any scheduled
+  brightness/contrast — and it adopts the **Automatic** schedule if you weren't already on it.
+  The preview is always temporary: it resets when you leave or reload the Schedule screen,
+  switch away from the window, or change the mode. In-app ⓘ tooltips are short summaries; the
+  deeper explanations live here in the README.
+- Each **Display** screen keeps the monitor's everyday controls — brightness and contrast
+  (DDC), or the built-in backlight — on the main pane, with warmth enablement on top. **Show
+  Advanced Settings** reveals software gamma dimming, the day/night brightness & contrast
+  schedule, and monitor extras (volume, DDC index). **AirPlay/wireless** displays get a
+  stripped-down pane — overlay dimming only — because they have no hardware controls and ignore
+  gamma.
+- The settings window supports **⌘+ / ⌘− / ⌘0** to zoom its text. The chosen size is
+  remembered, and controls stay clickable at every zoom.
 
 ## Keyboard control
 
@@ -123,10 +160,9 @@ pointing at. Hold **Control** with the brightness keys to change contrast, **Shi
 with the brightness keys to make global warmth warmer/cooler, or **Command** with the
 brightness keys to drive the built-in panel's own backlight. This media-key path must
 be enabled in Settings and needs Accessibility permission (System Settings ▸ Privacy &
-Security ▸ Accessibility), since swallowing HID key events is privileged. Implemented
-with a `CGEventTap` in `KeyboardControlService`. The built-in display's brightness
-slider in the popup and detail window drives the real backlight; custom shortcuts also
-include built-in-only brightness/contrast actions.
+Security ▸ Accessibility), since intercepting media keys is privileged. The built-in
+display's brightness slider in the popup and detail window drives the real backlight;
+custom shortcuts also include built-in-only brightness/contrast actions.
 
 ## Avoiding color conflicts
 
@@ -134,36 +170,16 @@ Gamma is a single, shared resource. macOS **Night Shift** and apps like **f.lux*
 rewrite the gamma tables, so running them alongside MonitorFlux makes the two fight —
 colors flicker or look wrong. MonitorFlux shows a warning on the Schedule screen with a
 shortcut to Display settings; disable Night Shift and quit other color tools for correct
-results. Every MonitorFlux gamma write still flows through the single
-`GammaTemperatureService`, and ⓘ buttons in the UI explain gamma vs DDC for newcomers.
+results. ⓘ buttons in the UI explain gamma vs DDC for newcomers.
 
-## Safety Rules
+## DDC caveats
 
-- Do not add another independent gamma writer. All gamma-affecting features must
-  flow through `GammaPlan` and `GammaCompositor`.
-- Do not repeatedly write identical gamma tables. `GammaTemperatureService`
-  tracks the last applied adjustment per display and skips unchanged writes to
-  avoid flicker.
-- Do not fake hardware brightness with gamma unless the UI clearly labels it as
-  gamma brightness.
-- Do not require Homebrew tools. Native DDC is the primary implementation.
-- Keep preference values normalized with `ControlRanges` before saving or using
-  them.
-
-## DDC Caveats
-
-DDC/CI support depends on the monitor, cable, dock, GPU path, and what macOS
-exposes through IOKit. Built-in displays do not use DDC. The native path is
-architecture-specific: **Apple Silicon** uses the private `IOAVService`
-(`Arm64DDCBackend`, the same approach as MonitorControl/Lunar), while **Intel**
-uses the IOFramebuffer I2C path (`NativeDDCBackend`). `ddcctl` is an optional
-Intel-only fallback; when the native path fails and `ddcctl` is present,
-MonitorFlux tries it and reports both errors if both backends fail. DDC over a
-Mac's built-in HDMI port is generally unsupported — use USB-C/DisplayPort.
-
-`IOAVService` is a private API. That's fine for a personal app but is not
-App-Store-safe; it's isolated in `Arm64DDCBackend` behind the same error-reporting
-fallback as the rest of the DDC stack.
+DDC/CI support depends on the monitor, cable, dock, GPU path, and what macOS exposes.
+Built-in displays do not use DDC. MonitorFlux uses native macOS DDC APIs — architecture-specific,
+and private on Apple Silicon (the same approach MonitorControl and Lunar use); the `ddcctl`
+command-line tool is an optional Intel-only fallback used only when it's already installed and
+the native path fails. DDC over a Mac's built-in HDMI port is generally unsupported — use
+USB-C/DisplayPort. The private API is fine for a personal app but is not App-Store-safe.
 
 ## Run
 
@@ -180,11 +196,11 @@ Useful variants:
 ./script/build_and_run.sh --telemetry
 ```
 
-**Safe mode** (`--safe`, also used by `--verify` and `smoke_test.sh`, via
-`MONITORFLUX_SAFE_MODE=1`) runs the full app without any gamma/DDC/backlight writes, so
-testing doesn't flicker your screen or conflict with f.lux/MonitorControl. Use the plain
-`run` (no flag) when you actually want MonitorFlux to control your displays. See
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full breakdown of what it disables.
+**Safe mode** (`--safe`, also used by `--verify` and `smoke_test.sh`) runs the full app
+without any gamma/DDC/backlight writes, so testing doesn't flicker your screen or conflict
+with f.lux/MonitorControl. Use the plain `run` (no flag) when you actually want MonitorFlux to
+control your displays. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full breakdown of
+what it disables.
 
 ## Package a .dmg
 
@@ -216,27 +232,31 @@ swift test
 The tests cover schedule math, gamma composition, gamma planning, DDC packet
 construction, and preference migration/normalization.
 
-For UI/integration regressions that unit tests can't catch (the window not opening,
-opening blank, opening duplicates, or opening off-screen), there's a launch smoke test:
+For UI/integration regressions that unit tests can't catch (the window not opening, opening
+blank, opening duplicates, or opening off-screen), there's a launch smoke test:
 
 ```sh
 ./script/smoke_test.sh
 ```
 
-It builds the app and runs three scenarios: `MONITORFLUX_OPEN_MAIN=1` (open the detailed
-window once), `MONITORFLUX_OPEN_MAIN=reopen` (open, close, then reopen — what users hit
-by clicking Settings again after closing), and a Dock-policy pass (`MONITORFLUX_FORCE_DOCK`
-on/off, asserting the LaunchServices app type is Foreground vs UIElement with the window on
-screen either way). For each it asserts via `CGWindowList` that exactly one sizable window is
-on screen **and substantially within a display** — the containment check is what catches a
-reopened window that orders front off-screen or oversized. For deeper assertions ("a Brightness slider exists and dragging it changes
-state"), the right tool is **XCUITest** (Apple's accessibility-driven UI test framework) —
-it needs an Xcode app target + UI-test target, which a pure SwiftPM package doesn't provide.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for what it asserts and the full
+screenshot/verification toolkit.
+
+## For developers
+
+The design and contributor docs live in [docs/](docs/):
+
+- [docs/DESIGN.md](docs/DESIGN.md) — how the non-obvious parts work and why (the single gamma
+  writer, the unified brightness slider, the schedule model, the OSD bezel, settings-window zoom).
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — safe mode, the UI test/screenshot hooks, and
+  Developer ID signing + notarization.
+- [AGENTS.md](AGENTS.md) — the architecture map and engineering rules for anyone (or any agent)
+  changing the code.
 
 ## Acknowledgements
 
-MonitorFlux's Apple Silicon DDC, built-in backlight, media-key handling, native OSD bezel
-(`OSDManager`), and AirPlay overlay dimming (the "shade") were developed by studying
+MonitorFlux's Apple Silicon DDC, built-in backlight, media-key handling, native OSD bezel, and
+AirPlay overlay dimming (the "shade") were developed by studying
 [MonitorControl](https://github.com/MonitorControl/MonitorControl) (MIT). See
 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and the full license.
 
@@ -245,7 +265,7 @@ The offline city/ZIP search in the Follow-sunset schedule is built from
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and US ZIP-code-area centroids from
 the [US Census Bureau ZCTA gazetteer](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html)
 (public domain). The data is bundled so the schedule computes on-device, with nothing sent to a
-geocoding service; regenerate it with `swift script/make_place_index.swift`.
+geocoding service.
 
 ## License
 

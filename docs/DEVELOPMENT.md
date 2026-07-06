@@ -71,6 +71,24 @@ lives in [`prototype-zoom-matrix/`](../prototype-zoom-matrix/). `swift test` cov
 nothing, so it says nothing about layout; deeper "a control exists and moving it changes state"
 assertions need XCUITest (an Xcode UITest target).
 
+## Launch smoke test
+
+`./script/smoke_test.sh` builds the app and runs three scenarios to catch the window
+regressions unit tests can't (not opening, opening blank/duplicated/off-screen):
+
+- `MONITORFLUX_OPEN_MAIN=1` — open the detailed window once.
+- `MONITORFLUX_OPEN_MAIN=reopen` — open, close, then reopen (the path users hit by clicking
+  Settings again after closing).
+- A Dock-policy pass (`MONITORFLUX_FORCE_DOCK` on/off), asserting the LaunchServices app type is
+  Foreground vs UIElement with the window on screen either way.
+
+For each it asserts via `CGWindowList` that exactly one sizable window is on screen **and
+substantially within a display** — the containment check is what catches a reopened window that
+orders front off-screen or oversized. A passing smoke test checks *geometry only*; it does not
+prove the window rendered, so screenshot and read the actual window for content. Deeper "a
+control exists and moving it changes state" assertions need XCUITest (an Xcode UITest target),
+which a pure SwiftPM package doesn't provide.
+
 ## Distributing (Developer ID signing + notarization)
 
 `./script/make_dmg.sh` with no arguments produces an **ad-hoc signed** `.dmg` — it works, but
