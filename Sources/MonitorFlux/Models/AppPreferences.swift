@@ -346,6 +346,9 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var startAtLogin = false
     var showInDock = false
     var keyboardControlEnabled = false
+    /// Opt-in: mirror macOS ambient-light backlight changes from the built-in panel onto
+    /// eligible external brightness controls. Default off because it performs automatic writes.
+    var syncExternalBrightnessWithBuiltIn = false
     /// Master switch for the small-step (⌥) shortcut variants. Off by default: the fine
     /// shortcuts neither fire nor appear in Settings, and ⌥ + media keys stay with macOS.
     var fineAdjustmentsEnabled = false
@@ -425,6 +428,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case startAtLogin
         case showInDock
         case keyboardControlEnabled
+        case syncExternalBrightnessWithBuiltIn
         case fineAdjustmentsEnabled
         case hasSeenOnboarding
         case showDiagnostics
@@ -493,6 +497,10 @@ struct AppPreferences: Codable, Equatable, Sendable {
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
         showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
+        syncExternalBrightnessWithBuiltIn = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .syncExternalBrightnessWithBuiltIn
+        ) ?? false
         fineAdjustmentsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fineAdjustmentsEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         showDiagnostics = try container.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? false
@@ -538,6 +546,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(startAtLogin, forKey: .startAtLogin)
         try container.encode(showInDock, forKey: .showInDock)
         try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
+        try container.encode(syncExternalBrightnessWithBuiltIn, forKey: .syncExternalBrightnessWithBuiltIn)
         try container.encode(fineAdjustmentsEnabled, forKey: .fineAdjustmentsEnabled)
         try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(showDiagnostics, forKey: .showDiagnostics)

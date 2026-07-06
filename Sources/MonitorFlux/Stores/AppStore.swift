@@ -147,6 +147,8 @@ final class AppStore: ObservableObject {
     private var pendingPreferencesSave: DispatchWorkItem?
     private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
+    /// Last built-in backlight level used as the baseline for ambient-light delta sync.
+    private var ambientBrightnessSyncBaseline: Double?
     /// Consecutive dirty LUT reads seen by `refreshGammaConflictState`. A conflict is declared
     /// only at 2+, so a one-shot difference (wake-from-sleep, an ICC profile change) doesn't
     /// flash the banner while a persistent foreign writer still trips it across successive checks.
@@ -525,6 +527,7 @@ final class AppStore: ObservableObject {
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays() + mockDisplaySpecs.map(\.display)
+        ambientBrightnessSyncBaseline = nil
         pruneDisplayKeyedState()
         refreshNativeBrightness()
         refreshAudioCapability()
@@ -698,6 +701,9 @@ final class AppStore: ObservableObject {
     func setNativeBrightness(_ value01: Double, for display: DisplayInfo) {
         let clamped = value01.clamped(to: 0...1)
         nativeBrightness[display.id] = clamped
+        if display.isBuiltIn {
+            ambientBrightnessSyncBaseline = clamped
+        }
         guard !safeMode else {
             return
         }
@@ -708,17 +714,67 @@ final class AppStore: ObservableObject {
     /// when the popup opens and when the settings window becomes key: bare brightness keys on
     /// the built-in are handled by macOS (not us), so without a re-read the slider would show
     /// a stale level until the next display reconfiguration.
-    func refreshNativeBrightness() {
+    func refreshNativeBrightness(syncExternalChanges: Bool = false) {
         var levels: [CGDirectDisplayID: Double] = [:]
         for display in displays where nativeBrightnessBackend.canControl(display.id) {
             if let value = nativeBrightnessBackend.brightness(of: display.id) {
                 levels[display.id] = Double(value)
             }
         }
+        let builtInBrightness = displays
+            .first { $0.isBuiltIn && levels[$0.id] != nil }
+            .flatMap { levels[$0.id] }
+        if syncExternalChanges {
+            syncExternalBrightness(toBuiltInBrightness: builtInBrightness)
+        } else if ambientBrightnessSyncBaseline == nil || builtInBrightness == nil {
+            ambientBrightnessSyncBaseline = builtInBrightness
+        }
         // Skip the no-op publish: this runs on every popup open / window focus, and an
         // unchanged @Published set would still re-render every observer.
         if nativeBrightness != levels {
             nativeBrightness = levels
+        }
+    }
+
+    private func currentBuiltInBrightnessLevel() -> Double? {
+        guard let builtIn = displays.first(where: { $0.isBuiltIn }) else {
+            return nil
+        }
+        return nativeBrightness[builtIn.id] ?? nativeBrightnessBackend.brightness(of: builtIn.id).map(Double.init)
+    }
+
+    private func syncExternalBrightness(toBuiltInBrightness builtInBrightness: Double?) {
+        guard preferences.syncExternalBrightnessWithBuiltIn else {
+            ambientBrightnessSyncBaseline = builtInBrightness
+            return
+        }
+        let plan = AmbientBrightnessSync.plan(
+            previousBuiltInBrightness: ambientBrightnessSyncBaseline,
+            currentBuiltInBrightness: builtInBrightness,
+            displays: displays.map { display in
+                AmbientBrightnessSync.DisplayContext(
+                    id: display.id,
+                    isBuiltIn: display.isBuiltIn,
+                    isBrightnessScheduled: isBrightnessScheduled(display),
+                    canAdjustBrightness: brightnessControlKind(for: display) != .unavailable,
+                    currentBrightness: unifiedBrightness(for: display)
+                )
+            }
+        )
+        ambientBrightnessSyncBaseline = plan.baseline
+        guard !safeMode else {
+            return
+        }
+        for adjustment in plan.adjustments {
+            guard let display = displays.first(where: { $0.id == adjustment.displayID }) else {
+                continue
+            }
+            setUnifiedBrightness(adjustment.targetBrightness, for: display)
+        }
+        if let percentDelta = plan.percentDelta, !plan.adjustments.isEmpty {
+            AppLog.ddc.notice(
+                "Ambient sync moved \(plan.adjustments.count, privacy: .public) external display(s) by \(percentDelta, privacy: .public)%"
+            )
         }
     }
 
@@ -1133,6 +1189,13 @@ final class AppStore: ObservableObject {
             keyboardStatus = "Off"
         }
         accessibilityTrusted = keyboardService.hasAccessibilityPermission
+    }
+
+    func setExternalBrightnessSync(_ isEnabled: Bool) {
+        updateGlobalPreferences { preferences in
+            preferences.syncExternalBrightnessWithBuiltIn = isEnabled
+        }
+        ambientBrightnessSyncBaseline = currentBuiltInBrightnessLevel()
     }
 
     /// Re-read the Accessibility grant; if it just turned on and the user wants the media
@@ -1740,6 +1803,7 @@ final class AppStore: ObservableObject {
                    let temperature = self.currentTemperature {
                     AppLog.gamma.notice("Scheduled warmth advanced to \(temperature, privacy: .public) K")
                 }
+                self.refreshNativeBrightness(syncExternalChanges: true)
                 self.applyScheduledHardware()
             }
         }

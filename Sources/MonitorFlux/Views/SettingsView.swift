@@ -99,6 +99,19 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Displays") {
+                Toggle("Match built-in brightness changes", isOn: Binding {
+                    store.preferences.syncExternalBrightnessWithBuiltIn
+                } set: { isOn in
+                    store.setExternalBrightnessSync(isOn)
+                })
+                .settingsSwitch()
+                Text("When macOS changes the built-in backlight for ambient light, adjust external displays by the same amount. Skips displays with their own brightness schedule.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Keyboard") {
                 if !store.accessibilityTrusted {
                     accessibilityWarning

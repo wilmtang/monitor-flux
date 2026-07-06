@@ -20,7 +20,8 @@ These hold across every feature below. Breaking one is a bug, not a trade-off.
   only reachable via the per-display Advanced **Allow dimming to black** opt-in.
 - **The built-in backlight is never driven by the schedule or bare media keys.** macOS already
   manages it (auto-brightness / ambient sensor); MonitorFlux only touches it through the
-  manual slider and user-initiated custom hotkeys.
+  manual slider and user-initiated custom hotkeys. The optional ambient sync only reads the
+  built-in level and applies its deltas to eligible external displays.
 - **Software dimming is independent of warmth.** Dimming the image (gamma brightness) is plain
   dimming, not a color change, so it keeps working when warmth is Off. Warmth's mode gates only
   the color temperature.

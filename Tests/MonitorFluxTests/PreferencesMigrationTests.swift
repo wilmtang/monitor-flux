@@ -104,6 +104,7 @@ final class PreferencesMigrationTests: XCTestCase {
 
         let appPreferences = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
+        XCTAssertFalse(appPreferences.syncExternalBrightnessWithBuiltIn)
         // Show in Dock defaults OFF — a menu-bar-first app is an accessory by default, and
         // payloads saved before the field existed keep their no-Dock-icon behavior on upgrade.
         XCTAssertFalse(appPreferences.showInDock)
@@ -139,6 +140,7 @@ final class PreferencesMigrationTests: XCTestCase {
     func testOptionMediaBindingRoundTrips() throws {
         var prefs = AppPreferences()
         prefs.fineAdjustmentsEnabled = true
+        prefs.syncExternalBrightnessWithBuiltIn = true
         prefs.hotkeys["brightnessUpFine"] = .media(
             MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true, option: true)
         )
@@ -147,6 +149,7 @@ final class PreferencesMigrationTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
 
         XCTAssertTrue(decoded.fineAdjustmentsEnabled)
+        XCTAssertTrue(decoded.syncExternalBrightnessWithBuiltIn)
         XCTAssertEqual(
             decoded.hotkeys["brightnessUpFine"],
             .media(MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true, option: true))
