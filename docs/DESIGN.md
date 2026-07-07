@@ -312,6 +312,155 @@ outline (measured against the native bezel at the same scale: sun ~110 pt, contr
 but solid, warmth ~127 pt). The filled glyphs are sized down (contrast 82, warmth 76) to read at
 the sun's visual weight.
 
+## ⌘-Tab switcher promotion when the Dock icon appears
+
+The settings window is an on-demand `NSWindow`, and the app only becomes a Dock app (`.regular`)
+while that window is open and "Show in Dock" is on (see the Dock-policy prose in `AGENTS.md`).
+Getting the ⌘-Tab switcher to list the app *correctly* the instant it gains a Dock icon has been
+the single most-regressed corner of the app. This section is the reference for why, so it stops
+being rediscovered from scratch.
+
+### Three orthogonal concepts (don't conflate them)
+
+The bug lives in the gap between three things that all sound alike but are not:
+
+- **Activation *policy*** — `NSApplication.ActivationPolicy`, `.regular` / `.accessory`. App-wide.
+  Set with `NSApp.setActivationPolicy(_:)` in `AppStore.refreshActivationPolicy()`. `.regular` =
+  Dock icon + a slot in the ⌘-Tab switcher; `.accessory` = menu-bar-only, invisible to ⌘-Tab.
+- **Window *level*** — `NSWindow.Level`, `.normal` / `.floating`. Per-window z-order. Set with
+  `window.level = .floating` in `holdWindowFrontAcrossActivationDip`, reset in
+  `endDockTransitionSmoothing`. This is only ever used as a *mask* (see Solution B); it has nothing
+  to do with the switcher directly.
+- **Active** — `NSApp.isActive`. Whether the app is the frontmost/focused app (owns the menu bar,
+  receives key events). Not a property you assign — it flips when the app is activated
+  (`NSApp.activate`) or deactivated, and is reported by `didBecomeActive` / `didResignActive`.
+
+Nothing visible on screen distinguishes "the app just became active" from "nothing happened" — no
+Dock icon, no window. That invisibility is why this bug is so slippery: the entire failure is a
+timing relationship between *active* and the *policy* flip, and none of it can be seen or logged
+after the fact.
+
+### How the switcher orders apps
+
+The ⌘-Tab switcher is a most-recently-used (MRU) list of `.regular` apps, maintained by the Dock:
+
+- An app that **launches** as `.regular` is inserted at the **front** of the list by its launch
+  activation. (This is the intuition "a new app just gets ⌘-Tab focus.")
+- An **already-running `.accessory` app that flips to `.regular`** via `setActivationPolicy` is a
+  different animal: the Dock *registers* it and **appends it to the end** of the MRU. It is moved
+  to the front only by a subsequent **activation event** (an `.accessory`→active, or resign→become,
+  transition) that occurs **while the app is already `.regular`**.
+
+So the rule that governs everything here: **to land at the front of the switcher, the app needs a
+genuine activation that happens *after* it is registered as `.regular`.** Registering while
+already active — with no fresh activation afterward — parks it at the end. When that happens, the
+app is the *active* app yet sits last in the switcher, an inconsistent state where ⌘-Tab-away then
+⌘-Tab-back does **not** return to the settings window.
+
+### The two rise paths, and why one keeps breaking
+
+The app enters `.regular` from two places, and they differ in exactly the way that matters:
+
+- **The "Show in Dock" toggle** — clicked *inside the already-open, already-active settings
+  window*. The app is active before and after the flip; there is no natural activation event to
+  ride, so it *must* synthesize one. It does, via `promoteInAppSwitcher` (Solution B below), and it
+  works.
+- **Opening the settings window from the popup** — "Settings…" in the menu-bar popup calls
+  `showMainWindow`, which activates the app and orders the window front, then flips the policy.
+
+`8c341bd` first fixed the toggle by *always* synthesizing the activation (the Dock bounce) whenever
+the policy went `.regular`. But on the window-open path the bounce ran while the window was still
+opening, and that **blinked** the opening window. `c4c0447` removed the bounce from the window-open
+path to kill the blink, on the stated premise that *"the popup is a nonactivating panel, so
+`showMainWindow`'s activate lands after the policy flip and promotes for free."* **That premise is
+false** (see Findings): opening the popup activates the app, so by the time "Settings…" runs the
+app is already active, the policy flips while active, and — with the bounce now removed — nothing
+promotes it. The original bug returned on the popup path while the toggle stayed correct.
+
+### The two solutions, and what they actually mean
+
+Both aim at the same target — a real activation *after* the `.regular` registration — but from
+opposite directions.
+
+**Solution A — reorder `showMainWindow`: register, *then* activate.** Today the order is
+`activate → makeKeyAndOrderFront → setActivationPolicy(.regular)`: the activation is requested
+while the app is still `.accessory`, before it is registered as a Dock app, so the Dock has nothing
+to promote. Reorder it to *order the window on screen without activating* → `setActivationPolicy(.regular)`
+(registers while still inactive) → **then** `NSApp.activate`. Now the one activation is a clean
+inactive→active transition of an app that is *already* registered as regular — exactly the event
+the Dock promotes to the front. **What it really means:** don't synthesize anything; make the
+window's own natural opening-activation *be* the promoting event, by making sure it fires after
+registration instead of before. No resign, no bounce, so structurally **nothing can blink**.
+*Hypothesised precondition:* the app must be **inactive** when the policy flips, else step 3's
+activate is a no-op on an already-active app. **This worry turned out not to bind** — see Findings:
+the reorder fixes the active-at-entry case too, because the decisive part is that the activate is
+*issued after* the `.regular` registration, not the app's activeness at the flip.
+
+**Solution B — masked bounce: synthesize the activation and hide it.** Keep the app active, flip to
+`.regular`, then deliberately hand activation to the windowless Dock (`dock.activate`) so the app
+*resigns* and immediately takes it back — a real resign→become-active round trip, which is the
+activation event the switcher promotes on. The resign would briefly show the desktop (the "blink"),
+so the settings window is pinned at `.floating` across the sub-second dip
+(`holdWindowFrontAcrossActivationDip`) — nothing on screen moves. **What it really means:** the
+activation the switcher needs doesn't exist naturally (the app never resigned), so manufacture one
+and cover it. This is what the toggle path already does. To use it on the window-open path without
+the `c4c0447` blink, the bounce must be **deferred until the window has fully opened and taken
+key** — a settled, floating-pinned window masks the dip; a still-opening one does not. Works
+regardless of whether the app is active at entry, at the cost of more moving parts.
+
+The relationship: **A avoids the problem, B covers it up.** A is preferable when its precondition
+holds; B is the fallback that always works.
+
+### Why this is genuinely hard to verify
+
+The switcher's MRU order is undocumented Dock state. It is **not exposed by any API**, does not
+appear in logs, and synthetic ⌘-Tab key events (`CGEventPost`) are dropped by the switcher. So the
+only ground-truth check is a **human (or HID-level automation) pressing ⌘-Tab and looking.** Both
+prior fixes shipped validated by *reasoning* about Dock behavior rather than observation — and one
+of those chains of reasoning rested on the false "nonactivating popup" premise. Do not trust a fix
+here that hasn't been exercised with a real click and a real ⌘-Tab.
+
+### Findings (2026-07-07, verified with a real ⌘-Tab)
+
+Measured on macOS 15.7 with an instrumented build. The switcher's MRU can't be read from
+logs, so the check was **behavioral**: open the settings window, activate a decoy app
+(TextEdit), activate Finder, press one real ⌘-Tab (driven at HID level), and read the
+resulting frontmost app with `lsappinfo front`. Landing on **MonitorFlux** = promoted
+correctly; landing on the **TextEdit** decoy = parked at the end. Every cell below was run
+with the same deterministic decoy so a "wrong" result is unambiguous.
+
+- **The popup activates the app.** With the app launched fully in the background, opening the
+  menu-bar popup logged `NSApp.isActive == true`. So by the time "Settings…" runs, the app is
+  already active and the policy flips while active — falsifying the `c4c0447` "nonactivating
+  popup" premise. (A *mouse* click on the icon couldn't be scripted here — the compositor
+  hides non-allowlisted apps and blocks clicks onto them — but the programmatic popup open
+  goes through the same activation path, and the behavioral result below is conclusive on its
+  own.)
+
+- **Both entry states were broken before the fix**, and the reorder fixes both:
+
+  | window opens while… | old order (activate → flip) | Solution A (order → flip → activate) |
+  |---|---|---|
+  | app **inactive** at entry | ⌘-Tab → TextEdit ✗ | ⌘-Tab → MonitorFlux ✓ |
+  | app **active** at entry (popup) | ⌘-Tab → TextEdit ✗ | ⌘-Tab → MonitorFlux ✓ |
+
+  The old-order rows are the control: identical protocol, only the code differs, so the test
+  demonstrably distinguishes broken from fixed.
+
+- **Solution A alone is the fix; Solution B was not needed here.** The surprise was that the
+  reorder fixes the *active*-at-entry case too, even though the policy still flips while the
+  app is active. The decisive element isn't the app's activeness at the flip — it's that
+  Solution A issues an `NSApp.activate` **after** the `.regular` registration (the old order's
+  only activation happened *before* it, inside `showMainWindow`'s window-ordering). That
+  post-registration activate is what the Dock promotes on, active or not. So the
+  precondition worry in "The two solutions" above turned out not to bite: no bounce, no blink,
+  both paths fixed. The Show-in-Dock **toggle** path still uses Solution B
+  (`promoteInAppSwitcher`) — it has no window-opening activation to reorder, so it must
+  synthesize one — and was left unchanged.
+
+- **The shipped change** (see `AppStore.showMainWindow` + `WindowCoordinator.activateMainWindow`):
+  order the window on screen without activating → `refreshActivationPolicy()` → `activateMainWindow()`.
+
 ## Known limitations (cosmetic, no action planned)
 
 - `MonitorSlider` maps the pointer across the full track width while the knob travels an inset

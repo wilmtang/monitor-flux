@@ -50,6 +50,18 @@ final class WindowCoordinator {
         }
     }
 
+    /// SOLUTION A step 2: bring the app to the foreground and give the settings window key
+    /// focus, *after* the caller has already ordered it on screen and flipped the Dock policy
+    /// to `.regular`. Split out from `showMainWindow` so the activation lands after the policy
+    /// registration — see `docs/DESIGN.md` "⌘-Tab switcher promotion".
+    func activateMainWindow() {
+        guard let window = mainWindow else { return }
+        window.allowsActivation = true
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
     private func makeMainWindow(store: AppStore) -> MainWindow {
         // A hosting *controller* (not a bare NSHostingView) is what renders a
         // NavigationSplitView's sidebar + detail columns correctly, and its default

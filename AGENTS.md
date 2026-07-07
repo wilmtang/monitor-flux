@@ -34,13 +34,15 @@ pkill -x MonitorFlux || true
   setting off it's always `.accessory` (menu-bar only, not ⌘-Tab-able). Re-evaluated on the
   toggle, on `showMainWindow`, and on the window's `willClose` (deferred, since `isVisible` is
   still true inside willClose). Entering `.regular` parks the app at the *end* of the ⌘-Tab
-  list unless an activation event follows. Window-open rises get that event for free (the
-  popup is a nonactivating panel, so `showMainWindow`'s activate lands *after* the policy
-  flip); only the Show in Dock **toggle** — clicked in the already-active window — doesn't,
-  so there `promoteInAppSwitcher` bounces activation off the Dock (windowless, nothing
-  visible moves) and takes it straight back. Don't bounce on the window-open path: it blinks
-  the opening window, and the promotion happens anyway.
-  `MainWindow.performKeyEquivalent` owns ⌘Q for the settings
+  list unless an `NSApp.activate` is issued **after** the policy flip (the switcher promotes on
+  a post-registration activation, not a pre-flip one). So `showMainWindow` **orders the window
+  on screen without activating → flips to `.regular` → then activates** (`activateMainWindow`),
+  which lands the app at the front — verified with a real ⌘-Tab (see `docs/DESIGN.md` "⌘-Tab
+  switcher promotion"; this regressed twice on the false premise that a nonactivating popup
+  promotes "for free" — it does not, in either entry state). The Show in Dock **toggle** has no
+  window-opening activation to reorder (the window is already up), so it synthesizes one:
+  `promoteInAppSwitcher` bounces activation off the windowless Dock (nothing visible moves) and
+  takes it straight back. `MainWindow.performKeyEquivalent` owns ⌘Q for the settings
   window (a MenuBarExtra app has no reliable menu Quit): terminate in `.regular`, close-window
   in `.accessory`. `MONITORFLUX_FORCE_DOCK=on|off` pins `showsDockIcon` for the smoke test. The
   only SwiftUI scene is the `MenuBarExtra`. The detailed window is an AppKit `NSWindow` +

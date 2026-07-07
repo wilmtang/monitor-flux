@@ -1222,11 +1222,21 @@ final class AppStore: ObservableObject {
 
     /// Show the detailed window (built and re-anchored by `WindowCoordinator` — see there for
     /// the AppKit-not-WindowGroup rationale and the `activating:` test path).
+    ///
+    /// **Order matters for the ⌘-Tab switcher.** The window is ordered on screen *without*
+    /// activating, the Dock policy is flipped to `.regular` while the app is still inactive
+    /// (which registers it in the switcher), and only *then* is the app activated. That final
+    /// activation lands *after* the `.regular` registration, so the Dock lists the app at the
+    /// **front** of the ⌘-Tab MRU instead of parking it at the end. Activating first — before
+    /// the policy flip — requests the activation while the app is still `.accessory` and
+    /// leaves it parked, whether or not it was already active. Verified end-to-end with a real
+    /// ⌘-Tab; see docs/DESIGN.md "⌘-Tab switcher promotion".
     func showMainWindow(activating: Bool = true) {
-        windows.showMainWindow(store: self, activating: activating)
-        // The window is now on screen, so re-evaluate the Dock icon (it follows the window
-        // when Show in Dock is on).
+        windows.showMainWindow(store: self, activating: false)
         refreshActivationPolicy()
+        if activating {
+            windows.activateMainWindow()
+        }
     }
 
     /// Show the first-run welcome. Marked seen the moment it appears so it never pops twice —
