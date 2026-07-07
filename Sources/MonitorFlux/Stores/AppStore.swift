@@ -744,7 +744,7 @@ final class AppStore: ObservableObject {
     }
 
     private func syncExternalBrightness(toBuiltInBrightness builtInBrightness: Double?) {
-        guard preferences.syncExternalBrightnessWithBuiltIn else {
+        guard preferences.syncBrightnessAcrossDisplays else {
             ambientBrightnessSyncBaseline = builtInBrightness
             return
         }
@@ -755,7 +755,7 @@ final class AppStore: ObservableObject {
                 AmbientBrightnessSync.DisplayContext(
                     id: display.id,
                     isBuiltIn: display.isBuiltIn,
-                    isBrightnessScheduled: isBrightnessScheduled(display),
+                    isBrightnessScheduled: false,
                     canAdjustBrightness: brightnessControlKind(for: display) != .unavailable,
                     currentBrightness: unifiedBrightness(for: display)
                 )
@@ -769,7 +769,7 @@ final class AppStore: ObservableObject {
             guard let display = displays.first(where: { $0.id == adjustment.displayID }) else {
                 continue
             }
-            setUnifiedBrightness(adjustment.targetBrightness, for: display)
+            setUnifiedBrightness(adjustment.targetBrightness, for: display, syncAcrossDisplays: false)
         }
         if let percentDelta = plan.percentDelta, !plan.adjustments.isEmpty {
             AppLog.ddc.notice(
@@ -852,7 +852,19 @@ final class AppStore: ObservableObject {
     /// the handoff invariant via `HybridBrightness.resolve`; components are only written when
     /// they actually change, so a software-zone drag doesn't hammer DDC with repeated zeros
     /// (and vice versa for gamma).
-    func setUnifiedBrightness(_ position: Double, for display: DisplayInfo) {
+    func setUnifiedBrightness(
+        _ position: Double,
+        for display: DisplayInfo,
+        syncAcrossDisplays: Bool = true
+    ) {
+        applyUnifiedBrightness(position, for: display)
+        guard syncAcrossDisplays else {
+            return
+        }
+        syncUnifiedBrightnessAcrossDisplays(position, source: display)
+    }
+
+    private func applyUnifiedBrightness(_ position: Double, for display: DisplayInfo) {
         let floor = softwareDimmingFloor(for: display)
         switch brightnessControlKind(for: display) {
         case .hybrid:
@@ -886,6 +898,29 @@ final class AppStore: ObservableObject {
             }
         case .unavailable:
             break
+        }
+    }
+
+    private func syncUnifiedBrightnessAcrossDisplays(
+        _ position: Double,
+        source: DisplayInfo
+    ) {
+        let adjustments = DisplayControlSync.brightnessAdjustments(
+            sourceID: source.id,
+            targetBrightness: position,
+            enabled: preferences.syncBrightnessAcrossDisplays,
+            displays: displays.map { display in
+                DisplayControlSync.BrightnessContext(
+                    id: display.id,
+                    canAdjustBrightness: brightnessControlKind(for: display) != .unavailable
+                )
+            }
+        )
+        for adjustment in adjustments {
+            guard let display = displays.first(where: { $0.id == adjustment.displayID }) else {
+                continue
+            }
+            applyUnifiedBrightness(adjustment.targetBrightness, for: display)
         }
     }
 
@@ -1191,11 +1226,136 @@ final class AppStore: ObservableObject {
         accessibilityTrusted = keyboardService.hasAccessibilityPermission
     }
 
-    func setExternalBrightnessSync(_ isEnabled: Bool) {
+    func setBrightnessSyncAcrossDisplays(_ isEnabled: Bool) {
+        if isEnabled {
+            enableBrightnessSyncAcrossDisplays()
+        } else {
+            restoreBrightnessSyncAcrossDisplays()
+        }
+    }
+
+    func setContrastSyncAcrossDisplays(_ isEnabled: Bool) {
+        if isEnabled {
+            enableContrastSyncAcrossDisplays()
+        } else {
+            restoreContrastSyncAcrossDisplays()
+        }
+    }
+
+    private func enableBrightnessSyncAcrossDisplays() {
+        let targets = displays.filter { brightnessControlKind(for: $0) != .unavailable }
+        guard let source = displayUnderCursor().flatMap({ source in targets.first { $0.id == source.id } })
+            ?? targets.first else {
+            updateGlobalPreferences { preferences in
+                preferences.syncBrightnessAcrossDisplays = true
+            }
+            return
+        }
+        let targetBrightness = isBrightnessScheduled(source)
+            ? scheduledBrightnessPosition(for: source)
+            : unifiedBrightness(for: source)
+        let shouldSnapshot = !preferences.syncBrightnessAcrossDisplays
+            || preferences.brightnessSyncRestore.isEmpty
+
         updateGlobalPreferences { preferences in
-            preferences.syncExternalBrightnessWithBuiltIn = isEnabled
+            preferences.syncBrightnessAcrossDisplays = true
+            if shouldSnapshot {
+                preferences.brightnessSyncRestore = Dictionary(
+                    uniqueKeysWithValues: targets.map { display in
+                        let displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
+                        return (display.key, DisplayBrightnessSyncRestore(displayPreferences))
+                    }
+                )
+            }
+            for display in targets {
+                var displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
+                displayPreferences.scheduleBrightness = false
+                preferences.displayPreferences[display.key] = displayPreferences
+            }
+        }
+        for display in targets {
+            applyUnifiedBrightness(targetBrightness, for: display)
         }
         ambientBrightnessSyncBaseline = currentBuiltInBrightnessLevel()
+    }
+
+    private func restoreBrightnessSyncAcrossDisplays() {
+        let restoredKeys = Set(preferences.brightnessSyncRestore.keys)
+        updateGlobalPreferences { preferences in
+            for (key, restore) in preferences.brightnessSyncRestore {
+                var displayPreferences = preferences.displayPreferences[key, default: DisplayPreferences()]
+                restore.apply(to: &displayPreferences)
+                preferences.displayPreferences[key] = displayPreferences
+            }
+            preferences.brightnessSyncRestore = [:]
+            preferences.syncBrightnessAcrossDisplays = false
+        }
+        for display in displays where restoredKeys.contains(display.key) {
+            if isBrightnessScheduled(display) {
+                scheduledHardwareState.clear(display.id)
+            } else {
+                applyUnifiedBrightness(unifiedBrightness(for: display), for: display)
+            }
+        }
+        applyScheduledHardware(automatic: false)
+        ambientBrightnessSyncBaseline = currentBuiltInBrightnessLevel()
+    }
+
+    private func enableContrastSyncAcrossDisplays() {
+        let targets = displays.filter { !$0.isBuiltIn && canUseDDC(for: $0) }
+        guard let source = displayUnderCursor().flatMap({ source in targets.first { $0.id == source.id } })
+            ?? targets.first else {
+            updateGlobalPreferences { preferences in
+                preferences.syncContrastAcrossDisplays = true
+            }
+            return
+        }
+        let targetContrast = isContrastScheduled(source)
+            ? scheduledContrastValue(for: source)
+            : displayPreferences(for: source).hardwareContrast
+        let shouldSnapshot = !preferences.syncContrastAcrossDisplays
+            || preferences.contrastSyncRestore.isEmpty
+
+        updateGlobalPreferences { preferences in
+            preferences.syncContrastAcrossDisplays = true
+            if shouldSnapshot {
+                preferences.contrastSyncRestore = Dictionary(
+                    uniqueKeysWithValues: targets.map { display in
+                        let displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
+                        return (display.key, DisplayContrastSyncRestore(displayPreferences))
+                    }
+                )
+            }
+            for display in targets {
+                var displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
+                displayPreferences.scheduleContrast = false
+                preferences.displayPreferences[display.key] = displayPreferences
+            }
+        }
+        for display in targets {
+            applyHardwareContrast(targetContrast, for: display)
+        }
+    }
+
+    private func restoreContrastSyncAcrossDisplays() {
+        let restoredKeys = Set(preferences.contrastSyncRestore.keys)
+        updateGlobalPreferences { preferences in
+            for (key, restore) in preferences.contrastSyncRestore {
+                var displayPreferences = preferences.displayPreferences[key, default: DisplayPreferences()]
+                restore.apply(to: &displayPreferences)
+                preferences.displayPreferences[key] = displayPreferences
+            }
+            preferences.contrastSyncRestore = [:]
+            preferences.syncContrastAcrossDisplays = false
+        }
+        for display in displays where restoredKeys.contains(display.key) {
+            if isContrastScheduled(display) {
+                scheduledHardwareState.clear(display.id)
+            } else {
+                applyHardwareContrast(displayPreferences(for: display).hardwareContrast, for: display)
+            }
+        }
+        applyScheduledHardware(automatic: false)
     }
 
     /// Re-read the Accessibility grant; if it just turned on and the user wants the media
@@ -1232,10 +1392,11 @@ final class AppStore: ObservableObject {
         guard let target = displayUnderCursor() else {
             return false
         }
-        // Bare media keys leave the built-in panel to macOS (and a built-in with no backlight
-        // API falls through too — `adjustBuiltInBrightness` is its custom-hotkey path).
+        // Normally bare media keys leave the built-in panel to macOS. Brightness-sync mode is
+        // an explicit opt-in to drive every eligible screen from the pointer display.
         if target.isBuiltIn {
-            guard allowBuiltIn, canUseNativeBrightness(target) else {
+            guard (allowBuiltIn || preferences.syncBrightnessAcrossDisplays),
+                  canUseNativeBrightness(target) else {
                 return false
             }
         }
@@ -1538,12 +1699,44 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func setHardwareContrast(_ value: Int, for display: DisplayInfo) {
+    func setHardwareContrast(
+        _ value: Int,
+        for display: DisplayInfo,
+        syncAcrossDisplays: Bool = true
+    ) {
+        applyHardwareContrast(value, for: display)
+        guard syncAcrossDisplays else {
+            return
+        }
+        syncHardwareContrastAcrossDisplays(value, source: display)
+    }
+
+    private func applyHardwareContrast(_ value: Int, for display: DisplayInfo) {
         updateDisplayPreferences(for: display) { displayPreferences in
             displayPreferences.hardwareContrast = value.clamped(to: ControlRanges.hardwarePercent)
         }
         scheduleDDC(key: "\(display.id).c", for: display) { [weak self] in
             self?.applyContrast(for: display)
+        }
+    }
+
+    private func syncHardwareContrastAcrossDisplays(_ value: Int, source: DisplayInfo) {
+        let adjustments = DisplayControlSync.contrastAdjustments(
+            sourceID: source.id,
+            targetContrast: value,
+            enabled: preferences.syncContrastAcrossDisplays,
+            displays: displays.map { display in
+                DisplayControlSync.ContrastContext(
+                    id: display.id,
+                    canAdjustContrast: !display.isBuiltIn && canUseDDC(for: display)
+                )
+            }
+        )
+        for adjustment in adjustments {
+            guard let display = displays.first(where: { $0.id == adjustment.displayID }) else {
+                continue
+            }
+            applyHardwareContrast(adjustment.targetContrast, for: display)
         }
     }
 
@@ -1863,7 +2056,7 @@ final class AppStore: ObservableObject {
             case .brightness:
                 applyScheduledBrightness(write.target, for: display)
             case .contrast:
-                setHardwareContrast(write.target, for: display)
+                setHardwareContrast(write.target, for: display, syncAcrossDisplays: false)
             }
         }
     }

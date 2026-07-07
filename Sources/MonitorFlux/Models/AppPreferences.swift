@@ -324,6 +324,57 @@ struct DisplayPreferences: Codable, Equatable, Sendable {
     }
 }
 
+struct DisplayBrightnessSyncRestore: Codable, Equatable, Sendable {
+    var hardwareBrightness: Int
+    var gammaBrightness: Int
+    var scheduleBrightness: Bool
+    var dayBrightness: Int
+    var sunsetBrightness: Int
+    var nightBrightness: Int
+
+    init(_ preferences: DisplayPreferences) {
+        hardwareBrightness = preferences.hardwareBrightness
+        gammaBrightness = preferences.gammaBrightness
+        scheduleBrightness = preferences.scheduleBrightness
+        dayBrightness = preferences.dayBrightness
+        sunsetBrightness = preferences.sunsetBrightness
+        nightBrightness = preferences.nightBrightness
+    }
+
+    func apply(to preferences: inout DisplayPreferences) {
+        preferences.hardwareBrightness = hardwareBrightness
+        preferences.gammaBrightness = gammaBrightness
+        preferences.scheduleBrightness = scheduleBrightness
+        preferences.dayBrightness = dayBrightness
+        preferences.sunsetBrightness = sunsetBrightness
+        preferences.nightBrightness = nightBrightness
+    }
+}
+
+struct DisplayContrastSyncRestore: Codable, Equatable, Sendable {
+    var hardwareContrast: Int
+    var scheduleContrast: Bool
+    var dayContrast: Int
+    var sunsetContrast: Int
+    var nightContrast: Int
+
+    init(_ preferences: DisplayPreferences) {
+        hardwareContrast = preferences.hardwareContrast
+        scheduleContrast = preferences.scheduleContrast
+        dayContrast = preferences.dayContrast
+        sunsetContrast = preferences.sunsetContrast
+        nightContrast = preferences.nightContrast
+    }
+
+    func apply(to preferences: inout DisplayPreferences) {
+        preferences.hardwareContrast = hardwareContrast
+        preferences.scheduleContrast = scheduleContrast
+        preferences.dayContrast = dayContrast
+        preferences.sunsetContrast = sunsetContrast
+        preferences.nightContrast = nightContrast
+    }
+}
+
 struct AppPreferences: Codable, Equatable, Sendable {
     /// Warmth on/off/mode in one control: `.off` is the single "no warmth" state (there's no
     /// separate master switch — a legacy `gammaEnabled` flag was folded into `.off` on load).
@@ -346,9 +397,14 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var startAtLogin = false
     var showInDock = false
     var keyboardControlEnabled = false
-    /// Opt-in: mirror macOS ambient-light backlight changes from the built-in panel onto
-    /// eligible external brightness controls. Default off because it performs automatic writes.
-    var syncExternalBrightnessWithBuiltIn = false
+    /// Opt-in: copy brightness changes to other eligible displays. While on, per-display
+    /// brightness schedules are paused and restored when the mode is turned off.
+    var syncBrightnessAcrossDisplays = false
+    /// Opt-in: copy DDC contrast changes to other eligible external displays. While on,
+    /// per-display contrast schedules are paused and restored when turned off.
+    var syncContrastAcrossDisplays = false
+    var brightnessSyncRestore: [String: DisplayBrightnessSyncRestore] = [:]
+    var contrastSyncRestore: [String: DisplayContrastSyncRestore] = [:]
     /// Master switch for the small-step (⌥) shortcut variants. Off by default: the fine
     /// shortcuts neither fire nor appear in Settings, and ⌥ + media keys stay with macOS.
     var fineAdjustmentsEnabled = false
@@ -428,7 +484,10 @@ struct AppPreferences: Codable, Equatable, Sendable {
         case startAtLogin
         case showInDock
         case keyboardControlEnabled
-        case syncExternalBrightnessWithBuiltIn
+        case syncBrightnessAcrossDisplays
+        case syncContrastAcrossDisplays
+        case brightnessSyncRestore
+        case contrastSyncRestore
         case fineAdjustmentsEnabled
         case hasSeenOnboarding
         case showDiagnostics
@@ -497,10 +556,22 @@ struct AppPreferences: Codable, Equatable, Sendable {
         startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
         showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         keyboardControlEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardControlEnabled) ?? false
-        syncExternalBrightnessWithBuiltIn = try container.decodeIfPresent(
+        syncBrightnessAcrossDisplays = try container.decodeIfPresent(
             Bool.self,
-            forKey: .syncExternalBrightnessWithBuiltIn
+            forKey: .syncBrightnessAcrossDisplays
         ) ?? false
+        syncContrastAcrossDisplays = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .syncContrastAcrossDisplays
+        ) ?? false
+        brightnessSyncRestore = try container.decodeIfPresent(
+            [String: DisplayBrightnessSyncRestore].self,
+            forKey: .brightnessSyncRestore
+        ) ?? [:]
+        contrastSyncRestore = try container.decodeIfPresent(
+            [String: DisplayContrastSyncRestore].self,
+            forKey: .contrastSyncRestore
+        ) ?? [:]
         fineAdjustmentsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fineAdjustmentsEnabled) ?? false
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
         showDiagnostics = try container.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? false
@@ -546,7 +617,10 @@ struct AppPreferences: Codable, Equatable, Sendable {
         try container.encode(startAtLogin, forKey: .startAtLogin)
         try container.encode(showInDock, forKey: .showInDock)
         try container.encode(keyboardControlEnabled, forKey: .keyboardControlEnabled)
-        try container.encode(syncExternalBrightnessWithBuiltIn, forKey: .syncExternalBrightnessWithBuiltIn)
+        try container.encode(syncBrightnessAcrossDisplays, forKey: .syncBrightnessAcrossDisplays)
+        try container.encode(syncContrastAcrossDisplays, forKey: .syncContrastAcrossDisplays)
+        try container.encode(brightnessSyncRestore, forKey: .brightnessSyncRestore)
+        try container.encode(contrastSyncRestore, forKey: .contrastSyncRestore)
         try container.encode(fineAdjustmentsEnabled, forKey: .fineAdjustmentsEnabled)
         try container.encode(hasSeenOnboarding, forKey: .hasSeenOnboarding)
         try container.encode(showDiagnostics, forKey: .showDiagnostics)

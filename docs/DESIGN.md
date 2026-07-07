@@ -18,10 +18,13 @@ These hold across every feature below. Breaking one is a bug, not a trade-off.
 - **Never fully black from the everyday controls.** The unified Brightness slider and the bare
   media keys bottom out at a readable floor (gamma 15%, AirPlay shade 85% cap). Full black is
   only reachable via the per-display Advanced **Allow dimming to black** opt-in.
-- **The built-in backlight is never driven by the schedule or bare media keys.** macOS already
-  manages it (auto-brightness / ambient sensor); MonitorFlux only touches it through the
-  manual slider and user-initiated custom hotkeys. The optional ambient sync only reads the
-  built-in level and applies its deltas to eligible external displays.
+- **The built-in backlight is never driven by the schedule.** macOS already manages it
+  (auto-brightness / ambient sensor); MonitorFlux only touches it through the manual slider,
+  custom hotkeys, or the explicit brightness-sync mode.
+- **Linked display sync pauses per-display schedules.** The General brightness/contrast sync
+  toggles snapshot each eligible display's saved values, turn off that channel's schedule, and
+  copy the display under the pointer to the linked set. Turning sync off restores the snapshot.
+  Contrast is external DDC-only because the built-in has no monitor contrast channel.
 - **Software dimming is independent of warmth.** Dimming the image (gamma brightness) is plain
   dimming, not a color change, so it keeps working when warmth is Off. Warmth's mode gates only
   the color temperature.

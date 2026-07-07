@@ -100,13 +100,24 @@ struct SettingsView: View {
             }
 
             Section("Displays") {
-                Toggle("Match built-in brightness changes", isOn: Binding {
-                    store.preferences.syncExternalBrightnessWithBuiltIn
+                Toggle("Sync brightness across displays", isOn: Binding {
+                    store.preferences.syncBrightnessAcrossDisplays
                 } set: { isOn in
-                    store.setExternalBrightnessSync(isOn)
+                    store.setBrightnessSyncAcrossDisplays(isOn)
                 })
                 .settingsSwitch()
-                Text("When macOS changes the built-in backlight for ambient light, adjust external displays by the same amount. Skips displays with their own brightness schedule.")
+                Text("Uses the display under the pointer. Brightness schedules pause while synced and restore when turned off.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Sync contrast across displays", isOn: Binding {
+                    store.preferences.syncContrastAcrossDisplays
+                } set: { isOn in
+                    store.setContrastSyncAcrossDisplays(isOn)
+                })
+                .settingsSwitch()
+                Text("Uses the external display under the pointer. Contrast schedules pause while synced and restore when turned off.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
