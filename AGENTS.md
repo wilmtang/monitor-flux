@@ -33,7 +33,11 @@ pkill -x MonitorFlux || true
   open* and drops to `.accessory` when it closes, so the icon follows the window; with the
   setting off it's always `.accessory` (menu-bar only, not ⌘-Tab-able). Re-evaluated on the
   toggle, on `showMainWindow`, and on the window's `willClose` (deferred, since `isVisible` is
-  still true inside willClose). `MainWindow.performKeyEquivalent` owns ⌘Q for the settings
+  still true inside willClose). Entering `.regular` while the app is already active (always,
+  here) parks it at the *end* of the ⌘-Tab list — the switcher only promotes on an activation
+  event — so `promoteInAppSwitcher` bounces activation off the Dock (windowless, nothing
+  visible moves) and takes it back to land the app at the front of the list.
+  `MainWindow.performKeyEquivalent` owns ⌘Q for the settings
   window (a MenuBarExtra app has no reliable menu Quit): terminate in `.regular`, close-window
   in `.accessory`. `MONITORFLUX_FORCE_DOCK=on|off` pins `showsDockIcon` for the smoke test. The
   only SwiftUI scene is the `MenuBarExtra`. The detailed window is an AppKit `NSWindow` +

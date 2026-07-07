@@ -155,9 +155,10 @@ final class AppStore: ObservableObject {
     private var gammaConflictStreak = 0
     private var cancellables = Set<AnyCancellable>()
 
-    /// Observers for an in-flight `.regular`→`.accessory` drop smoothing pass (see
-    /// `refreshActivationPolicyKeepingWindowFront`); non-empty means a pass is active.
-    private var dockDropSmoothing = Set<AnyCancellable>()
+    /// Observers for an in-flight Dock-transition smoothing pass — the `.regular`→`.accessory`
+    /// drop (see `refreshActivationPolicyKeepingWindowFront`) or the ⌘-Tab promotion bounce
+    /// (see `promoteInAppSwitcher`); non-empty means a pass is active.
+    private var dockTransitionSmoothing = Set<AnyCancellable>()
 
     init() {
         let environment = ProcessInfo.processInfo.environment
@@ -1085,53 +1086,90 @@ final class AppStore: ObservableObject {
     /// 60 fps, the deactivation lands several frames *after* the policy call, and the app then
     /// stays inactive for ~0.7 s before the system hands activation back. So a next-turn
     /// re-assert (the previous fix) runs while the app is still active and does nothing.
-    /// Instead, watch for the deactivation itself and take activation straight back, holding
-    /// the window on a temporary `.floating` level across the whole gap so it can't be
-    /// reordered behind whatever briefly activates; everything is restored once we're active
-    /// again (or after a timeout, if the deactivation never comes). Going `.regular` keeps the
-    /// active window front on its own, so it takes the plain path.
+    /// Instead, arm the smoothing pass (take activation straight back on the resign, hold the
+    /// window front across the gap) before making the policy call. Going `.regular` keeps the
+    /// active window front on its own, so it takes the plain path — which handles its own
+    /// ⌘-Tab bookkeeping (`promoteInAppSwitcher`).
     private func refreshActivationPolicyKeepingWindowFront() {
         let willDropToAccessory = !(showsDockIcon && windows.isMainWindowVisible)
         guard willDropToAccessory,
               NSApp.activationPolicy() == .regular,
               NSApp.isActive,
               let window = windows.mainWindow, window.isVisible,
-              dockDropSmoothing.isEmpty  // a pass is already holding the window front
+              dockTransitionSmoothing.isEmpty  // a pass is already holding the window front
         else {
             refreshActivationPolicy()
             return
         }
+        holdWindowFrontAcrossActivationDip(window)
+        refreshActivationPolicy()
+    }
+
+    /// Take activation straight back the moment the app resigns it, holding `window` on a
+    /// temporary `.floating` level across the gap so it can't be reordered behind whatever
+    /// briefly activates; everything is restored once we're active again (or after a timeout,
+    /// if the deactivation never comes). Shared by both Dock transitions: the `.accessory`
+    /// drop (macOS deactivates us as the Dock presence goes away) and the ⌘-Tab promotion
+    /// bounce (we hand activation away on purpose — see `promoteInAppSwitcher`).
+    private func holdWindowFrontAcrossActivationDip(_ window: NSWindow) {
         window.level = .floating
 
         NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
             .sink { [weak self] _ in
-                // The .accessory drop just landed. The toggle click that got us here is a
-                // fresh user interaction, so cooperative activation lets us take it right back.
+                // The deactivation just landed. The user interaction that got us here is
+                // fresh, so cooperative activation lets us take it right back.
                 NSApp.activate(ignoringOtherApps: true)
                 self?.windows.mainWindow?.makeKeyAndOrderFront(nil)
             }
-            .store(in: &dockDropSmoothing)
+            .store(in: &dockTransitionSmoothing)
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in
-                self?.endDockDropSmoothing()
+                self?.endDockTransitionSmoothing()
             }
-            .store(in: &dockDropSmoothing)
+            .store(in: &dockTransitionSmoothing)
         // If the deactivation (or our re-activation) never arrives, don't leave the window
         // floating over other apps forever.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.endDockDropSmoothing()
+            self?.endDockTransitionSmoothing()
         }
-
-        refreshActivationPolicy()
     }
 
-    /// Tear down an in-flight `.regular`→`.accessory` smoothing pass: drop its observers and
+    /// Tear down an in-flight Dock-transition smoothing pass: drop its observers and
     /// return the settings window to its normal level. Idempotent — the become-active
     /// observer and the timeout both funnel here.
-    private func endDockDropSmoothing() {
-        guard !dockDropSmoothing.isEmpty else { return }
-        dockDropSmoothing.removeAll()
+    private func endDockTransitionSmoothing() {
+        guard !dockTransitionSmoothing.isEmpty else { return }
+        dockTransitionSmoothing.removeAll()
         windows.mainWindow?.level = .normal
+    }
+
+    /// Entering `.regular` parks the app at the **end** of the ⌘-Tab switcher: the Dock
+    /// appends a newly-regular app to its most-recently-used order and only promotes it on an
+    /// activation *event* — an event that never comes here, because the app is already active
+    /// by the time the policy flips (the Show in Dock toggle was clicked in our own window;
+    /// the popup's Settings… row activates the app before the window opens). The switcher
+    /// then lists the settings window last, and after switching away a single ⌘-Tab returns
+    /// to the wrong app. Generate the missing event: hand activation to the Dock — which owns
+    /// no regular windows, so nothing on screen moves — and take it straight back via the
+    /// shared smoothing pass. That deactivate→reactivate round trip is a real activation, and
+    /// the switcher moves the app to the front of its list.
+    private func promoteInAppSwitcher() {
+        // The activation accompanying this flip (a popup click, a Dock-icon reopen) can still
+        // be in flight, so judge `isActive` after a beat, not now. If the app turns out not
+        // to be active, skip: the eventual real activation promotes it on its own.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            guard NSApp.activationPolicy() == .regular,
+                  NSApp.isActive,
+                  self.dockTransitionSmoothing.isEmpty,
+                  let window = self.windows.mainWindow, window.isVisible,
+                  let dock = NSRunningApplication.runningApplications(
+                      withBundleIdentifier: "com.apple.dock"
+                  ).first
+            else { return }
+            self.holdWindowFrontAcrossActivationDip(window)
+            dock.activate(from: .current, options: [])
+        }
     }
 
     func increaseFontSize() { setFontSizeStep(preferences.fontSizeStep + 1) }
@@ -1155,6 +1193,9 @@ final class AppStore: ObservableObject {
             (showsDockIcon && windows.isMainWindowVisible) ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
+            if policy == .regular {
+                promoteInAppSwitcher()
+            }
         }
     }
 
