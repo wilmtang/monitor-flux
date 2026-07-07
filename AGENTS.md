@@ -94,6 +94,13 @@ pkill -x MonitorFlux || true
   are never mutated, by construction), and the transient DDC writes.
 - `Support/BuiltInDimming.swift`: pure normalization of legacy built-in dimming state
   (migrated `.automatic`, stale sub-100 gamma) for backlight-driven built-ins.
+- `Support/BuiltInBrightnessFollow.swift`: pure planning for **Follow built-in brightness** —
+  one-way, offset-based tracking of the built-in backlight by eligible externals (the built-in
+  is read-only to it; see the backlight rule below and `docs/DESIGN.md`). Driven by a ~2 s poll
+  while enabled; scheduled displays are skipped; a follower with no offset is adopted where it
+  sits, so on/off/reconnect never moves anything by itself.
+- `Support/DisplayControlSync.swift`: pure planning for the linked-contrast fanout (absolute
+  copy, external-DDC-only, skips contrast-scheduled displays).
 - `Support/HotkeyBindings.swift`: pure derivation of the active Carbon/media shortcut maps
   from the saved bindings (defaults vs. customs, `.disabled`, the fine-adjustments gate).
 - `Services/GammaPlan.swift`: pure gamma intent planning.
@@ -246,7 +253,8 @@ pkill -x MonitorFlux || true
   forcing a level fights macOS and jumps brightness on launch. Only *user-initiated* actions
   touch it: the manual native-backlight slider, and custom hotkeys (which pass
   `allowBuiltIn: true` to `adjustBrightnessUnderCursor`, since a custom combo has no macOS
-  fallback). External-display **contrast** always goes through DDC; external **brightness** uses
+  fallback). Follow built-in brightness only ever *reads* the backlight — a mode that wrote it
+  would loop through the ambient sensor and drift every display (tried and removed). External-display **contrast** always goes through DDC; external **brightness** uses
   DDC when the panel supports it, else falls back to software (gamma/shade) dimming — the same
   fallback the live brightness slider uses, so scheduled brightness still works on non-DDC monitors.
 - Saved DDC brightness/contrast is re-applied to **external** displays on launch/reconnect

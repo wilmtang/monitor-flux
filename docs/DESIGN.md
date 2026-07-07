@@ -18,13 +18,21 @@ These hold across every feature below. Breaking one is a bug, not a trade-off.
 - **Never fully black from the everyday controls.** The unified Brightness slider and the bare
   media keys bottom out at a readable floor (gamma 15%, AirPlay shade 85% cap). Full black is
   only reachable via the per-display Advanced **Allow dimming to black** opt-in.
-- **The built-in backlight is never driven by the schedule.** macOS already manages it
-  (auto-brightness / ambient sensor); MonitorFlux only touches it through the manual slider,
-  custom hotkeys, or the explicit brightness-sync mode.
-- **Linked display sync pauses per-display schedules.** The General brightness/contrast sync
-  toggles snapshot each eligible display's saved values, turn off that channel's schedule, and
-  copy the display under the pointer to the linked set. Turning sync off restores the snapshot.
-  Contrast is external DDC-only because the built-in has no monitor contrast channel.
+- **The built-in backlight is never driven by the schedule or bare media keys.** macOS already
+  manages it (auto-brightness / ambient sensor); MonitorFlux only touches it through the
+  manual slider and user-initiated custom hotkeys. Follow built-in brightness only *reads* it —
+  writing it would put us in a tug-of-war with the ambient sensor, and the follow loop would
+  then propagate macOS's counter-moves to every external (a real drift we hit with an earlier
+  two-way design).
+- **Follow built-in brightness is one-way and offset-based.** Eligible externals track the
+  built-in backlight at a per-display offset (`BuiltInBrightnessFollow`): a manual tweak on a
+  follower re-anchors its offset, targets map against the built-in's *absolute* level (so a
+  clamped follower never ratchets), and a follower without an offset yet is adopted where it
+  sits — enabling the mode, reconnecting a display, or toggling it off never moves anything by
+  itself, so there is no state to restore. Displays on a brightness schedule are skipped; a
+  ~2 s poll picks up macOS's own backlight moves. Linked contrast is a separate, absolute,
+  external-DDC-only copy (the built-in has no monitor contrast channel) that likewise skips
+  scheduled displays.
 - **Software dimming is independent of warmth.** Dimming the image (gamma brightness) is plain
   dimming, not a color change, so it keeps working when warmth is Off. Warmth's mode gates only
   the color temperature.

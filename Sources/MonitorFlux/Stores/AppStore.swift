@@ -147,8 +147,14 @@ final class AppStore: ObservableObject {
     private var pendingPreferencesSave: DispatchWorkItem?
     private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
-    /// Last built-in backlight level used as the baseline for ambient-light delta sync.
-    private var ambientBrightnessSyncBaseline: Double?
+    /// Per-display brightness offsets for "Follow built-in brightness" (follower's unified
+    /// position minus the built-in's backlight level). Runtime-only and self-healing: a
+    /// follower without an entry is adopted at its current level on the next follow pass,
+    /// so offsets never persist a stale relationship across relaunch or reconnect.
+    private var builtInFollowOffsets: [CGDirectDisplayID: Double] = [:]
+    /// Polls the built-in backlight (~2 s) while Follow built-in brightness is on, catching
+    /// the changes macOS makes itself — ambient light, the bare brightness keys.
+    private var followTimer: Timer?
     /// Consecutive dirty LUT reads seen by `refreshGammaConflictState`. A conflict is declared
     /// only at 2+, so a one-shot difference (wake-from-sleep, an ICC profile change) doesn't
     /// flash the banner while a persistent foreign writer still trips it across successive checks.
@@ -191,6 +197,7 @@ final class AppStore: ObservableObject {
         }
         refreshDisplays()
         startTimer()
+        reconcileFollowTimer()
 
         locationStatus = locationService.statusMessage
         locationService.$statusMessage
@@ -528,7 +535,9 @@ final class AppStore: ObservableObject {
         // The display layout may have changed; cached DDC service handles can be stale.
         ddcBackend.invalidateServiceCache()
         displays = displayService.listDisplays() + mockDisplaySpecs.map(\.display)
-        ambientBrightnessSyncBaseline = nil
+        // Display IDs churn across reconfiguration; drop the follow offsets and let the next
+        // follow pass re-adopt every follower at its current level (no writes, no jumps).
+        builtInFollowOffsets = [:]
         pruneDisplayKeyedState()
         refreshNativeBrightness()
         refreshAudioCapability()
@@ -702,33 +711,27 @@ final class AppStore: ObservableObject {
     func setNativeBrightness(_ value01: Double, for display: DisplayInfo) {
         let clamped = value01.clamped(to: 0...1)
         nativeBrightness[display.id] = clamped
-        if display.isBuiltIn {
-            ambientBrightnessSyncBaseline = clamped
-        }
         guard !safeMode else {
             return
         }
         nativeBrightnessBackend.setBrightness(Float(clamped), for: display.id)
+        // Our own built-in slider/hotkey is a live drag — follow it now, not at the next
+        // poll. User-driven, so the pass logs at .debug (drag frequency).
+        if display.isBuiltIn {
+            applyBuiltInFollow(automatic: false)
+        }
     }
 
     /// Re-read the real backlight into the cache. Beyond each display refresh, this also runs
     /// when the popup opens and when the settings window becomes key: bare brightness keys on
     /// the built-in are handled by macOS (not us), so without a re-read the slider would show
     /// a stale level until the next display reconfiguration.
-    func refreshNativeBrightness(syncExternalChanges: Bool = false) {
+    func refreshNativeBrightness() {
         var levels: [CGDirectDisplayID: Double] = [:]
         for display in displays where nativeBrightnessBackend.canControl(display.id) {
             if let value = nativeBrightnessBackend.brightness(of: display.id) {
                 levels[display.id] = Double(value)
             }
-        }
-        let builtInBrightness = displays
-            .first { $0.isBuiltIn && levels[$0.id] != nil }
-            .flatMap { levels[$0.id] }
-        if syncExternalChanges {
-            syncExternalBrightness(toBuiltInBrightness: builtInBrightness)
-        } else if ambientBrightnessSyncBaseline == nil || builtInBrightness == nil {
-            ambientBrightnessSyncBaseline = builtInBrightness
         }
         // Skip the no-op publish: this runs on every popup open / window focus, and an
         // unchanged @Published set would still re-render every observer.
@@ -744,25 +747,22 @@ final class AppStore: ObservableObject {
         return nativeBrightness[builtIn.id] ?? nativeBrightnessBackend.brightness(of: builtIn.id).map(Double.init)
     }
 
-    private func syncExternalBrightness(toBuiltInBrightness builtInBrightness: Double?) {
-        guard preferences.syncBrightnessAcrossDisplays else {
-            ambientBrightnessSyncBaseline = builtInBrightness
+    /// One follow pass: reconcile the offsets (adopt new followers where they sit, drop stale
+    /// entries) and drive each follower to the built-in's level plus its offset. The built-in
+    /// is only ever *read* here — macOS keeps ownership of its backlight.
+    /// - Parameter automatic: true for the poll (macOS moved the backlight — log at `.notice`
+    ///   so an on-its-own change lands in a bug report); false when our own built-in slider or
+    ///   hotkey triggered the pass (drag frequency — log at `.debug`).
+    private func applyBuiltInFollow(automatic: Bool) {
+        guard preferences.followBuiltInBrightness else {
             return
         }
-        let plan = AmbientBrightnessSync.plan(
-            previousBuiltInBrightness: ambientBrightnessSyncBaseline,
-            currentBuiltInBrightness: builtInBrightness,
-            displays: displays.map { display in
-                AmbientBrightnessSync.DisplayContext(
-                    id: display.id,
-                    isBuiltIn: display.isBuiltIn,
-                    isBrightnessScheduled: false,
-                    canAdjustBrightness: brightnessControlKind(for: display) != .unavailable,
-                    currentBrightness: unifiedBrightness(for: display)
-                )
-            }
+        let plan = BuiltInBrightnessFollow.plan(
+            builtInBrightness: currentBuiltInBrightnessLevel(),
+            offsets: builtInFollowOffsets,
+            displays: displays.map(followContext(for:))
         )
-        ambientBrightnessSyncBaseline = plan.baseline
+        builtInFollowOffsets = plan.offsets
         guard !safeMode else {
             return
         }
@@ -770,13 +770,45 @@ final class AppStore: ObservableObject {
             guard let display = displays.first(where: { $0.id == adjustment.displayID }) else {
                 continue
             }
-            setUnifiedBrightness(adjustment.targetBrightness, for: display, syncAcrossDisplays: false)
+            applyUnifiedBrightness(adjustment.targetBrightness, for: display)
         }
-        if let percentDelta = plan.percentDelta, !plan.adjustments.isEmpty {
-            AppLog.ddc.notice(
-                "Ambient sync moved \(plan.adjustments.count, privacy: .public) external display(s) by \(percentDelta, privacy: .public)%"
-            )
+        if !plan.adjustments.isEmpty {
+            if automatic {
+                AppLog.ddc.notice(
+                    "Follow built-in moved \(plan.adjustments.count, privacy: .public) external display(s)"
+                )
+            } else {
+                AppLog.ddc.debug(
+                    "Follow built-in moved \(plan.adjustments.count, privacy: .public) external display(s)"
+                )
+            }
         }
+    }
+
+    private func followContext(for display: DisplayInfo) -> BuiltInBrightnessFollow.DisplayContext {
+        BuiltInBrightnessFollow.DisplayContext(
+            id: display.id,
+            isBuiltIn: display.isBuiltIn,
+            isBrightnessScheduled: isBrightnessScheduled(display),
+            canAdjustBrightness: brightnessControlKind(for: display) != .unavailable,
+            currentBrightness: unifiedBrightness(for: display)
+        )
+    }
+
+    /// A manual brightness edit on a follower re-anchors its offset: the new level is the
+    /// relationship the user wants against the built-in.
+    private func reanchorFollowOffset(for display: DisplayInfo) {
+        guard preferences.followBuiltInBrightness else {
+            return
+        }
+        guard let offset = BuiltInBrightnessFollow.anchoredOffset(
+            builtInBrightness: currentBuiltInBrightnessLevel(),
+            display: followContext(for: display)
+        ) else {
+            builtInFollowOffsets[display.id] = nil
+            return
+        }
+        builtInFollowOffsets[display.id] = offset
     }
 
     func displayPreferences(for display: DisplayInfo) -> DisplayPreferences {
@@ -853,16 +885,13 @@ final class AppStore: ObservableObject {
     /// the handoff invariant via `HybridBrightness.resolve`; components are only written when
     /// they actually change, so a software-zone drag doesn't hammer DDC with repeated zeros
     /// (and vice versa for gamma).
-    func setUnifiedBrightness(
-        _ position: Double,
-        for display: DisplayInfo,
-        syncAcrossDisplays: Bool = true
-    ) {
+    func setUnifiedBrightness(_ position: Double, for display: DisplayInfo) {
         applyUnifiedBrightness(position, for: display)
-        guard syncAcrossDisplays else {
-            return
+        // While following the built-in, a manual tweak on a follower re-anchors its offset
+        // (the built-in's own writes trigger the follow pass inside `setNativeBrightness`).
+        if !display.isBuiltIn {
+            reanchorFollowOffset(for: display)
         }
-        syncUnifiedBrightnessAcrossDisplays(position, source: display)
     }
 
     private func applyUnifiedBrightness(_ position: Double, for display: DisplayInfo) {
@@ -899,29 +928,6 @@ final class AppStore: ObservableObject {
             }
         case .unavailable:
             break
-        }
-    }
-
-    private func syncUnifiedBrightnessAcrossDisplays(
-        _ position: Double,
-        source: DisplayInfo
-    ) {
-        let adjustments = DisplayControlSync.brightnessAdjustments(
-            sourceID: source.id,
-            targetBrightness: position,
-            enabled: preferences.syncBrightnessAcrossDisplays,
-            displays: displays.map { display in
-                DisplayControlSync.BrightnessContext(
-                    id: display.id,
-                    canAdjustBrightness: brightnessControlKind(for: display) != .unavailable
-                )
-            }
-        )
-        for adjustment in adjustments {
-            guard let display = displays.first(where: { $0.id == adjustment.displayID }) else {
-                continue
-            }
-            applyUnifiedBrightness(adjustment.targetBrightness, for: display)
         }
     }
 
@@ -1267,136 +1273,49 @@ final class AppStore: ObservableObject {
         accessibilityTrusted = keyboardService.hasAccessibilityPermission
     }
 
-    func setBrightnessSyncAcrossDisplays(_ isEnabled: Bool) {
-        if isEnabled {
-            enableBrightnessSyncAcrossDisplays()
-        } else {
-            restoreBrightnessSyncAcrossDisplays()
+    /// Turn Follow built-in brightness on/off. Enabling adopts every follower at its current
+    /// level (offsets capture the *existing* relationship), so nothing moves until the built-in
+    /// next changes; disabling just stops following — displays stay where they are, so there's
+    /// nothing to restore.
+    func setFollowBuiltInBrightness(_ isEnabled: Bool) {
+        updateGlobalPreferences { preferences in
+            preferences.followBuiltInBrightness = isEnabled
         }
+        builtInFollowOffsets = [:]
+        if isEnabled {
+            refreshNativeBrightness()
+            applyBuiltInFollow(automatic: false)
+        }
+        reconcileFollowTimer()
     }
 
     func setContrastSyncAcrossDisplays(_ isEnabled: Bool) {
-        if isEnabled {
-            enableContrastSyncAcrossDisplays()
-        } else {
-            restoreContrastSyncAcrossDisplays()
+        updateGlobalPreferences { preferences in
+            preferences.syncContrastAcrossDisplays = isEnabled
         }
     }
 
-    private func enableBrightnessSyncAcrossDisplays() {
-        let targets = displays.filter { brightnessControlKind(for: $0) != .unavailable }
-        guard let source = displayUnderCursor().flatMap({ source in targets.first { $0.id == source.id } })
-            ?? targets.first else {
-            updateGlobalPreferences { preferences in
-                preferences.syncBrightnessAcrossDisplays = true
-            }
+    /// Run the follow poll only while the mode is on. ~2 s keeps followers visually in step
+    /// with macOS's own backlight moves (ambient light, bare brightness keys) without a
+    /// private notification API; an idle tick is two cheap reads and no writes or publishes.
+    private func reconcileFollowTimer() {
+        guard preferences.followBuiltInBrightness else {
+            followTimer?.invalidate()
+            followTimer = nil
             return
         }
-        let targetBrightness = isBrightnessScheduled(source)
-            ? scheduledBrightnessPosition(for: source)
-            : unifiedBrightness(for: source)
-        let shouldSnapshot = !preferences.syncBrightnessAcrossDisplays
-            || preferences.brightnessSyncRestore.isEmpty
-
-        updateGlobalPreferences { preferences in
-            preferences.syncBrightnessAcrossDisplays = true
-            if shouldSnapshot {
-                preferences.brightnessSyncRestore = Dictionary(
-                    uniqueKeysWithValues: targets.map { display in
-                        let displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
-                        return (display.key, DisplayBrightnessSyncRestore(displayPreferences))
-                    }
-                )
-            }
-            for display in targets {
-                var displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
-                displayPreferences.scheduleBrightness = false
-                preferences.displayPreferences[display.key] = displayPreferences
-            }
-        }
-        for display in targets {
-            applyUnifiedBrightness(targetBrightness, for: display)
-        }
-        ambientBrightnessSyncBaseline = currentBuiltInBrightnessLevel()
-    }
-
-    private func restoreBrightnessSyncAcrossDisplays() {
-        let restoredKeys = Set(preferences.brightnessSyncRestore.keys)
-        updateGlobalPreferences { preferences in
-            for (key, restore) in preferences.brightnessSyncRestore {
-                var displayPreferences = preferences.displayPreferences[key, default: DisplayPreferences()]
-                restore.apply(to: &displayPreferences)
-                preferences.displayPreferences[key] = displayPreferences
-            }
-            preferences.brightnessSyncRestore = [:]
-            preferences.syncBrightnessAcrossDisplays = false
-        }
-        for display in displays where restoredKeys.contains(display.key) {
-            if isBrightnessScheduled(display) {
-                scheduledHardwareState.clear(display.id)
-            } else {
-                applyUnifiedBrightness(unifiedBrightness(for: display), for: display)
-            }
-        }
-        applyScheduledHardware(automatic: false)
-        ambientBrightnessSyncBaseline = currentBuiltInBrightnessLevel()
-    }
-
-    private func enableContrastSyncAcrossDisplays() {
-        let targets = displays.filter { !$0.isBuiltIn && canUseDDC(for: $0) }
-        guard let source = displayUnderCursor().flatMap({ source in targets.first { $0.id == source.id } })
-            ?? targets.first else {
-            updateGlobalPreferences { preferences in
-                preferences.syncContrastAcrossDisplays = true
-            }
+        guard followTimer == nil else {
             return
         }
-        let targetContrast = isContrastScheduled(source)
-            ? scheduledContrastValue(for: source)
-            : displayPreferences(for: source).hardwareContrast
-        let shouldSnapshot = !preferences.syncContrastAcrossDisplays
-            || preferences.contrastSyncRestore.isEmpty
-
-        updateGlobalPreferences { preferences in
-            preferences.syncContrastAcrossDisplays = true
-            if shouldSnapshot {
-                preferences.contrastSyncRestore = Dictionary(
-                    uniqueKeysWithValues: targets.map { display in
-                        let displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
-                        return (display.key, DisplayContrastSyncRestore(displayPreferences))
-                    }
-                )
-            }
-            for display in targets {
-                var displayPreferences = preferences.displayPreferences[display.key, default: DisplayPreferences()]
-                displayPreferences.scheduleContrast = false
-                preferences.displayPreferences[display.key] = displayPreferences
+        let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshNativeBrightness()
+                self.applyBuiltInFollow(automatic: true)
             }
         }
-        for display in targets {
-            applyHardwareContrast(targetContrast, for: display)
-        }
-    }
-
-    private func restoreContrastSyncAcrossDisplays() {
-        let restoredKeys = Set(preferences.contrastSyncRestore.keys)
-        updateGlobalPreferences { preferences in
-            for (key, restore) in preferences.contrastSyncRestore {
-                var displayPreferences = preferences.displayPreferences[key, default: DisplayPreferences()]
-                restore.apply(to: &displayPreferences)
-                preferences.displayPreferences[key] = displayPreferences
-            }
-            preferences.contrastSyncRestore = [:]
-            preferences.syncContrastAcrossDisplays = false
-        }
-        for display in displays where restoredKeys.contains(display.key) {
-            if isContrastScheduled(display) {
-                scheduledHardwareState.clear(display.id)
-            } else {
-                applyHardwareContrast(displayPreferences(for: display).hardwareContrast, for: display)
-            }
-        }
-        applyScheduledHardware(automatic: false)
+        timer.tolerance = 0.5
+        followTimer = timer
     }
 
     /// Re-read the Accessibility grant; if it just turned on and the user wants the media
@@ -1433,11 +1352,12 @@ final class AppStore: ObservableObject {
         guard let target = displayUnderCursor() else {
             return false
         }
-        // Normally bare media keys leave the built-in panel to macOS. Brightness-sync mode is
-        // an explicit opt-in to drive every eligible screen from the pointer display.
+        // Bare media keys leave the built-in panel to macOS (and a built-in with no backlight
+        // API falls through too — `adjustBrightnessUnderCursor` is its custom-hotkey path).
+        // With Follow built-in brightness on, macOS's own handling is exactly what we want:
+        // the follow poll picks up the change and the externals track it.
         if target.isBuiltIn {
-            guard (allowBuiltIn || preferences.syncBrightnessAcrossDisplays),
-                  canUseNativeBrightness(target) else {
+            guard allowBuiltIn, canUseNativeBrightness(target) else {
                 return false
             }
         }
@@ -1769,7 +1689,10 @@ final class AppStore: ObservableObject {
             displays: displays.map { display in
                 DisplayControlSync.ContrastContext(
                     id: display.id,
+                    // A display on its own contrast schedule stays on it — the linked copy
+                    // would just be overwritten at the next phase change anyway.
                     canAdjustContrast: !display.isBuiltIn && canUseDDC(for: display)
+                        && !isContrastScheduled(display)
                 )
             }
         )
@@ -2037,7 +1960,6 @@ final class AppStore: ObservableObject {
                    let temperature = self.currentTemperature {
                     AppLog.gamma.notice("Scheduled warmth advanced to \(temperature, privacy: .public) K")
                 }
-                self.refreshNativeBrightness(syncExternalChanges: true)
                 self.applyScheduledHardware()
             }
         }

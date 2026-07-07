@@ -100,13 +100,13 @@ struct SettingsView: View {
             }
 
             Section("Displays") {
-                Toggle("Sync brightness across displays", isOn: Binding {
-                    store.preferences.syncBrightnessAcrossDisplays
+                Toggle("Follow built-in brightness", isOn: Binding {
+                    store.preferences.followBuiltInBrightness
                 } set: { isOn in
-                    store.setBrightnessSyncAcrossDisplays(isOn)
+                    store.setFollowBuiltInBrightness(isOn)
                 })
                 .settingsSwitch()
-                Text("Uses the display under the pointer. Brightness schedules pause while synced and restore when turned off.")
+                Text("External displays follow the built-in display's brightness changes, each keeping its own offset. Displays with a brightness schedule stay on it.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -117,7 +117,7 @@ struct SettingsView: View {
                     store.setContrastSyncAcrossDisplays(isOn)
                 })
                 .settingsSwitch()
-                Text("Uses the external display under the pointer. Contrast schedules pause while synced and restore when turned off.")
+                Text("Adjusting one external display's contrast adjusts them all. Displays with a contrast schedule stay on it.")
                     .zoomFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

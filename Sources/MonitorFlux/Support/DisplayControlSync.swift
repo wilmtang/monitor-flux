@@ -1,47 +1,19 @@
 import CoreGraphics
 
-/// Manual linked-control fanout. The store applies the source display through the normal
+/// Manual linked-contrast fanout. The store applies the source display through the normal
 /// slider/key path first; this planner only returns the peer displays that should receive
-/// the same absolute target.
+/// the same absolute target. Contrast is DDC-external-only and has no macOS owner, so an
+/// absolute copy is safe — unlike brightness, which follows the built-in one-way instead
+/// (see `BuiltInBrightnessFollow`).
 enum DisplayControlSync {
-    struct BrightnessContext: Equatable {
-        var id: CGDirectDisplayID
-        var canAdjustBrightness: Bool
-    }
-
     struct ContrastContext: Equatable {
         var id: CGDirectDisplayID
         var canAdjustContrast: Bool
     }
 
-    struct BrightnessAdjustment: Equatable {
-        var displayID: CGDirectDisplayID
-        var targetBrightness: Double
-    }
-
     struct ContrastAdjustment: Equatable {
         var displayID: CGDirectDisplayID
         var targetContrast: Int
-    }
-
-    static func brightnessAdjustments(
-        sourceID: CGDirectDisplayID,
-        targetBrightness: Double,
-        enabled: Bool,
-        displays: [BrightnessContext]
-    ) -> [BrightnessAdjustment] {
-        guard enabled else {
-            return []
-        }
-        let target = targetBrightness.clamped(to: 0...1)
-        return displays.compactMap { display in
-            guard display.id != sourceID,
-                  display.canAdjustBrightness
-            else {
-                return nil
-            }
-            return BrightnessAdjustment(displayID: display.id, targetBrightness: target)
-        }
     }
 
     static func contrastAdjustments(

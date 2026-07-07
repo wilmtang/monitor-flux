@@ -19,8 +19,8 @@ MONITORFLUX_SAFE_MODE=1
 
 Every hardware-writing path in `AppStore` is guarded on `safeMode` — `reconcileColor` (gamma),
 `restoreColorTables`, `runDDCCommand` (brightness/contrast), `applyVolume`, `setNativeBrightness`,
-linked display sync (when enabled), `reconcileShades` (AirPlay overlays), and the media-key
-`CGEventTap` (not started). What still
+Follow built-in brightness (offsets still tracked, no external writes), `reconcileShades`
+(AirPlay overlays), and the media-key `CGEventTap` (not started). What still
 runs: all windows/controls, preferences load/save, the display list + hotplug, location/solar
 scheduling, and the *computation* of the scheduled temperature (`currentTemperature` updates so
 the UI shows the warmth it would apply — it just isn't written). Backlight *reads*

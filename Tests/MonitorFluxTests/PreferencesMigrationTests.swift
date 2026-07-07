@@ -104,10 +104,8 @@ final class PreferencesMigrationTests: XCTestCase {
 
         let appPreferences = try JSONDecoder().decode(AppPreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(appPreferences.keyboardControlEnabled)
-        XCTAssertFalse(appPreferences.syncBrightnessAcrossDisplays)
+        XCTAssertFalse(appPreferences.followBuiltInBrightness)
         XCTAssertFalse(appPreferences.syncContrastAcrossDisplays)
-        XCTAssertTrue(appPreferences.brightnessSyncRestore.isEmpty)
-        XCTAssertTrue(appPreferences.contrastSyncRestore.isEmpty)
         // Show in Dock defaults OFF — a menu-bar-first app is an accessory by default, and
         // payloads saved before the field existed keep their no-Dock-icon behavior on upgrade.
         XCTAssertFalse(appPreferences.showInDock)
@@ -143,16 +141,8 @@ final class PreferencesMigrationTests: XCTestCase {
     func testOptionMediaBindingAndSyncSettingsRoundTrip() throws {
         var prefs = AppPreferences()
         prefs.fineAdjustmentsEnabled = true
-        prefs.syncBrightnessAcrossDisplays = true
+        prefs.followBuiltInBrightness = true
         prefs.syncContrastAcrossDisplays = true
-        var display = DisplayPreferences()
-        display.hardwareBrightness = 24
-        display.gammaBrightness = 86
-        display.scheduleBrightness = true
-        display.hardwareContrast = 43
-        display.scheduleContrast = true
-        prefs.brightnessSyncRestore["display"] = DisplayBrightnessSyncRestore(display)
-        prefs.contrastSyncRestore["display"] = DisplayContrastSyncRestore(display)
         prefs.hotkeys["brightnessUpFine"] = .media(
             MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true, option: true)
         )
@@ -161,10 +151,8 @@ final class PreferencesMigrationTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
 
         XCTAssertTrue(decoded.fineAdjustmentsEnabled)
-        XCTAssertTrue(decoded.syncBrightnessAcrossDisplays)
+        XCTAssertTrue(decoded.followBuiltInBrightness)
         XCTAssertTrue(decoded.syncContrastAcrossDisplays)
-        XCTAssertEqual(decoded.brightnessSyncRestore["display"], DisplayBrightnessSyncRestore(display))
-        XCTAssertEqual(decoded.contrastSyncRestore["display"], DisplayContrastSyncRestore(display))
         XCTAssertEqual(
             decoded.hotkeys["brightnessUpFine"],
             .media(MediaKeyShortcut(keyCode: MediaKey.brightnessUp, shift: true, option: true))

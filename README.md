@@ -15,9 +15,11 @@ exist, then falls back to software dimming or an AirPlay overlay when they do no
 
 - **Control real monitor brightness from the menu bar.** External displays get
   brightness, contrast, and volume sliders over DDC/CI; the built-in display uses
-  its real backlight. Optional General settings can sync brightness or contrast
-  across eligible displays; per-display schedules pause while synced and restore
-  when sync is turned off.
+  its real backlight. Optionally, external displays can follow the built-in
+  display's brightness one-way — ambient-light changes and the brightness keys
+  carry over, with each display keeping its own offset — and a manual contrast
+  change can be copied across externals. Displays with their own schedule stay
+  on it.
 - **Warm the screen on a schedule.** Fixed and Automatic warmth modes cover the
   f.lux/Night Shift use case without giving up per-display monitor controls.
 - **Schedule monitor levels too.** External-display brightness and contrast can
@@ -49,7 +51,7 @@ style of control plus warmth and scheduled day/night levels in the same app.
 | Day/night warmth schedule | Built in | Not advertised |
 | Follow-sunset schedule | Built in, computed on-device | Not advertised |
 | Per-display brightness / contrast schedule | Built in | Requested separately |
-| Sync brightness across displays | Yes | Yes |
+| Externals follow built-in brightness (ambient light, keys) | Yes | Yes |
 
 MonitorControl's column is based on its public README and public feature
 requests for [color temperature](https://github.com/MonitorControl/MonitorControl/issues/989)
