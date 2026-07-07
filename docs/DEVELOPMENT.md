@@ -50,7 +50,7 @@ MONITORFLUX_OPEN_MAIN=1`.
 | Variable | Value | Effect |
 |---|---|---|
 | `MONITORFLUX_OPEN_MAIN` | `1` / `reopen` | open the main window on launch (`reopen` = open, close, reopen — the Settings-again path) |
-| `MONITORFLUX_SELECT` | `general` / `color` / `diagnostics` / `display` / `display:<name>` | select a sidebar pane (`display` = first external; `display:<substr>` targets one by name) |
+| `MONITORFLUX_SELECT` | `general` / `keyboard` / `color` / `diagnostics` / `display` / `display:<name>` | select a sidebar pane (`display` = first external; `display:<substr>` targets one by name) |
 | `MONITORFLUX_FAKE_DISPLAYS` | count (1–4) | inject mock displays (index 0 DDC, 1 non-DDC, 2 AirPlay/virtual…) alongside the real ones |
 | `MONITORFLUX_EXPAND_ADVANCED` | `1` | force a display pane's Advanced block open (persisted toggle is bypassed for the shot) |
 | `MONITORFLUX_SCROLL_TO` | `warmth` / `brightness` / `advanced` / `schedule` | scroll a display pane's section into view on launch, so below-the-fold content (e.g. the schedule charts) is captured by window id with no live-UI scrolling; pair with `EXPAND_ADVANCED` for the `advanced`/`schedule` anchors |

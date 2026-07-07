@@ -18,6 +18,8 @@ struct ContentView: View {
                 Section {
                     sidebarRow("General", systemImage: "gearshape")
                         .tag(AppSelection.general)
+                    sidebarRow("Keyboard", systemImage: "keyboard")
+                        .tag(AppSelection.keyboard)
                 }
 
                 Section {
@@ -90,6 +92,8 @@ struct ContentView: View {
             switch ProcessInfo.processInfo.environment["MONITORFLUX_SELECT"] {
             case "general":
                 selection = .general
+            case "keyboard":
+                selection = .keyboard
             case "color":
                 selection = .color
             case "diagnostics":
@@ -178,6 +182,8 @@ struct ContentView: View {
         switch selection {
         case .general:
             SettingsView()
+        case .keyboard:
+            KeyboardSettingsView()
         case .color, .none:
             ColorScheduleView()
         case .diagnostics:
