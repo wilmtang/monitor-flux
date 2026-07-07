@@ -103,13 +103,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
-        // Verification hook: flip Show in Dock off through the real toggle path some seconds
-        // after launch, so a screen recording can capture the .regular→.accessory transition
-        // (the settings window's AX tree can't be scripted reliably).
+        // Verification hooks: flip Show in Dock off (or on) through the real toggle path some
+        // seconds after launch, so a screen recording can capture the `.regular`→`.accessory`
+        // drop (or the rise + ⌘-Tab promotion bounce) — the settings window's AX tree can't
+        // be scripted reliably. DOCK_ON_AFTER suppresses persistence so a verification run
+        // never flips the saved preference.
         if let delay = ProcessInfo.processInfo.environment["MONITORFLUX_DOCK_OFF_AFTER"]
             .flatMap(Double.init) {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 self?.store?.setShowInDock(false)
+            }
+        }
+        if let delay = ProcessInfo.processInfo.environment["MONITORFLUX_DOCK_ON_AFTER"]
+            .flatMap(Double.init) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.store?.setShowInDock(true)
             }
         }
 

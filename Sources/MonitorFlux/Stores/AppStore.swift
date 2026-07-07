@@ -174,6 +174,7 @@ final class AppStore: ObservableObject {
         persistenceSuppressed = environment["MONITORFLUX_ZOOM_STEP"] != nil
             || environment["MONITORFLUX_FAKE_DISPLAYS"] != nil
             || environment["MONITORFLUX_LOCATION_DEMO"] != nil
+            || environment["MONITORFLUX_DOCK_ON_AFTER"] != nil
         preferences = PreferencesStore.load().normalized()
         // Test hook: `MONITORFLUX_ZOOM_STEP=N` opens the window at a given zoom step
         // (0…8) without persisting it, so a screenshot run can verify zoom rendering
@@ -1086,20 +1087,21 @@ final class AppStore: ObservableObject {
         refreshActivationPolicyKeepingWindowFront()
     }
 
-    /// Re-evaluate the Dock policy, but when it drops the app to `.accessory` (Show in Dock
-    /// turned off, or a reset) keep the settings window from **blinking**. macOS deactivates
-    /// the app as it loses its Dock presence — and not on the next runloop turn: measured at
+    /// Re-evaluate the Dock policy with the transition smoothed — used by the toggle and the
+    /// reset, the paths that flip the policy while the user is looking at the active settings
+    /// window. Dropping to `.accessory` must not **blink** the window: macOS deactivates the
+    /// app as it loses its Dock presence — and not on the next runloop turn: measured at
     /// 60 fps, the deactivation lands several frames *after* the policy call, and the app then
     /// stays inactive for ~0.7 s before the system hands activation back. So a next-turn
     /// re-assert (the previous fix) runs while the app is still active and does nothing.
-    /// Instead, arm the smoothing pass (take activation straight back on the resign, hold the
-    /// window front across the gap) before making the policy call. Going `.regular` keeps the
-    /// active window front on its own, so it takes the plain path — which handles its own
-    /// ⌘-Tab bookkeeping (`promoteInAppSwitcher`).
+    /// Instead, watch for the deactivation itself and take activation straight back
+    /// (`holdWindowFrontAcrossActivationDip`). Rising to `.regular` keeps the window front on
+    /// its own, but parks the app at the end of the ⌘-Tab list; `promoteInAppSwitcher` fixes
+    /// the ordering through the same smoothing pass.
     private func refreshActivationPolicyKeepingWindowFront() {
-        let willDropToAccessory = !(showsDockIcon && windows.isMainWindowVisible)
-        guard willDropToAccessory,
-              NSApp.activationPolicy() == .regular,
+        let willBeRegular = showsDockIcon && windows.isMainWindowVisible
+        let wasRegular = NSApp.activationPolicy() == .regular
+        guard willBeRegular != wasRegular,
               NSApp.isActive,
               let window = windows.mainWindow, window.isVisible,
               dockTransitionSmoothing.isEmpty  // a pass is already holding the window front
@@ -1107,8 +1109,13 @@ final class AppStore: ObservableObject {
             refreshActivationPolicy()
             return
         }
-        holdWindowFrontAcrossActivationDip(window)
-        refreshActivationPolicy()
+        if wasRegular {
+            holdWindowFrontAcrossActivationDip(window)
+            refreshActivationPolicy()
+        } else {
+            refreshActivationPolicy()
+            promoteInAppSwitcher(window: window)
+        }
     }
 
     /// Take activation straight back the moment the app resigns it, holding `window` on a
@@ -1149,33 +1156,25 @@ final class AppStore: ObservableObject {
         windows.mainWindow?.level = .normal
     }
 
-    /// Entering `.regular` parks the app at the **end** of the ⌘-Tab switcher: the Dock
-    /// appends a newly-regular app to its most-recently-used order and only promotes it on an
-    /// activation *event* — an event that never comes here, because the app is already active
-    /// by the time the policy flips (the Show in Dock toggle was clicked in our own window;
-    /// the popup's Settings… row activates the app before the window opens). The switcher
-    /// then lists the settings window last, and after switching away a single ⌘-Tab returns
-    /// to the wrong app. Generate the missing event: hand activation to the Dock — which owns
-    /// no regular windows, so nothing on screen moves — and take it straight back via the
-    /// shared smoothing pass. That deactivate→reactivate round trip is a real activation, and
-    /// the switcher moves the app to the front of its list.
-    private func promoteInAppSwitcher() {
-        // The activation accompanying this flip (a popup click, a Dock-icon reopen) can still
-        // be in flight, so judge `isActive` after a beat, not now. If the app turns out not
-        // to be active, skip: the eventual real activation promotes it on its own.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self else { return }
-            guard NSApp.activationPolicy() == .regular,
-                  NSApp.isActive,
-                  self.dockTransitionSmoothing.isEmpty,
-                  let window = self.windows.mainWindow, window.isVisible,
-                  let dock = NSRunningApplication.runningApplications(
-                      withBundleIdentifier: "com.apple.dock"
-                  ).first
-            else { return }
-            self.holdWindowFrontAcrossActivationDip(window)
-            dock.activate(from: .current, options: [])
-        }
+    /// Entering `.regular` appends the app to the **end** of the ⌘-Tab switcher, and the Dock
+    /// only promotes it to the front on a subsequent activation *event*. On the window-open
+    /// path that event arrives on its own: the menu-bar popup is a nonactivating panel (the
+    /// app is not active while it's up), so `showMainWindow`'s `NSApp.activate` is granted
+    /// *after* the synchronous policy flip and the switcher promotes us — no help needed, and
+    /// bouncing there anyway is what made the opening window blink. The Show in Dock toggle
+    /// is the one rise with no event coming: it's clicked inside the already-active settings
+    /// window, so the app stays parked last — ⌘-Tab away and a single ⌘-Tab doesn't come
+    /// back. Generate the missing event: hand activation to the Dock — which owns no regular
+    /// windows, so nothing on screen moves — and take it straight back via the shared
+    /// smoothing pass, the same brief dip as the `.accessory` drop. Only ever call this with
+    /// the app active off a fresh click: without that cooperative-activation credit the
+    /// take-back can be denied, leaving the window visibly unfocused.
+    private func promoteInAppSwitcher(window: NSWindow) {
+        guard let dock = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.dock"
+        ).first else { return }
+        holdWindowFrontAcrossActivationDip(window)
+        dock.activate(from: .current, options: [])
     }
 
     func increaseFontSize() { setFontSizeStep(preferences.fontSizeStep + 1) }
@@ -1199,9 +1198,6 @@ final class AppStore: ObservableObject {
             (showsDockIcon && windows.isMainWindowVisible) ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
-            if policy == .regular {
-                promoteInAppSwitcher()
-            }
         }
     }
 

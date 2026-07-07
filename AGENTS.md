@@ -33,10 +33,13 @@ pkill -x MonitorFlux || true
   open* and drops to `.accessory` when it closes, so the icon follows the window; with the
   setting off it's always `.accessory` (menu-bar only, not ⌘-Tab-able). Re-evaluated on the
   toggle, on `showMainWindow`, and on the window's `willClose` (deferred, since `isVisible` is
-  still true inside willClose). Entering `.regular` while the app is already active (always,
-  here) parks it at the *end* of the ⌘-Tab list — the switcher only promotes on an activation
-  event — so `promoteInAppSwitcher` bounces activation off the Dock (windowless, nothing
-  visible moves) and takes it back to land the app at the front of the list.
+  still true inside willClose). Entering `.regular` parks the app at the *end* of the ⌘-Tab
+  list unless an activation event follows. Window-open rises get that event for free (the
+  popup is a nonactivating panel, so `showMainWindow`'s activate lands *after* the policy
+  flip); only the Show in Dock **toggle** — clicked in the already-active window — doesn't,
+  so there `promoteInAppSwitcher` bounces activation off the Dock (windowless, nothing
+  visible moves) and takes it straight back. Don't bounce on the window-open path: it blinks
+  the opening window, and the promotion happens anyway.
   `MainWindow.performKeyEquivalent` owns ⌘Q for the settings
   window (a MenuBarExtra app has no reliable menu Quit): terminate in `.regular`, close-window
   in `.accessory`. `MONITORFLUX_FORCE_DOCK=on|off` pins `showsDockIcon` for the smoke test. The
@@ -338,6 +341,9 @@ When a change is UI, hold it to this bar — and screenshot it before calling it
   - `MONITORFLUX_SHOW_OSD=brightness|color` (+ `MONITORFLUX_OSD_HOLD=1` holds it and forces the
     custom panel, since the native bezel can't be held or captured by id),
     `MONITORFLUX_SHOW_ONBOARDING=1` (+ `MONITORFLUX_ONBOARDING_PAGE=0|1` to open on a specific card).
+  - `MONITORFLUX_DOCK_OFF_AFTER=<seconds>` / `MONITORFLUX_DOCK_ON_AFTER=<seconds>` flip Show in
+    Dock through the real toggle path after a delay, for recording the `.regular`↔`.accessory`
+    transitions (window blink, ⌘-Tab promotion bounce). `DOCK_ON_AFTER` is in-memory only.
 - To drive a SwiftUI button in a test, use accessibility **`AXPress`** (find it by its `help`
   string — SwiftUI buttons often expose no AX title), not synthetic coordinate clicks (they
   miss). For shortcut recording, `AXPress` the Record button then `keystroke` the combo.
