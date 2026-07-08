@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+# Affero General Public License v3.0 or later. See LICENSE. No warranty.
+
 set -euo pipefail
 
 # End-to-end smoke test: builds the app, launches it driving the detailed window, and

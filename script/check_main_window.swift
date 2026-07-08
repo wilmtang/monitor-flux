@@ -1,4 +1,7 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+// Affero General Public License v3.0 or later. See LICENSE. No warranty.
 
 // Smoke-test assertion: exactly one sizable MonitorFlux window should be on screen AND
 // substantially within a connected display. Catches "detailed window doesn't open",

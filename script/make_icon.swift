@@ -1,4 +1,7 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+// Affero General Public License v3.0 or later. See LICENSE. No warranty.
 
 // Generates Assets/AppIcon.icns (and a preview PNG) from code so the icon is
 // reproducible and has no binary asset to hand-edit. Run: `swift script/make_icon.swift`.

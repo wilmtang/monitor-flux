@@ -1,4 +1,7 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+// Affero General Public License v3.0 or later. See LICENSE. No warranty.
 
 // Dev-only helper (not committed): crop a full-display PNG down to one MonitorFlux window.
 // `screencapture -l<id>` / `-R` and CGDisplayCreateImage are all obsoleted/broken for this

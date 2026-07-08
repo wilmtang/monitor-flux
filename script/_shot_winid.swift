@@ -1,4 +1,7 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+// Affero General Public License v3.0 or later. See LICENSE. No warranty.
 
 // Dev-only helper (not committed): print every on-screen MonitorFlux window as
 // `id<TAB>x<TAB>y<TAB>w<TAB>h<TAB>layer<TAB>title` so a screenshot run can pick the

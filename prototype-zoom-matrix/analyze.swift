@@ -1,4 +1,8 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+// Affero General Public License v3.0 or later. See LICENSE. No warranty.
+
 // Blob finder: locates the uniquely colored probe markers in a window screenshot.
 // Usage: analyze.swift <in.png> <out.json>
 // Output: {"probe-name": {"count": n, "cx": px, "cy": px, "minX":..,"minY":..,"maxX":..,"maxY":..}, ...}

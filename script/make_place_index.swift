@@ -1,4 +1,7 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
+// Affero General Public License v3.0 or later. See LICENSE. No warranty.
 
 // Regenerates Sources/MonitorFlux/Resources/places.tsv — the offline city/ZIP index behind
 // the Follow-sunset location search (see PlaceIndex.swift and docs/DESIGN.md).
