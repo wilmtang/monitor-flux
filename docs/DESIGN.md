@@ -464,11 +464,11 @@ with the same deterministic decoy so a "wrong" result is unambiguous.
 ## The menu-bar popup can't resize while open (the no-externals hint gap)
 
 When only the built-in panel is present, `QuickControlsView` shows a dismissible **"No external
-monitors detected"** card. Clicking its ✕ **fades the card out in place but keeps the space it
-held** until the popup closes; the next open lays out compact (`hintFadingOut` +
-`hideNoExternalsHint`). That transient blank space looks like a bug, and the "obvious fix" —
-shrink the live popup on dismiss — flickers. This is the reference for why, so the tradeoff isn't
-relitigated from scratch.
+monitors detected"** card. Clicking its ✕ **fades the card and animates the layout collapse** so
+the popup re-lays compact in the same session (`hideNoExternalsHint`). That animation carries a
+brief, unavoidable artifact — a ~0.2 s downward bounce — because a menu-bar popup **can't resize
+cleanly while it's open**. This is the reference for why that bounce exists (and why the
+tidier-looking alternatives are actually worse), so the tradeoff isn't relitigated from scratch.
 
 ### What the popup actually is
 
@@ -545,15 +545,21 @@ win. And `MenuBarExtra` exposes no sizing/resizability/anchor modifier of its ow
 
 ### The shipped choice
 
-Sidestep it entirely: **never change the window height while the popup is open.** `hintFadingOut`
-fades the dismissed card out but holds its space until the popup closes; the persisted
-`hideNoExternalsHint` then drops it from the layout so the *next* open is compact. No resize → no
-reposition → no flicker. The only visible cost is the transient gap for the rest of that one
-session.
+Three options, all constrained by the limitation above:
 
-Two experiment branches implement the alternatives, for anyone who wants to feel the tradeoff on
-their own hardware: `popup-hint-collapse-instant` (the ~16 ms flick) and
-`popup-hint-collapse-animated` (the visible bounce).
+- **Keep the space** — never resize while open: hold the dismissed card's blank space until the
+  popup closes, so only the *next* open is compact. No flicker, but a persistent in-session gap
+  that reads as broken. (This was the original behavior, gated on a `hintFadingOut` flag.)
+- **Instant collapse** — drop the card immediately: compact in-session, at the cost of the ~16 ms
+  one-frame flick. Preserved on the `popup-hint-collapse-instant` branch.
+- **Animated collapse (shipped)** — fade the card and animate the collapse (`withAnimation` +
+  `.transition(.opacity)` in `dismissNoExternalsHint`): compact in-session, with the ~0.2 s bounce.
+
+We ship the **animated** collapse: the popup re-lays compact the moment you dismiss, and the bounce
+reads as deliberate motion rather than a stuck blank space or an unexplained flick. That bounce is
+the accepted price of the resize limitation, **not** a bug to keep chasing — a truly clean collapse
+would mean owning the panel's frame and severing SwiftUI's sizing binding (above), which isn't
+worth it for a one-time dismissal.
 
 ## Known limitations (cosmetic, no action planned)
 

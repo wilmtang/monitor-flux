@@ -11,15 +11,6 @@ import SwiftUI
 struct QuickControlsView: View {
     @EnvironmentObject private var store: AppStore
 
-    /// True while the just-dismissed no-externals hint fades out in place. The popup panel
-    /// can't animate a height change cleanly — its content resize and status-item re-anchor land
-    /// on different frames, so shrinking the open dropdown visibly wobbles ("jitters"), a bounce
-    /// when animated and a one-frame flick when instant. So dismissal never resizes the open
-    /// popup: the card fades out where it sits, the space it held stays until the popup closes,
-    /// and the next open lays out compact. Full mechanism + the two rejected variants: "The
-    /// menu-bar popup can't resize while open" in docs/DESIGN.md.
-    @State private var hintFadingOut = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -33,13 +24,11 @@ struct QuickControlsView: View {
                 // a monitor in, instead of leaving the area looking like nothing's missing.
                 // Once read it's noise, so its ✕ hides it for good.
                 if !store.displays.contains(where: { !$0.isBuiltIn }),
-                   !store.preferences.hideNoExternalsHint || hintFadingOut {
+                   !store.preferences.hideNoExternalsHint {
                     emptyHint("No external monitors detected — connect one to control its brightness, contrast, and volume here.") {
                         dismissNoExternalsHint()
                     }
-                    .opacity(hintFadingOut ? 0 : 1)
-                    .allowsHitTesting(!hintFadingOut)
-                    .accessibilityHidden(hintFadingOut)
+                    .transition(.opacity)
                 }
             }
 
@@ -71,10 +60,6 @@ struct QuickControlsView: View {
         .onAppear {
             store.quickControlsPopupVisible = true
             store.refreshNativeBrightness()
-            // The view (and its @State) outlives the popup panel, so clear the fade flag on
-            // reopen — the hint pref is already persisted, and the condition above drops the
-            // faded card from the layout before this open lays out.
-            hintFadingOut = false
             // Verification hook: dismiss the "no external monitors" hint through the same
             // animated path as its ✕ some seconds after the popup opens, so a screen recording
             // can capture the collapse — the popup's AX tree can't be scripted reliably.
@@ -88,14 +73,14 @@ struct QuickControlsView: View {
         .onDisappear { store.quickControlsPopupVisible = false }
     }
 
-    /// Hide the no-externals hint for good: persist the pref immediately, but only fade the
-    /// card out in place — `hintFadingOut` keeps its space in the layout so the popup's frame
-    /// never changes while it's open (see the property comment for why resizing jitters).
+    /// Hide the no-externals hint for good, animating the layout collapse so the popup re-lays
+    /// compact in the same session. The popup panel can't resize cleanly while open, so animating
+    /// the height shows a brief downward bounce (~0.2 s) as its status-item anchor chases the
+    /// shrinking content — see "The menu-bar popup can't resize while open" in docs/DESIGN.md.
     private func dismissNoExternalsHint() {
         withAnimation(.easeOut(duration: 0.3)) {
-            hintFadingOut = true
+            store.updateGlobalPreferences { $0.hideNoExternalsHint = true }
         }
-        store.updateGlobalPreferences { $0.hideNoExternalsHint = true }
     }
 
     private var header: some View {
