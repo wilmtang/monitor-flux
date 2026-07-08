@@ -40,6 +40,42 @@ exist, then falls back to software dimming or an AirPlay overlay when they do no
   MonitorFlux's custom contrast/warmth panel, which keeps its existing look. Everything else is
   unaffected. If the bezel looks visually broken on Tahoe, please open an issue.
 
+## How to install
+
+1. Download **`MonitorFlux-<version>.dmg`** from the
+   [latest release](https://github.com/wilmtang/monitor-flux/releases/latest).
+2. Open the `.dmg` and drag **MonitorFlux** onto the **Applications** shortcut.
+3. Launch it from Applications.
+
+### Getting past the "scary" warning on first launch
+
+MonitorFlux is **not notarized by Apple** — notarization requires a paid Apple Developer
+account, and this is a free personal app. Everything on macOS that Apple hasn't notarized gets
+flagged the same way, so on the **first** launch macOS will refuse to open it and show a warning
+like *"Apple could not verify 'MonitorFlux' is free of malware"* (or, occasionally,
+*"MonitorFlux is damaged and can't be opened"*). This is expected, not a sign anything is wrong.
+The app is [open source](https://github.com/wilmtang/monitor-flux) — read or build it yourself
+if you'd rather not take that on faith. To open it anyway:
+
+- **macOS 15 (Sequoia) and later:** double-click MonitorFlux once and dismiss the warning, then
+  open **System Settings ▸ Privacy & Security**, scroll to the **Security** section, and click
+  **"Open Anyway"** next to the MonitorFlux message. Confirm once more when prompted.
+- **macOS 14 (Sonoma):** **right-click** (or Control-click) MonitorFlux in Applications, choose
+  **Open**, then click **Open** in the dialog.
+- **If macOS insists the app is "damaged,"** the download quarantine flag is the cause; clear it
+  from Terminal and open normally:
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/MonitorFlux.app
+  ```
+
+You only do this once — after the first successful open, MonitorFlux launches with a normal
+double-click. (Want to skip the whole dance? A notarized build opens with a plain double-click —
+see [Package a .dmg](#package-a-dmg) to sign + notarize your own.)
+
+MonitorFlux runs from the menu bar. To route the brightness/volume keys to external monitors,
+enable it in **Settings ▸ Keyboard** and grant **Accessibility** permission when prompted
+(System Settings ▸ Privacy & Security ▸ Accessibility).
+
 ## MonitorFlux vs MonitorControl
 
 [MonitorControl](https://github.com/MonitorControl/MonitorControl) is the mature
