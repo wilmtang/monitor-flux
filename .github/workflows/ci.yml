@@ -38,13 +38,36 @@ jobs:
       - name: Build DMG
         run: APP_VERSION="${{ steps.version.outputs.value }}" ./script/make_dmg.sh
 
-      - name: Create GitHub release
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/MonitorFlux-$VERSION.dmg" \
-            --title "$GITHUB_REF_NAME" \
-            --notes "MonitorFlux $VERSION" \
-            --verify-tag
+          # CI owns the release notes. Build the body here, then create the release if
+          # it's missing or reconcile an existing one (re-run, re-tag, or manual
+          # pre-create) to exactly this title, notes, and DMG — so CI is authoritative.
+          notes="$(mktemp)"
+          printf '%s\n' \
+            "MonitorFlux $VERSION — a menu-bar display controller with MonitorControl-style monitor sliders and f.lux-style warmth scheduling in one app." \
+            "" \
+            "## Install" \
+            "" \
+            "Download \`MonitorFlux-$VERSION.dmg\` below, open it, and drag **MonitorFlux** onto **Applications**. This build is **not notarized by Apple**, so macOS blocks it once on first launch — see [How to install](https://github.com/wilmtang/monitor-flux#how-to-install) for how to open it anyway." \
+            "" \
+            "## Requirements" \
+            "" \
+            "macOS 14 (Sonoma) or later, on Apple Silicon or Intel." \
+            > "$notes"
+
+          dmg="dist/MonitorFlux-$VERSION.dmg"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "MonitorFlux $VERSION" \
+              --notes-file "$notes"
+            gh release upload "$GITHUB_REF_NAME" "$dmg" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$dmg" \
+              --title "MonitorFlux $VERSION" \
+              --notes-file "$notes" \
+              --verify-tag
+          fi

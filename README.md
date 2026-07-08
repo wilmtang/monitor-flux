@@ -102,6 +102,22 @@ MonitorControl's column is based on its public README and public feature
 requests for [color temperature](https://github.com/MonitorControl/MonitorControl/issues/989)
 and [day/night presets](https://github.com/MonitorControl/MonitorControl/issues/1851).
 
+## Privacy & permissions
+
+MonitorFlux runs entirely on your Mac. It has no account, no analytics, and no telemetry,
+and it makes **no network connections** — nothing about your displays, schedule, or location
+ever leaves the device (the city/ZIP search uses bundled offline data). It requests only the
+two macOS permissions below, each **optional** and asked for only when you turn on the feature
+that needs it. Every core display control — DDC brightness/contrast/volume, warmth, the
+built-in backlight, AirPlay dimming — works with no permission at all.
+
+| Permission | Why it's used | Requested when | If you decline |
+|---|---|---|---|
+| **Accessibility** | Intercept the keyboard's brightness/volume media keys and route them to the external display under your pointer (privileged input). | You enable media-key control in **Settings ▸ Keyboard**. | Media keys keep controlling only the built-in display (the macOS default). The menu-bar sliders, settings window, and custom keyboard shortcuts still work — custom shortcuts never need this permission. |
+| **Location** (While Using) | Compute local sunrise/sunset **on-device** for the Follow-sunset warmth schedule. | You switch the schedule to **Follow sunset**. | Set your location by city or ZIP in the schedule's Location search, or use **Set times** mode with times you pick. Nothing is sent to a server either way. |
+
+Both can be granted or revoked anytime in **System Settings ▸ Privacy & Security**.
+
 ## How it works
 
 MonitorFlux has two separate control paths:
