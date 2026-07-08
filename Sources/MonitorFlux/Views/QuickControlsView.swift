@@ -12,11 +12,12 @@ struct QuickControlsView: View {
     @EnvironmentObject private var store: AppStore
 
     /// True while the just-dismissed no-externals hint fades out in place. The popup panel
-    /// can't animate a height change cleanly — its position and size updates land on
-    /// different frames, so the whole dropdown visibly wobbles ("jitters") whether the
-    /// collapse is animated or instant. So dismissal never resizes the open popup: the card
-    /// fades out where it sits, the space it held stays until the popup closes, and the next
-    /// open lays out compact.
+    /// can't animate a height change cleanly — its content resize and status-item re-anchor land
+    /// on different frames, so shrinking the open dropdown visibly wobbles ("jitters"), a bounce
+    /// when animated and a one-frame flick when instant. So dismissal never resizes the open
+    /// popup: the card fades out where it sits, the space it held stays until the popup closes,
+    /// and the next open lays out compact. Full mechanism + the two rejected variants: "The
+    /// menu-bar popup can't resize while open" in docs/DESIGN.md.
     @State private var hintFadingOut = false
 
     var body: some View {

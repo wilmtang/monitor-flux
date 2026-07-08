@@ -461,6 +461,100 @@ with the same deterministic decoy so a "wrong" result is unambiguous.
 - **The shipped change** (see `AppStore.showMainWindow` + `WindowCoordinator.activateMainWindow`):
   order the window on screen without activating → `refreshActivationPolicy()` → `activateMainWindow()`.
 
+## The menu-bar popup can't resize while open (the no-externals hint gap)
+
+When only the built-in panel is present, `QuickControlsView` shows a dismissible **"No external
+monitors detected"** card. Clicking its ✕ **fades the card out in place but keeps the space it
+held** until the popup closes; the next open lays out compact (`hintFadingOut` +
+`hideNoExternalsHint`). That transient blank space looks like a bug, and the "obvious fix" —
+shrink the live popup on dismiss — flickers. This is the reference for why, so the tradeoff isn't
+relitigated from scratch.
+
+### What the popup actually is
+
+`MenuBarExtra { QuickControlsView() }.menuBarExtraStyle(.window)` (in `MonitorFluxApp`) is backed
+at runtime by — verified by dumping the live window's class chain —
+
+```
+SwiftUI.MenuBarExtraWindow<AnyView>  →  NSPanel  →  NSWindow  →  NSResponder  →  NSObject
+```
+
+a **private SwiftUI subclass of `NSPanel`** (`.nonactivatingPanel`, level 101 — the nonactivating
+style is why opening the popup doesn't steal key focus), whose content is hosted by an
+**`NSHostingController`**. Two facts follow, and both matter below: SwiftUI *creates, sizes, and
+positions* this window itself — we get no handle beyond the `view.window` captured in
+`PopupWindowAccessor` — and the hosting controller's default auto-sizing is a **standing binding:
+SwiftUI content ideal-size → window size**. Change the content height and SwiftUI resizes the
+window for you, on its own schedule.
+
+### Why resizing flickers: a top-pinned window in a bottom-left coordinate space
+
+Every `NSWindow` is positioned by its **bottom-left `origin`**, in a screen space where **y
+increases upward** (this is universal AppKit, not specific to the dropdown). The top edge is a
+*derived* value, never stored:
+
+```
+top = origin.y + height     ← for a menu-bar dropdown this must stay pinned under the status item
+```
+
+So shrinking the content by Δ while keeping the top still requires changing **two** things
+together:
+
+```
+height   → height − Δ
+origin.y → origin.y + Δ      (raise the bottom so the top doesn't move)
+```
+
+A normal app window has no such constraint — it keeps its bottom-left fixed and lets the top move,
+so a resize is one clean operation nobody notices. A dropdown needs the *opposite* (hold the top,
+move the bottom), and AppKit has no "resize from the top" primitive, so it takes two operations to
+fake it — and they land on **different frames**:
+
+- the **resize** is `NSHostingController` reacting to the now-smaller content, and
+- the **reposition** is `MenuBarExtraWindow` re-anchoring under the status item on the next
+  runloop tick.
+
+For the one frame in between, the window has the new (smaller) `height` but the old `origin.y`, so
+`top = origin.y + (height − Δ)` — the top **dips down** — then the next frame the origin corrects
+and it snaps back up.
+
+### Instant vs. animated — same cause, different exposure
+
+Measured with 60 fps screen recordings of the dismissal:
+
+- **Instant collapse** (drop the card, no animation): the height changes once → the one-frame
+  mismatch happens **once** → a single ~16 ms downward flick. Near-imperceptible, but present.
+- **Animated collapse** (fade + shrink over ~0.3 s): the height changes on *every* animation frame
+  → the reposition lag is present on *every* one → a **sustained ~0.2 s bounce** as the anchor
+  chases the shrinking content. The animation doesn't cause the wobble; it amplifies the
+  single-frame lag into something you plainly see.
+
+### Why a manual atomic fix is hard (not impossible)
+
+`NSWindow.setFrame(_:display:animate: false)` *does* set origin+size atomically, so in principle
+one hand-driven call is glitch-free. But **we don't drive the resize** — SwiftUI does, via the
+hosting controller's standing content-size→window-size binding. Calling `setFrame` ourselves just
+adds a **second writer**: SwiftUI's non-atomic path still fires on the content change and its next
+layout pass can stomp our frame. To make our call authoritative we'd first have to **sever that
+binding** — clear the hosting controller's `sizingOptions` — on a controller SwiftUI owns
+privately for the panel (no public handle; we'd be runtime-walking to reach it), and then own
+*all* popup sizing by hand forever. `sizingOptions` is also the exact knob that blanks the main
+window if touched (see the window-sizing gotcha in `AGENTS.md`). Fragile, for a one-frame cosmetic
+win. And `MenuBarExtra` exposes no sizing/resizability/anchor modifier of its own — unlike
+`WindowGroup`, there's no supported seam to ask for an atomic top-anchored resize.
+
+### The shipped choice
+
+Sidestep it entirely: **never change the window height while the popup is open.** `hintFadingOut`
+fades the dismissed card out but holds its space until the popup closes; the persisted
+`hideNoExternalsHint` then drops it from the layout so the *next* open is compact. No resize → no
+reposition → no flicker. The only visible cost is the transient gap for the rest of that one
+session.
+
+Two experiment branches implement the alternatives, for anyone who wants to feel the tradeoff on
+their own hardware: `popup-hint-collapse-instant` (the ~16 ms flick) and
+`popup-hint-collapse-animated` (the visible bounce).
+
 ## Known limitations (cosmetic, no action planned)
 
 - `MonitorSlider` maps the pointer across the full track width while the knob travels an inset
