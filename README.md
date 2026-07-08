@@ -31,6 +31,15 @@ exist, then falls back to software dimming or an AirPlay overlay when they do no
 - **Stay out of your way.** It is menu-bar-first, has native-looking OSD feedback,
   and can keep the Dock icon hidden unless the settings window is open.
 
+## System requirements
+
+- **macOS 14 (Sonoma) or later**, on Apple Silicon or Intel.
+- **On macOS 26 (Tahoe):** MonitorFlux's brightness and volume on-screen display reuses the
+  system's own bezel, and Tahoe redesigned that bezel. It should still function, but the
+  brightness/volume bezel may look different from earlier macOS — and slightly out of step with
+  MonitorFlux's custom contrast/warmth panel, which keeps its existing look. Everything else is
+  unaffected. If the bezel looks visually broken on Tahoe, please open an issue.
+
 ## MonitorFlux vs MonitorControl
 
 [MonitorControl](https://github.com/MonitorControl/MonitorControl) is the mature
