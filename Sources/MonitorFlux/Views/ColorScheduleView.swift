@@ -509,7 +509,9 @@ struct ColorScheduleView: View {
                 guard phase == .daytime else {
                     return // sunset and bedtime are derived; their controls are disabled
                 }
-                preferences.coolStartMinutes = rawMinute.clamped(to: ControlRanges.minuteOfDay)
+                // Wrap rather than clamp so a wake near midnight can step across into the AM
+                // (night shifts are legal here — the resolver sorts the day out).
+                preferences.coolStartMinutes = ((rawMinute % 1440) + 1440) % 1440
             } else {
                 let clamped = ColorSchedule.clampedStartMinute(rawMinute, for: phase, preferences: preferences)
                 preferences.setStartMinutes(clamped, for: phase)
@@ -590,7 +592,13 @@ struct ColorScheduleView: View {
                     }
             }
             .lineLimit(1)
-            Stepper("", value: timeAnchorBinding(phase), in: ControlRanges.minuteOfDay, step: 15)
+            // Not `Stepper(value:in:)`: a bounded stepper clamps to 0…1439 and disables its
+            // up-arrow at 11:59 PM, so bedtime (whose legal arc wraps past midnight into the
+            // early AM) got stuck at the top of the day. Step the raw minute instead and let
+            // `commitTimeEdit`'s cyclic clamp normalize the wrap.
+            Stepper("",
+                    onIncrement: { commitTimeEdit(phase, rawMinute: minute + 15) },
+                    onDecrement: { commitTimeEdit(phase, rawMinute: minute - 15) })
                 .labelsHidden()
                 .disabled(locked)
         }

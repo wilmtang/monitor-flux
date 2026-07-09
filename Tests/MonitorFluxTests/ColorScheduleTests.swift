@@ -132,6 +132,22 @@ final class ColorScheduleTests: XCTestCase {
         )
     }
 
+    func testBedtimeStepperWrapsPastMidnight() {
+        // Regression: the bedtime stepper feeds `currentMinute ± step` straight into the clamp,
+        // so a wake-06:00 / sunset-20:00 day (bedtime's legal arc runs 20:15 → 05:45) must let a
+        // 23:45 bedtime step up across midnight into the early AM instead of sticking at 23:59.
+        let wake = 6 * 60, sunset = 20 * 60
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(23 * 60 + 45 + 15, for: .bedtime, wake: wake, sunset: sunset, bedtime: 23 * 60 + 45),
+            0 // 12:00 AM
+        )
+        // …and stepping back down from midnight returns to 11:45 PM.
+        XCTAssertEqual(
+            ColorSchedule.clampedStartMinute(0 - 15, for: .bedtime, wake: wake, sunset: sunset, bedtime: 0),
+            23 * 60 + 45
+        )
+    }
+
     func testClockScheduleChoosesDayAndNight() {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock
