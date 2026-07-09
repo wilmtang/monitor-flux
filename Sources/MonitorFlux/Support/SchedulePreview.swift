@@ -36,11 +36,13 @@ enum SchedulePreview {
     }
 
     struct Plan: Equatable {
-        /// The quantized scheduled temperature at the previewed minute.
-        var temperature: Int
-        /// The stored preferences with the preview overlaid: a manual target at `temperature`
-        /// (so the normal gamma path applies it), plus each scheduled display's software
-        /// brightness component. Only this copy carries the overrides.
+        /// The warmth the preview applies at the previewed minute: the quantized scheduled
+        /// temperature when warmth is scheduled, the stored fixed temperature in Fixed mode, or
+        /// nil when warmth is Off — so callers report it exactly as it lands on screen.
+        var temperature: Int?
+        /// The stored preferences with the preview overlaid: when warmth is scheduled, a manual
+        /// target at `temperature` (so the normal gamma path applies it); plus each scheduled
+        /// display's software brightness component. Only this copy carries the overrides.
         var previewPreferences: AppPreferences
         var hardwareWrites: [HardwareWrite]
     }
@@ -51,18 +53,29 @@ enum SchedulePreview {
         displays: [DisplayContext],
         minuteOfDay minute: Int
     ) -> Plan {
-        let temperature = ColorSchedule.quantizedTemperature(
-            ColorSchedule.scheduledValue(schedule: schedule, minuteOfDay: minute) { phase in
-                preferences.temperature(for: phase).clamped(to: ControlRanges.kelvin)
-            }
-        )
-
-        // Apply through the normal gamma path by faking a manual target at the previewed
-        // temperature; the gamma service skips unchanged writes, so a continuous scrub
-        // doesn't flood the LUT (and AirPlay/virtual displays stay excluded, as live).
         var previewPreferences = preferences
-        previewPreferences.colorMode = .manual
-        previewPreferences.manualTemperature = temperature
+        let temperature: Int?
+
+        if preferences.colorMode == .clock {
+            // Warmth is scheduled, so preview the curve's color at the previewed minute. Fake a
+            // manual target at that temperature so the gamma path shows *this* minute's warmth
+            // rather than "now"'s; the gamma service skips unchanged writes, so a continuous scrub
+            // doesn't flood the LUT (and AirPlay/virtual displays stay excluded, as live).
+            let scheduled = ColorSchedule.quantizedTemperature(
+                ColorSchedule.scheduledValue(schedule: schedule, minuteOfDay: minute) { phase in
+                    preferences.temperature(for: phase).clamped(to: ControlRanges.kelvin)
+                }
+            )
+            temperature = scheduled
+            previewPreferences.colorMode = .manual
+            previewPreferences.manualTemperature = scheduled
+        } else {
+            // Warmth is Off or Fixed — it isn't part of the timeline being scrubbed (the hardware
+            // charts pass `adoptClockMode: false`), so leave warmth exactly as it applies live
+            // instead of warming the screen to a scheduled value this mode will never use. Only the
+            // brightness/contrast preview below rides along; software dimming is independent of warmth.
+            temperature = ColorSchedule.targetTemperature(preferences: preferences)
+        }
 
         var hardwareWrites: [HardwareWrite] = []
 

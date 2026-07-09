@@ -60,7 +60,10 @@ final class HotKeyCenter {
         tokens.removeAll()
 
         var conflicts: Set<HotKeyAction> = []
-        for (action, shortcut) in shortcuts where shortcut.keyCode != 0 {
+        // Skip only a genuinely empty shortcut (the legacy-migration `0,0` sentinel). Carbon key
+        // code 0 is `kVK_ANSI_A`, so a modified combo on the A key (⌘A) is real and must register —
+        // filtering on `keyCode != 0` alone silently dropped it.
+        for (action, shortcut) in shortcuts where shortcut.keyCode != 0 || shortcut.carbonModifiers != 0 {
             if let token = registrar.register(
                 keyCode: shortcut.keyCode,
                 modifiers: shortcut.carbonModifiers,

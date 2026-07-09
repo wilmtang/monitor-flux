@@ -471,6 +471,16 @@ struct AppPreferences: Codable, Equatable, Sendable {
         copy.bedtimeLeadMinutes = copy.bedtimeLeadMinutes.clamped(to: ControlRanges.bedtimeLeadMinutes)
         copy.fontSizeStep = copy.fontSizeStep.clamped(to: Self.fontSizeStepRange)
         copy.popupBackdropOpacity = min(max(copy.popupBackdropOpacity, 0), 1)
+        // A corrupt or hand-edited coordinate must not linger — it renders as literal garbage in
+        // the Location row and feeds a nonsense pair to the solar math. If either half isn't a real
+        // lat/long, fall the pair back to the shipped default *together*, so we never mix a valid
+        // coordinate with a reset one into a location that points nowhere real.
+        let latitudeOK = Double(copy.latitude).map { abs($0) <= 90 } ?? false
+        let longitudeOK = Double(copy.longitude).map { abs($0) <= 180 } ?? false
+        if !latitudeOK || !longitudeOK {
+            copy.latitude = Self.defaults.latitude
+            copy.longitude = Self.defaults.longitude
+        }
         copy.displayPreferences = copy.displayPreferences.mapValues { $0.normalized() }
         return copy
     }

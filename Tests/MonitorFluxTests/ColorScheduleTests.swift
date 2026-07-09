@@ -429,6 +429,21 @@ final class ColorScheduleTests: XCTestCase {
         }
     }
 
+    func testSetTimesCollapsesCollidingAnchors() {
+        // Imported or hand-edited prefs can land two anchors on the same minute (the UI clamps to
+        // stop it). setTimes must collapse the tie like the solar path — one event per minute, with
+        // daytime winning over sunset over bedtime — not emit two events the engine picks between.
+        var preferences = AppPreferences.defaults
+        preferences.coolStartMinutes = 8 * 60
+        preferences.sunsetStartMinutes = 8 * 60 // collides with daytime
+        preferences.warmStartMinutes = 22 * 60
+
+        let schedule = ResolvedSchedule.setTimes(preferences)
+
+        XCTAssertEqual(schedule.events.count, 2)
+        XCTAssertEqual(schedule.events.first { $0.minute == 8 * 60 }?.phase, .daytime)
+    }
+
     private func threePhasePreferences() -> AppPreferences {
         var preferences = AppPreferences.defaults
         preferences.colorMode = .clock

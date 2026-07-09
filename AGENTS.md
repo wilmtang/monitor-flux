@@ -97,7 +97,10 @@ pkill -x MonitorFlux || true
   tracking that lets manual tweaks hold, and the built-in/backlight skip rules.
 - `Support/SchedulePreview.swift`: pure planning for the scrub preview — the warmth, the
   preview copy of the preferences carrying the software brightness component (stored prefs
-  are never mutated, by construction), and the transient DDC writes.
+  are never mutated, by construction), and the transient DDC writes. Warmth is only overridden
+  to the previewed minute's color when it's actually **scheduled** (`colorMode == .clock`); in
+  Off/Fixed a hardware-chart scrub previews brightness/contrast but leaves warmth exactly as it
+  applies live, so it never warms the screen to a value the user's mode will never use.
 - `Support/BuiltInDimming.swift`: pure normalization of legacy built-in dimming state
   (migrated `.automatic`, stale sub-100 gamma) for backlight-driven built-ins.
 - `Support/BuiltInBrightnessFollow.swift`: pure planning for **Follow built-in brightness** —
@@ -346,7 +349,11 @@ When a change is UI, hold it to this bar — and screenshot it before calling it
     `MONITORFLUX_SHOW_ONBOARDING=1` (+ `MONITORFLUX_ONBOARDING_PAGE=0|1` to open on a specific card).
   - `MONITORFLUX_DOCK_OFF_AFTER=<seconds>` / `MONITORFLUX_DOCK_ON_AFTER=<seconds>` flip Show in
     Dock through the real toggle path after a delay, for recording the `.regular`↔`.accessory`
-    transitions (window blink, ⌘-Tab promotion bounce). `DOCK_ON_AFTER` is in-memory only.
+    transitions (window blink, ⌘-Tab promotion bounce). Both are in-memory only (persistence is
+    suppressed) so a recording run never flips the user's real Show-in-Dock choice.
+  - `MONITORFLUX_DISMISS_HINT_AFTER=<seconds>` dismisses the popup's "no external monitors" hint
+    through its real animated ✕ path after a delay, for recording the collapse. In-memory only
+    (persistence suppressed) so it never permanently hides the user's hint.
 - To drive a SwiftUI button in a test, use accessibility **`AXPress`** (find it by its `help`
   string — SwiftUI buttons often expose no AX title), not synthetic coordinate clicks (they
   miss). For shortcut recording, `AXPress` the Record button then `keystroke` the combo.

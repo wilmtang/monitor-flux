@@ -156,7 +156,9 @@ final class KeyboardControlService {
         guard let action = mediaBindings[incoming] else {
             return false
         }
-        return onAction?(action) ?? true
+        // Fail closed: with no handler wired we haven't actually acted on the key, so let it fall
+        // through to macOS rather than swallowing it into the void.
+        return onAction?(action) ?? false
     }
 }
 

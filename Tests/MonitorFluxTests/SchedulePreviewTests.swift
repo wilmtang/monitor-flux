@@ -43,18 +43,48 @@ final class SchedulePreviewTests: XCTestCase {
     }
 
     func testPreviewOverlaysManualTargetWithoutTouchingScheduleShape() {
-        let preferences = AppPreferences.defaults
+        let preferences = AppPreferences.defaults // colorMode == .clock (warmth is scheduled)
         let plan = SchedulePreview.plan(
             preferences: preferences, schedule: .setTimes(preferences), displays: [], minuteOfDay: noon
         )
 
-        // The preview copy fakes a manual target at the previewed (quantized) temperature so
-        // the normal gamma path applies it — the schedule's own fields stay untouched.
+        // With warmth scheduled, the preview copy fakes a manual target at the previewed (quantized)
+        // temperature so the normal gamma path applies it — the schedule's own fields stay untouched.
         XCTAssertEqual(plan.previewPreferences.colorMode, .manual)
-        XCTAssertEqual(plan.previewPreferences.manualTemperature, plan.temperature)
         XCTAssertEqual(plan.temperature, preferences.dayTemperature)
+        XCTAssertEqual(plan.previewPreferences.manualTemperature, preferences.dayTemperature)
         XCTAssertEqual(plan.previewPreferences.dayTemperature, preferences.dayTemperature)
         XCTAssertEqual(plan.previewPreferences.warmStartMinutes, preferences.warmStartMinutes)
+    }
+
+    func testWarmthOffPreviewDoesNotWarmTheScreen() {
+        // Scrubbing a hardware chart while Warmth is Off must not fake a warmth target — the
+        // brightness preview still rides along (software dimming is independent of warmth), but
+        // the gamma path stays in Off, so nothing warms the screen.
+        var preferences = preferencesWithScheduledDisplay()
+        preferences.colorMode = .off
+        let plan = SchedulePreview.plan(
+            preferences: preferences,
+            schedule: .setTimes(preferences), displays: [context()], minuteOfDay: lateNight
+        )
+        XCTAssertEqual(plan.previewPreferences.colorMode, .off)
+        XCTAssertNil(plan.temperature)
+        XCTAssertFalse(plan.hardwareWrites.isEmpty) // brightness still previews
+    }
+
+    func testFixedWarmthPreviewKeepsTheManualTemperature() {
+        // In Fixed mode the scrub previews brightness/contrast, leaving warmth at the user's fixed
+        // temperature — not jumping it to the schedule's value for the previewed minute.
+        var preferences = preferencesWithScheduledDisplay(scheduleBrightness: false)
+        preferences.colorMode = .manual
+        preferences.manualTemperature = 3500
+        let plan = SchedulePreview.plan(
+            preferences: preferences,
+            schedule: .setTimes(preferences), displays: [context()], minuteOfDay: noon
+        )
+        XCTAssertEqual(plan.previewPreferences.colorMode, .manual)
+        XCTAssertEqual(plan.previewPreferences.manualTemperature, 3500)
+        XCTAssertEqual(plan.temperature, 3500)
     }
 
     func testHardwareZoneTargetPreviewsAsDDCWriteWithNeutralGamma() {

@@ -161,7 +161,9 @@ final class AppStore: ObservableObject {
     private var followTimer: Timer?
     /// Consecutive dirty LUT reads seen by `refreshGammaConflictState`. A conflict is declared
     /// only at 2+, so a one-shot difference (wake-from-sleep, an ICC profile change) doesn't
-    /// flash the banner while a persistent foreign writer still trips it across successive checks.
+    /// flash the banner: the dirty read invalidates the gamma apply-cache, the following
+    /// reconcile re-writes our table, and the next check is clean — resetting the streak. A
+    /// persistent foreign writer re-dirties between writes and still trips it across checks.
     private var gammaConflictStreak = 0
     private var cancellables = Set<AnyCancellable>()
 
@@ -179,6 +181,12 @@ final class AppStore: ObservableObject {
             || environment["MONITORFLUX_FAKE_DISPLAYS"] != nil
             || environment["MONITORFLUX_LOCATION_DEMO"] != nil
             || environment["MONITORFLUX_DOCK_ON_AFTER"] != nil
+            // Both Dock-recording hooks flip Show in Dock through the real toggle for the capture;
+            // neither should persist the flip over the user's real choice.
+            || environment["MONITORFLUX_DOCK_OFF_AFTER"] != nil
+            // The hint-collapse recording drives the real dismiss path (writes hideNoExternalsHint);
+            // suppress so a recording run never permanently hides the user's hint.
+            || environment["MONITORFLUX_DISMISS_HINT_AFTER"] != nil
         preferences = PreferencesStore.load().normalized()
         // Test hook: `MONITORFLUX_ZOOM_STEP=N` opens the window at a given zoom step
         // (0…8) without persisting it, so a screenshot run can verify zoom rendering
@@ -233,7 +241,10 @@ final class AppStore: ObservableObject {
         // Waking from sleep can leave stale gamma and an out-of-date scheduled brightness (the
         // 60s timer only catches up on its next tick, and a wake doesn't always reconfigure
         // displays). Re-run the reconcile chain right away — detection first, since it reads
-        // the LUT that reconcileColor is about to overwrite.
+        // the LUT that reconcileColor is about to overwrite. macOS may have reset the tables
+        // during sleep, so drop the "already applied" cache before reconcileColor: without it,
+        // `apply` skips the re-write whenever the scheduled temperature hasn't crossed a step
+        // (most wakes), leaving the screen un-warmed and tripping a false conflict banner.
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -241,6 +252,7 @@ final class AppStore: ObservableObject {
                 AppLog.schedule.notice("Woke from sleep; re-applying color and schedule")
                 self.refreshNativeBrightness()
                 self.refreshGammaConflictState()
+                self.gammaService.invalidateApplied()
                 self.reconcileColor()
                 self.applyScheduledHardware()
             }
@@ -1043,7 +1055,11 @@ final class AppStore: ObservableObject {
         preferences = normalized
         pendingPreferencesSave?.cancel()
         pendingPreferencesSave = nil
-        PreferencesStore.save(normalized)
+        // Honor the persistence guard here too: a reset/import triggered during a screenshot run
+        // (mock displays, injected location) must apply in memory without overwriting real config.
+        if !persistenceSuppressed {
+            PreferencesStore.save(normalized)
+        }
 
         refreshHotKeys()
         if !safeMode {
@@ -1070,6 +1086,13 @@ final class AppStore: ObservableObject {
             }
         }
         refreshDisplays()
+        // Follow-built-in and the traveling hint keep state outside the preferences struct, so the
+        // swapped-in blob has to re-reconcile them or an imported/reset toggle silently misbehaves:
+        // start or stop the follow poll for the new value (dropping offsets so followers re-adopt
+        // at their current level), and re-evaluate the traveling hint for the imported location.
+        builtInFollowOffsets = [:]
+        reconcileFollowTimer()
+        refreshLocationMismatch()
     }
 
     func setStartAtLogin(_ isEnabled: Bool) {
@@ -1317,7 +1340,9 @@ final class AppStore: ObservableObject {
         guard followTimer == nil else {
             return
         }
-        let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+        // `.common` mode so the follow poll keeps up with the backlight while a menu or panel is
+        // open, matching the schedule timer (the default runloop mode pauses during those).
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.refreshNativeBrightness()
@@ -1325,6 +1350,7 @@ final class AppStore: ObservableObject {
             }
         }
         timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
         followTimer = timer
     }
 
@@ -1810,10 +1836,15 @@ final class AppStore: ObservableObject {
         }
         // Require two consecutive dirty reads before declaring a conflict. A single dirty read is
         // ambiguous — waking from sleep or an ICC-profile change can momentarily leave the LUT
-        // differing from what we last wrote — and our own re-apply cleans a one-shot difference by
-        // the next check, so it resets the streak. A persistent foreign writer stays dirty across
-        // checks and still trips it (within ~2 timer cycles, an acceptable delay for a steady state).
+        // differing from what we last wrote. On a dirty read we drop the "already applied" cache so
+        // the reconcileColor that always follows this call re-writes our table (it would otherwise
+        // skip an unchanged adjustment); a one-shot difference is then clean by the next check and
+        // the streak resets. A persistent foreign writer re-dirties between our write and the next
+        // read, so it still trips the banner within ~2 timer cycles — an acceptable steady-state delay.
         let dirty = gammaService.detectsForeignGammaChange(displays: displays)
+        if dirty {
+            gammaService.invalidateApplied()
+        }
         gammaConflictStreak = dirty ? gammaConflictStreak + 1 : 0
         let detected = gammaConflictStreak >= 2
         let wasDetected = gammaConflictDetected
@@ -1911,7 +1942,8 @@ final class AppStore: ObservableObject {
                 for: display
             )
         }
-        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(KelvinFormatting.label(for: plan.temperature))"
+        let warmthLabel = plan.temperature.map(KelvinFormatting.label(for:)) ?? "Off"
+        colorMessage = "Preview · \(MinuteFormatting.label(for: minute)) · \(warmthLabel)"
     }
 
     /// Send a brightness/contrast value to a display's DDC firmware *without* persisting it — the
@@ -1956,7 +1988,9 @@ final class AppStore: ObservableObject {
 
     private func startTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // `.common` mode so the schedule keeps advancing while a menu is tracking or a save/open
+        // panel is up (the default runloop mode is suspended during those modal sessions).
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 let previousTemperature = self.currentTemperature
@@ -1973,7 +2007,9 @@ final class AppStore: ObservableObject {
                 self.applyScheduledHardware()
             }
         }
-        timer?.tolerance = 10
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     /// Drive each display's scheduled brightness/contrast toward its day/night target.
@@ -2156,7 +2192,11 @@ final class AppStore: ObservableObject {
                 changed = true
             }
 
-            if !display.isBuiltIn {
+            // Only real (DDC-capable) externals advance the ddcctl fallback index. The built-in and
+            // AirPlay/virtual displays never take the ddcctl path, so counting them would push the
+            // number ddcctl assigns to the wired monitors that sort after them — e.g. an AirPlay
+            // display between two wired ones would shift the second wired monitor's index by one.
+            if !display.isBuiltIn, !display.isVirtual {
                 externalIndex += 1
             }
         }

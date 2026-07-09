@@ -80,14 +80,27 @@ final class HotKeyCenterTests: XCTestCase {
         XCTAssertTrue(center.conflictedActions.isEmpty)
     }
 
-    func testZeroKeyCodeShortcutsAreSkipped() {
+    func testTrulyEmptyShortcutIsSkipped() {
         let fake = FakeRegistrar()
         let center = HotKeyCenter(registrar: fake)
 
-        let conflicts = center.update([.brightnessUp: GlobalShortcut(keyCode: 0, carbonModifiers: 256)])
+        // The legacy-migration empty sentinel: no key, no modifiers. Nothing to register.
+        let conflicts = center.update([.brightnessUp: GlobalShortcut(keyCode: 0, carbonModifiers: 0)])
 
         XCTAssertTrue(conflicts.isEmpty)
         XCTAssertTrue(fake.registeredActionIDs.isEmpty)
+    }
+
+    func testCommandAShortcutRegisters() {
+        // Carbon key code 0 is kVK_ANSI_A, so ⌘A (keyCode 0 + a modifier) is a real shortcut and
+        // must register — it is not the empty sentinel.
+        let fake = FakeRegistrar()
+        let center = HotKeyCenter(registrar: fake)
+
+        let conflicts = center.update([.brightnessUp: GlobalShortcut(keyCode: 0, carbonModifiers: 256)]) // ⌘A
+
+        XCTAssertTrue(conflicts.isEmpty)
+        XCTAssertEqual(fake.registeredActionIDs, [HotKeyAction.brightnessUp.hotKeyID])
     }
 
     func testPressRoutesToMatchingAction() {

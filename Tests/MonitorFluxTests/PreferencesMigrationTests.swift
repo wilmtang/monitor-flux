@@ -323,6 +323,40 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(preferences.dismissedLocationMismatchKey, "")
     }
 
+    func testNormalizedResetsUnparseableCoordinates() {
+        var preferences = AppPreferences()
+        preferences.latitude = "not-a-number"
+        preferences.longitude = "-122.3"
+
+        let normalized = preferences.normalized()
+
+        // Either half being invalid falls the whole pair back to the shipped default.
+        XCTAssertEqual(normalized.latitude, AppPreferences.defaults.latitude)
+        XCTAssertEqual(normalized.longitude, AppPreferences.defaults.longitude)
+    }
+
+    func testNormalizedResetsOutOfRangeCoordinates() {
+        var preferences = AppPreferences()
+        preferences.latitude = "95"   // beyond ±90
+        preferences.longitude = "10"
+
+        let normalized = preferences.normalized()
+
+        XCTAssertEqual(normalized.latitude, AppPreferences.defaults.latitude)
+        XCTAssertEqual(normalized.longitude, AppPreferences.defaults.longitude)
+    }
+
+    func testNormalizedKeepsValidCoordinates() {
+        var preferences = AppPreferences()
+        preferences.latitude = "35.68"
+        preferences.longitude = "139.69"
+
+        let normalized = preferences.normalized()
+
+        XCTAssertEqual(normalized.latitude, "35.68")
+        XCTAssertEqual(normalized.longitude, "139.69")
+    }
+
     func testLocationFieldsRoundTrip() throws {
         var preferences = AppPreferences()
         preferences.locationName = "Tokyo, Japan"

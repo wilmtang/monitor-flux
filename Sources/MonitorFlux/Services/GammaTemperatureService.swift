@@ -121,6 +121,17 @@ final class GammaTemperatureService {
         )
     }
 
+    /// Forget the per-display "already applied this adjustment" cache so the next `apply` writes
+    /// again even when the computed adjustment is unchanged. Used to re-assert our tables after
+    /// something else reset the LUT (wake from sleep, an ICC-profile change): `apply` normally
+    /// skips an identical adjustment, which would leave the screen un-warmed until the schedule
+    /// next crosses a step. Deliberately keeps `baselines` (re-reading them off a foreign/reset
+    /// table would capture a polluted baseline and compound warmth) and `lastSetTables` (conflict
+    /// detection still needs the last table we wrote to compare against).
+    func invalidateApplied() {
+        appliedAdjustments.removeAll()
+    }
+
     func restore() {
         AppLog.gamma.notice("Restored system color tables")
         CGDisplayRestoreColorSyncSettings()

@@ -39,11 +39,14 @@ struct ResolvedSchedule: Equatable, Sendable {
     /// The stored anchors as a three-event day — Set-times mode, and the fallback shape.
     static func setTimes(_ preferences: AppPreferences) -> ResolvedSchedule {
         ResolvedSchedule(
-            events: [
+            // Collapse ties like the solar path: imported or hand-edited prefs can put two anchors
+            // on the same minute (the UI can't), which would otherwise emit two events one minute,
+            // and the engine's "most recently begun" rule would pick between them arbitrarily.
+            events: ColorSchedule.collapsingTies([
                 Event(minute: preferences.coolStartMinutes, phase: .daytime),
                 Event(minute: preferences.sunsetStartMinutes, phase: .sunset),
                 Event(minute: preferences.warmStartMinutes, phase: .bedtime),
-            ],
+            ]),
             dayStartMinutes: preferences.coolStartMinutes,
             sunsetMinutes: preferences.sunsetStartMinutes,
             bedtimeStartMinutes: preferences.warmStartMinutes,
@@ -192,7 +195,7 @@ enum ColorSchedule {
     /// sunset minute) can put two events on the same minute; the engine's "most recently
     /// begun" rule would then pick one arbitrarily. Keep a single event per minute with a
     /// deterministic winner: daytime over bedtime over sunset.
-    private static func collapsingTies(_ events: [ResolvedSchedule.Event]) -> [ResolvedSchedule.Event] {
+    fileprivate static func collapsingTies(_ events: [ResolvedSchedule.Event]) -> [ResolvedSchedule.Event] {
         let precedence: [ColorPhase: Int] = [.daytime: 0, .bedtime: 1, .sunset: 2]
         var byMinute: [Int: ResolvedSchedule.Event] = [:]
         for event in events {
