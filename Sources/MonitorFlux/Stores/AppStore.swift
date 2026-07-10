@@ -1071,8 +1071,21 @@ final class AppStore: ObservableObject {
     /// Carbon/media bindings, the Dock policy, and the login item all hold state elsewhere, so
     /// their appliers must re-run or the swapped-in toggles silently don't take effect.
     private func applyReplacementPreferences(_ next: AppPreferences) {
-        let normalized = next.normalized()
-        let loginItemChanged = preferences.startAtLogin != normalized.startAtLogin
+        var normalized = next.normalized()
+        let previousStartAtLogin = preferences.startAtLogin
+        // Only touch the login item when the value differs — re-registering unconditionally
+        // would replace the friendly "install the app first" status with a raw service error
+        // on development builds. Resolve this external state before saving the replacement;
+        // if it fails, keep only the old login preference while applying everything else.
+        if previousStartAtLogin != normalized.startAtLogin {
+            do {
+                try LoginItemService.setEnabled(normalized.startAtLogin)
+                loginItemMessage = LoginItemService.statusLabel()
+            } catch {
+                normalized.startAtLogin = previousStartAtLogin
+                loginItemMessage = error.localizedDescription
+            }
+        }
         schedulePreviewMinute = nil
         preferences = normalized
         pendingPreferencesSave?.cancel()
@@ -1096,17 +1109,6 @@ final class AppStore: ObservableObject {
         // Blink-safe: a reset flips Show in Dock back off, so if the Diagnostics window is up
         // with a Dock icon this is the same .regular→.accessory drop the toggle smooths.
         refreshActivationPolicyKeepingWindowFront()
-        // Only touch the login item when the value differs — re-registering unconditionally
-        // would replace the friendly "install the app first" status with a raw service error
-        // on development builds.
-        if loginItemChanged {
-            do {
-                try LoginItemService.setEnabled(normalized.startAtLogin)
-                loginItemMessage = LoginItemService.statusLabel()
-            } catch {
-                loginItemMessage = error.localizedDescription
-            }
-        }
         refreshDisplays()
         // Follow-built-in and the traveling hint keep state outside the preferences struct, so the
         // swapped-in blob has to re-reconcile them or an imported/reset toggle silently misbehaves:

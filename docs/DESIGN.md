@@ -230,6 +230,14 @@ to start whenever media-key control is enabled; `start()` accepts an existing ta
 loss stops the tap immediately, and stopping clears owned key-down state so a later unmatched
 key-up passes through to macOS after restart.
 
+## Import/reset side effects
+
+Import and factory reset replace the preference blob, but some settings also own system state.
+The login-item transition is attempted before the replacement is assigned or saved. If
+`SMAppService` rejects it (commonly for an uninstalled development bundle), only
+`startAtLogin` keeps its previous value and the error remains visible; all other imported or
+reset settings still apply. The service is touched only when the requested value changed.
+
 ## Dimming: Hardware / Software / Automatic
 
 MonitorFlux presents **one Brightness slider** per display whose position is *perceived*
