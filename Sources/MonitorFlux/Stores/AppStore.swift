@@ -717,7 +717,6 @@ final class AppStore: ObservableObject {
                     persistentID: "mock-display-\(index)",
                     frameDescription: "2560 × 1440",
                     isBuiltIn: false,
-                    isOnline: true,
                     isVirtual: isVirtual
                 ),
                 capable

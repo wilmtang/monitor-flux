@@ -13,7 +13,6 @@ struct DisplayInfo: Identifiable, Hashable, Sendable {
     let persistentID: String
     let frameDescription: String
     let isBuiltIn: Bool
-    let isOnline: Bool
     /// AirPlay / virtual display: gamma writes don't take effect, so software dimming uses a
     /// shade overlay (see `ShadeController`) instead, and it's excluded from the gamma plan.
     let isVirtual: Bool
@@ -27,7 +26,6 @@ struct DisplayInfo: Identifiable, Hashable, Sendable {
         persistentID: String? = nil,
         frameDescription: String,
         isBuiltIn: Bool,
-        isOnline: Bool,
         isVirtual: Bool = false,
         mirrorMaster: CGDirectDisplayID? = nil
     ) {
@@ -38,7 +36,6 @@ struct DisplayInfo: Identifiable, Hashable, Sendable {
         self.persistentID = persistentID ?? "display-\(id)"
         self.frameDescription = frameDescription
         self.isBuiltIn = isBuiltIn
-        self.isOnline = isOnline
         self.isVirtual = isVirtual
         self.mirrorMaster = mirrorMaster
     }

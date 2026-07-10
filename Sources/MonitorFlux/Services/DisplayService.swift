@@ -93,7 +93,6 @@ final class DisplayService {
             persistentID: persistentID,
             frameDescription: size,
             isBuiltIn: CGDisplayIsBuiltin(id) != 0,
-            isOnline: CGDisplayIsOnline(id) != 0,
             isVirtual: CoreDisplayInfo.isVirtual(id),
             mirrorMaster: mirrored == 0 ? nil : mirrored
         )

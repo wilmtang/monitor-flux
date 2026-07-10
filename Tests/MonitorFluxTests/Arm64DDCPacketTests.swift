@@ -142,7 +142,6 @@ final class Arm64DDCPacketTests: XCTestCase {
             name: "Display \(id)",
             frameDescription: "",
             isBuiltIn: isBuiltIn,
-            isOnline: true,
             isVirtual: isVirtual
         )
     }

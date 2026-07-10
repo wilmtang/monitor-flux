@@ -146,7 +146,6 @@ final class GammaPlanTests: XCTestCase {
             name: "Display \(id)",
             frameDescription: "100 x 100 @ (0, 0)",
             isBuiltIn: false,
-            isOnline: true,
             isVirtual: isVirtual,
             mirrorMaster: mirrorMaster
         )

@@ -218,14 +218,7 @@ struct DiagnosticsView: View {
     }
 
     private func displayKind(_ display: DisplayInfo) -> String {
-        var parts = [display.kindLabel]
-        if display.isVirtual {
-            parts.append("AirPlay/virtual")
-        }
-        if !display.isOnline {
-            parts.append("offline")
-        }
-        return parts.joined(separator: " · ")
+        display.isVirtual ? "\(display.kindLabel) · AirPlay/virtual" : display.kindLabel
     }
 
     /// One line summarizing how this display dims: the mode plus both live components,
