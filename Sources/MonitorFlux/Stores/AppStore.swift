@@ -151,6 +151,9 @@ final class AppStore: ObservableObject {
     private var pendingPreferencesSave: DispatchWorkItem?
     private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
+    /// While a screen wake is settling, display callbacks extend the wake quiet period instead
+    /// of replacing it with the shorter hotplug debounce.
+    private var wakeRefreshPending = false
     /// Per-display brightness offsets for "Follow built-in brightness" (follower's unified
     /// position minus the built-in's backlight level). Runtime-only and self-healing: a
     /// follower without an entry is adopted at its current level on the next follow pass,
@@ -238,23 +241,24 @@ final class AppStore: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Waking from sleep can leave stale gamma and an out-of-date scheduled brightness (the
-        // 60s timer only catches up on its next tick, and a wake doesn't always reconfigure
-        // displays). Re-run the reconcile chain right away — detection first, since it reads
-        // the LUT that reconcileColor is about to overwrite. macOS may have reset the tables
-        // during sleep, so drop the "already applied" cache before reconcileColor: without it,
-        // `apply` skips the re-write whenever the scheduled temperature hasn't crossed a step
-        // (most wakes), leaving the screen un-warmed and tripping a false conflict banner.
+        // System wake refreshes the native-backlight cache immediately, then lets WindowServer's
+        // display/profile changes settle before reading or writing gamma and scheduled hardware.
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
-                AppLog.schedule.notice("Woke from sleep; re-applying color and schedule")
+                AppLog.schedule.notice("Woke from sleep; settling color and schedule")
                 self.refreshNativeBrightness()
-                self.refreshGammaConflictState()
-                self.gammaService.invalidateApplied()
-                self.reconcileColor()
-                self.applyScheduledHardware()
+                self.scheduleDisplayRefresh(afterWake: true)
+            }
+            .store(in: &cancellables)
+
+        // Unlike didWakeNotification, this also covers display-only wake. It may accompany a
+        // system wake too; scheduling again just restarts the same quiet period.
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.screensDidWakeNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.scheduleDisplayRefresh(afterWake: true)
             }
             .store(in: &cancellables)
 
@@ -342,17 +346,25 @@ final class AppStore: ObservableObject {
         )
     }
 
-    /// macOS fires several reconfiguration callbacks for one hotplug (begin/end, plus
-    /// one per display). Debounce so the display list rebuilds once, after the layout
-    /// settles — picking up connect/disconnect/resolution/mirroring changes live.
-    func handleDisplayReconfiguration() {
+    /// macOS fires several reconfiguration callbacks for one hotplug or wake (begin/end, plus
+    /// one per display). Debounce so the display list rebuilds once after the layout settles.
+    /// A callback during wake must extend, never shorten, the longer wake quiet period.
+    func scheduleDisplayRefresh(afterWake: Bool = false) {
+        if afterWake {
+            wakeRefreshPending = true
+            if !gammaConflictDetected {
+                gammaConflictStreak = 0
+            }
+        }
         displayRefreshGeneration += 1
         let generation = displayRefreshGeneration
+        let delay = wakeRefreshPending ? Duration.milliseconds(1_500) : .milliseconds(400)
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(400))
+            try? await Task.sleep(for: delay)
             guard self.displayRefreshGeneration == generation else {
                 return
             }
+            self.wakeRefreshPending = false
             self.refreshDisplays()
         }
     }
@@ -566,10 +578,12 @@ final class AppStore: ObservableObject {
         // Fold any legacy built-in dimming state into the built-in's hardware default before
         // re-applying color, so an upgraded built-in never comes up dimmed in software.
         let reconciledBuiltInDim = reconcileBuiltInDimming()
+        // Scheduled brightness can change gammaBrightness. Apply it first so the resulting
+        // preference reconcile writes the final composite table instead of an intermediate one.
+        applyScheduledHardware()
         if !seeded, !reconciledBuiltInDim {
             reconcileColor()
         }
-        applyScheduledHardware()
         restoreHardwareSettings()
         // Match shade overlays to the current AirPlay/virtual displays (and drop any for
         // displays that just disconnected).
@@ -2352,6 +2366,6 @@ private func displayReconfigurationCallback(
     }
     let store = Unmanaged<AppStore>.fromOpaque(userInfo).takeUnretainedValue()
     Task { @MainActor in
-        store.handleDisplayReconfiguration()
+        store.scheduleDisplayRefresh()
     }
 }
