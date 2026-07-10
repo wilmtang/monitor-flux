@@ -75,6 +75,24 @@ final class MediaBindingDispatchTests: XCTestCase {
         XCTAssertFalse(handled)
     }
 
+    func testStopClearsOwnedKeyState() {
+        let service = KeyboardControlService()
+        service.onAction = { _ in true }
+        service.mediaBindings = [
+            MediaKeyShortcut(keyCode: MediaKey.brightnessUp): .brightnessUp,
+        ]
+
+        XCTAssertTrue(service.handleKeyDown(
+            keyCode: MediaKey.brightnessUp,
+            control: false,
+            shift: false,
+            command: false
+        ))
+        service.stop()
+
+        XCTAssertFalse(service.consumeKeyUp(keyCode: MediaKey.brightnessUp))
+    }
+
     func testOptionModifierRecordsInRecorderParser() {
         let data1 = (MediaKey.brightnessUp << 16) | (0x0A << 8)
         // ⌥ records like any other modifier — it's how custom fine-adjustment combos are

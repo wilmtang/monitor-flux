@@ -74,7 +74,10 @@ final class KeyboardControlService {
     @discardableResult
     func start() -> Bool {
         if isActive {
-            return true
+            if let eventTap, CGEvent.tapIsEnabled(tap: eventTap) {
+                return true
+            }
+            stop()
         }
         guard AXIsProcessTrusted() else {
             AppLog.keyboard.notice("Media-key tap not started: Accessibility not granted")
@@ -118,6 +121,7 @@ final class KeyboardControlService {
         }
         eventTap = nil
         runLoopSource = nil
+        ownedKeys.removeAll()
         isActive = false
         if wasActive {
             AppLog.keyboard.notice("Media-key tap stopped")

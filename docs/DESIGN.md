@@ -219,6 +219,15 @@ Schedule pane's location states are verifiable offline via the `MONITORFLUX_LOCA
 (pins a searched place — `tokyo` trips the hint on a Pacific-time Mac) and
 `MONITORFLUX_LOCATION_QUERY=<prefix>` (opens the row mid-search) launch hooks.
 
+## Media-key event tap lifecycle
+
+Accessibility permission can invalidate an existing `CGEventTap` without updating the service's
+in-memory `isActive` flag. On each app activation, `AppStore` re-reads trust and asks the service
+to start whenever media-key control is enabled; `start()` accepts an existing tap only when
+`CGEvent.tapIsEnabled` confirms it is healthy, otherwise it stops and recreates it. Permission
+loss stops the tap immediately, and stopping clears owned key-down state so a later unmatched
+key-up passes through to macOS after restart.
+
 ## Dimming: Hardware / Software / Automatic
 
 MonitorFlux presents **one Brightness slider** per display whose position is *perceived*

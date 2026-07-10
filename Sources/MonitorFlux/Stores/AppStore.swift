@@ -1368,16 +1368,28 @@ final class AppStore: ObservableObject {
         followTimer = timer
     }
 
-    /// Re-read the Accessibility grant; if it just turned on and the user wants the media
-    /// keys, start the tap so it works without re-toggling.
+    /// Re-read the Accessibility grant and reconcile the media-key tap. `start()` also checks
+    /// whether a nominally active tap is still enabled, covering a revoke/regrant cycle that
+    /// completed while the app was inactive without ever publishing the intermediate loss.
     func refreshAccessibilityStatus() {
         let trusted = keyboardService.hasAccessibilityPermission
-        guard trusted != accessibilityTrusted else {
+        if trusted != accessibilityTrusted {
+            accessibilityTrusted = trusted
+        }
+        guard trusted else {
+            keyboardService.stop()
+            if preferences.keyboardControlEnabled, !safeMode,
+               keyboardStatus != "Needs Accessibility permission" {
+                keyboardStatus = "Needs Accessibility permission"
+            }
             return
         }
-        accessibilityTrusted = trusted
-        if trusted, preferences.keyboardControlEnabled, !safeMode {
-            keyboardStatus = keyboardService.start() ? "Active" : keyboardStatus
+        guard preferences.keyboardControlEnabled, !safeMode else {
+            return
+        }
+        let status = keyboardService.start() ? "Active" : "Needs Accessibility permission"
+        if keyboardStatus != status {
+            keyboardStatus = status
         }
     }
 
