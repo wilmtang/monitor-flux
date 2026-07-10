@@ -14,7 +14,9 @@ These hold across every feature below. Breaking one is a bug, not a trade-off.
   is a shared, system-wide resource; two writers fight (that's why only one of MonitorFlux /
   Night Shift / f.lux should drive it). The quit-path restore is gated on "this session
   actually wrote gamma" (`didStartSession`) so running as a pure DDC controller never stomps
-  another color app's tables.
+  another color app's tables. Restoring ends that session, so turning Warmth Off and later
+  quitting cannot reset tables another gamma app wrote in the meantime; re-enabling starts a
+  fresh clean-baseline session.
 - **Never fully black from the everyday controls.** The unified Brightness slider and the bare
   media keys bottom out at a readable floor (gamma 15%, AirPlay shade 85% cap). Full black is
   only reachable via the per-display Advanced **Allow dimming to black** opt-in.

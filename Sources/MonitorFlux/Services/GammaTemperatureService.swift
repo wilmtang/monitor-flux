@@ -138,6 +138,7 @@ final class GammaTemperatureService {
         baselines.removeAll()
         appliedAdjustments.removeAll()
         lastSetTables.removeAll()
+        didStartSession = false
     }
 
     /// Quit-path restore: reset the color tables only when this session actually wrote gamma.
