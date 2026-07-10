@@ -107,6 +107,11 @@ the three read as one system:
   `editableTemperature`). Gated by `isBrightnessScheduled`/`isContrastScheduled`, which mirror the
   planner's exclusions (never the macOS-managed built-in backlight; contrast is DDC-only).
 
+The planner records a target before its asynchronous DDC write finishes. If that write fails,
+the store clears only the failed control's recorded target so the next minute tick retries it;
+successful sibling controls remain suppressed. There is deliberately no immediate retry loop,
+which would flood a disconnected or failing I²C bus.
+
 ### Follow sunset (the f.lux model)
 
 Two inputs — **location** and **wake time** — derive everything; the 9-hour bedtime rule and

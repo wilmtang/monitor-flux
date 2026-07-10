@@ -134,6 +134,36 @@ final class ScheduledHardwareTests: XCTestCase {
         XCTAssertTrue(result.state.contrast.isEmpty)
     }
 
+    func testClearingFailedControlReEmitsOnlyThatControl() {
+        let both = context(scheduleBrightness: true, scheduleContrast: true)
+        let initial = ScheduledHardware.plan(
+            displays: [both], schedule: schedule, minuteOfDay: 12 * 60,
+            state: ScheduledHardware.State()
+        )
+
+        var brightnessFailed = initial.state
+        brightnessFailed.clear(displayID: 1, control: .brightness)
+        let brightnessRetry = ScheduledHardware.plan(
+            displays: [both], schedule: schedule, minuteOfDay: 12 * 60,
+            state: brightnessFailed
+        )
+        XCTAssertEqual(
+            brightnessRetry.writes,
+            [ScheduledHardware.Write(displayID: 1, control: .brightness, target: 90)]
+        )
+
+        var contrastFailed = initial.state
+        contrastFailed.clear(displayID: 1, control: .contrast)
+        let contrastRetry = ScheduledHardware.plan(
+            displays: [both], schedule: schedule, minuteOfDay: 12 * 60,
+            state: contrastFailed
+        )
+        XCTAssertEqual(
+            contrastRetry.writes,
+            [ScheduledHardware.Write(displayID: 1, control: .contrast, target: 75)]
+        )
+    }
+
     func testRetainOnlyDropsDisconnectedDisplays() {
         var state = ScheduledHardware.State()
         state.brightness = [1: 90, 2: 80]

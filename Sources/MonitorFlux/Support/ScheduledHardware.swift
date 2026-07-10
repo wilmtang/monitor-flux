@@ -51,6 +51,15 @@ enum ScheduledHardware {
             contrast[id] = nil
         }
 
+        mutating func clear(displayID: CGDirectDisplayID, control: Control) {
+            switch control {
+            case .brightness:
+                brightness[displayID] = nil
+            case .contrast:
+                contrast[displayID] = nil
+            }
+        }
+
         mutating func retainOnly(_ live: Set<CGDirectDisplayID>) {
             brightness = brightness.filter { live.contains($0.key) }
             contrast = contrast.filter { live.contains($0.key) }

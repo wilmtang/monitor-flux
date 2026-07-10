@@ -2289,7 +2289,14 @@ final class AppStore: ObservableObject {
                 MainActor.assumeIsolated {
                     if let failureMessage {
                         AppLog.ddc.error("\(label, privacy: .public) write failed on \(displayName, privacy: .public): \(failureMessage, privacy: .public)")
-                        self?.reportDDCStatus("\(label.capitalized) failed on \(displayName): \(failureMessage)", immediate: true)
+                        if let self {
+                            let control: ScheduledHardware.Control = switch kind {
+                            case .brightness: .brightness
+                            case .contrast: .contrast
+                            }
+                            self.scheduledHardwareState.clear(displayID: display.id, control: control)
+                            self.reportDDCStatus("\(label.capitalized) failed on \(displayName): \(failureMessage)", immediate: true)
+                        }
                     } else {
                         // Per-write success is drag-frequency, so .debug (streamable, not persisted).
                         AppLog.ddc.debug("Wrote \(label, privacy: .public) \(value)% to \(displayName, privacy: .public)")
