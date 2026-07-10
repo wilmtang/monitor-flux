@@ -1,210 +1,170 @@
-# Fix plan: warmth/brightness blinks a few times when the external screen wakes
+# Fix plan: warmth/brightness blinks when an external screen wakes
 
 Self-contained implementation plan. Read `CLAUDE.md` first and follow its rules throughout —
-especially: `GammaTemperatureService` is the ONLY gamma writer, repeated gamma writes cause
-visible flicker, no no-op `@Published` writes, logging policy (`.notice` for automatic
-screen-changing events, `.debug` for high-frequency detail), and all hardware writes gated on
-`safeMode`. This file is untracked scratch — delete it after the work lands.
+especially: `GammaTemperatureService` is the only gamma writer, repeated gamma writes can flicker,
+no no-op `@Published` writes, automatic screen-changing logs use `.notice`, drag-frequency detail
+uses `.debug`, and every hardware write remains gated by `safeMode`.
+
+This is a tracked planning artifact (commit `a347b34`), not untracked scratch. Delete it only with
+the eventual implementation, not as an unrelated cleanup.
 
 ## Symptom
 
-Waking the external screen makes its warmth AND brightness visibly blink several times before
-settling. Warmth and software dimming share the same gamma LUT (`GammaCompositor` composites
-`gammaBrightness` into the table), which is why they blink together.
+Waking an external screen makes warmth and brightness visibly blink several times before settling.
+Warmth and software dimming share one gamma LUT (`GammaCompositor` composites `gammaBrightness`
+into the same table), so repeated gamma writes can move both together.
 
-## Root causes (verified by code reading, 2026-07-09)
+## Findings from the current code (2026-07-09)
 
-The wake path was changed on 2026-07-08 in commit `60622b3` ("Fix gamma re-assert on wake…").
-That commit fixed a real bug (wake left the screen un-warmed + false conflict banner) but the
-implementation re-asserts too eagerly and fights WindowServer during the wake window:
+The wake path changed in commit `60622b3` ("Fix gamma re-assert on wake…"). That fixed a real bug:
+after macOS reset the LUT, an unchanged scheduled temperature was skipped by the gamma apply cache.
+The current implementation is nevertheless too eager:
 
-1. **Zero-delay wake re-assert ping-pong.** The `NSWorkspace.didWakeNotification` handler
-   (`Sources/MonitorFlux/Stores/AppStore.swift` ~line 248) immediately runs
-   `refreshGammaConflictState()` → `gammaService.invalidateApplied()` (unconditional!) →
-   `reconcileColor()` → `applyScheduledHardware()`. During wake, WindowServer re-applies the
-   display's ICC profile LUT — often multiple times (initial wake, link re-train, per
-   reconfiguration wave). Each OS stomp flashes the screen neutral/bright; each of our
-   dirty-read re-asserts (the wake handler now, plus `refreshDisplays()` per debounced
-   reconfiguration wave at ~line 543) flashes it back warm/dim. 2–3 waves ⇒ 4–6 visible
-   transitions. The unconditional `invalidateApplied()` also forces a rewrite even when the
-   LUT was untouched — a gratuitous repeated write, which CLAUDE.md itself warns can flicker.
+1. **The wake handler always forces an immediate gamma write.**
+   `NSWorkspace.didWakeNotification` immediately calls `refreshGammaConflictState()`, then
+   unconditionally calls `gammaService.invalidateApplied()`, `reconcileColor()`, and
+   `applyScheduledHardware()`. The unconditional invalidation guarantees a rewrite even when the
+   LUT survived sleep. Display-reconfiguration callbacks can later run `refreshDisplays()`, which
+   performs the same detection/reconcile chain again. Separate callback bursts more than 400 ms
+   apart therefore produce multiple MonitorFlux rewrites during one wake.
 
-2. **Write ordering doubles the gamma transitions when the schedule moved during sleep.**
-   In both the wake handler and `refreshDisplays()`, `reconcileColor()` runs BEFORE
-   `applyScheduledHardware()` (AppStore.swift ~lines 256–257 and ~570–572). If the machine
-   slept across a phase boundary (day→night), the first gamma write asserts warmth with the
-   STALE `gammaBrightness`; then `applyScheduledBrightness` (~line 2073) updates
-   `gammaBrightness` → `preferences.didSet` (`colorSignature` changed, ~line 38) → a SECOND
-   gamma write with the new dim level, with a DDC step in between. A visible staircase where
-   one write would do.
+   The exact number and timing of WindowServer/ICC resets is hardware behavior, not something code
+   reading proves. Treat the observed blink plus the guaranteed MonitorFlux writes as the evidence;
+   verify the resulting timing on real hardware rather than encoding an assumed number of OS
+   "stomps."
 
-3. **Polluted gamma baseline on display-ID churn (compounding warmth/dim).**
-   `GammaTemperatureService` keys `baselines`, `appliedAdjustments`, and `lastSetTables` by
-   `CGDirectDisplayID` (`Sources/MonitorFlux/Services/GammaTemperatureService.swift` ~lines
-   39–43). External displays commonly re-enumerate with a NEW id after sleep (DP link drop).
-   For an unseen id, `baselineTables(for:)` (~line 229) captures the CURRENT LUT as baseline —
-   which may be our own already-warmed+dimmed table (the wake handler may have just written it
-   via the old id, same panel). The next write then compounds warmth and dimming: an
-   over-warm/over-dark step that the OS stomps then fight, adding extra visible swings, and it
-   can settle visibly wrong until relaunch. Related leak: the old id lingers in
-   `appliedAdjustments`, so the next `apply()` puts it in `droppedIDs` → `restoreDisplays`
-   (~line 206) writes a stale baseline at an id that macOS may have reused.
+2. **Wake applies scheduled brightness after the first color reconcile.**
+   Both the wake handler and `refreshDisplays()` currently run `reconcileColor()` before
+   `applyScheduledHardware()`. If sleep crossed a scheduled phase boundary and the new unified
+   brightness has a software component, the first reconcile uses the old `gammaBrightness`.
+   `applyScheduledBrightness` then updates `gammaBrightness`, whose `preferences.didSet` causes
+   another gamma pass with the final value. For the common one-external-display case this is an
+   avoidable two-step transition.
 
-4. **False gamma-conflict banner on multi-stomp wakes (cosmetic).** `gammaConflictStreak`
-   declares a conflict at 2 consecutive dirty reads (AppStore.swift ~line 1848). A wake runs
-   detection several times in a burst (wake handler + each reconfiguration wave), so two dirty
-   reads with no foreign app is likely, and the banner flashes falsely.
+3. **The conflict banner and repeated DDC restores are consequences, not separate first fixes.**
+   Multiple dirty reads in separate refresh bursts can advance `gammaConflictStreak` to 2, and
+   every `refreshDisplays()` calls `restoreHardwareSettings()`. Coalescing the wake burst first may
+   remove both symptoms without more state.
 
-5. **(Conditional) Follow built-in brightness steps the external during wake.**
-   `builtInFollowOffsets` survives until `refreshDisplays()` clears it, and the ~2 s
-   `followTimer` keeps polling across the wake; a transient mid-wake backlight reading moves
-   the external via DDC, then corrects on the next poll. Only when the mode is on.
+## Important non-findings
 
-6. **(Minor) `restoreHardwareSettings()` re-sends saved DDC values on every reconfiguration
-   wave** (AppStore.swift ~line 626), interleaving with the monitor's own power-on restore.
-   Same value each time, so usually invisible — but some monitors visibly re-apply or pop
-   their OSD.
+Do not implement these from code reading alone:
 
-## Fixes to implement
+- **Do not re-key gamma baselines by `persistentID` yet.** A gamma baseline belongs to the current
+  ColorSync/profile state, not merely the panel's EDID. Reusing it across a display-ID/profile
+  change can overwrite a legitimate new profile. Re-keying `appliedAdjustments` alone can also
+  skip the first write to a new `CGDirectDisplayID` when the adjustment is unchanged.
+- **Never restore a baseline to a stale "last-known" display ID.** CoreGraphics documents that
+  calls using a removed ID fail, but the numeric ID can later identify a different display. Only
+  restore when the current `DisplayInfo` set proves that the same persistent identity owns the ID;
+  otherwise prune the stale entry without writing.
+- **Do not add a persistent `restoredHardwareKeys` set.** A monitor can reset its DDC state on wake
+  without disappearing from the final display list, so such a set can suppress a required restore.
+- **Do not clear follow-brightness offsets immediately on wake.** The first built-in backlight read
+  can be transient; adopting against it can create a wrong offset and a later jump. If telemetry
+  proves the follow timer writes during wake, suspend the timer until the settled refresh instead.
 
-Priority order. A and B are the core fix; C is a real correctness fix; D is a small cosmetic
-guard; E and F are optional hardening — implement them if the diff stays clean, otherwise note
-them in the handoff.
+## Minimal fix
 
-### A. Coalesce the wake re-assert into the debounced refresh path (no immediate write)
+### A. Replace the immediate wake write with one wake-aware debounced refresh
 
-In `AppStore.init`'s `didWakeNotification` handler:
+Route wake and display-reconfiguration events through the existing generation-counter debounce,
+with one extra invariant: **a normal 400 ms callback must never shorten a pending wake settle
+delay**.
 
-- Stop writing immediately. Replace the body's `refreshGammaConflictState()` /
-  `invalidateApplied()` / `reconcileColor()` / `applyScheduledHardware()` sequence with a
-  deferred, coalesced refresh through the SAME generation-counter debounce that display
-  reconfiguration uses (`handleDisplayReconfiguration()`, AppStore.swift ~line 348).
-- Give `handleDisplayReconfiguration` a settle-delay parameter, e.g.
-  `func handleDisplayReconfiguration(settleDelay: Duration = .milliseconds(400))`, keeping the
-  C-callback call site unchanged. The wake handler calls it with ~1.5–2 s. The shared
-  `displayRefreshGeneration` counter means wake + the reconfiguration callbacks that usually
-  follow collapse into one `refreshDisplays()` after the layout settles. A wake that produces
-  NO reconfiguration callbacks (the case commit 60622b3 worried about) is still covered by the
-  wake-scheduled refresh itself.
-- Keep in the wake handler (they're cheap and read-only): the `.notice` log line,
-  `refreshNativeBrightness()`, and add `builtInFollowOffsets = [:]` (fix 5 — the next follow
-  poll then adopts followers where they sit instead of moving them off a transient reading).
-- REMOVE the unconditional `gammaService.invalidateApplied()`. The dirty-read invalidate
-  inside `refreshGammaConflictState()` (~line 1846), which `refreshDisplays()` already calls
-  before reconciling, covers the "LUT was reset" case. Clean LUT ⇒ zero gamma writes on wake.
-- Add ONE trailing settle re-check at the end of `refreshDisplays()`: a generation-guarded
-  task that sleeps ~2 s and, if no newer refresh superseded it, runs
-  `refreshGammaConflictState()` + `reconcileColor()`. This catches a final OS stomp that lands
-  after the last reconfiguration wave (today that's left un-warmed until the 60 s timer). One
-  shot only — do NOT loop or retry.
+- Rename/generalize `handleDisplayReconfiguration()` only if that makes the call sites clearer;
+  do not introduce a scheduler type. Keep the existing `displayRefreshGeneration` guard.
+- Add the smallest wake-pending state needed so `didWakeNotification` schedules a refresh after
+  about 1.5 seconds of quiet. While that wake refresh is pending, every subsequent display
+  callback must restart the same 1.5-second quiet period, not replace it with the normal 400 ms
+  delay. With no reconfiguration callbacks, the wake's own task still runs.
+- When the generation-guarded task finally wins, clear the wake-pending state and call
+  `refreshDisplays()` once.
+- In the wake handler keep the `.notice` log and `refreshNativeBrightness()`; remove the immediate
+  `refreshGammaConflictState()` / unconditional `invalidateApplied()` / `reconcileColor()` /
+  `applyScheduledHardware()` sequence.
+- If no conflict is currently detected, reset `gammaConflictStreak` to 0 when wake begins. This
+  prevents a stale one-shot dirty read from before sleep plus the wake's first dirty read from
+  becoming a false two-read conflict; preserve the streak when a real conflict is already active.
+- Do not add a trailing retry in the first implementation. `refreshDisplays()` already detects a
+  dirty LUT before reconciling, and that dirty read invalidates the apply cache. A clean read means
+  no forced gamma rewrite. Add one wake-specific trailing check only if real-hardware telemetry
+  shows a late OS reset after the quiet-window refresh.
 
-Expected behavior after A: at most one visible transition per genuine OS LUT stomp, and none
-when the LUT survived sleep. The screen may stay at the OS state for up to ~2 s after wake
-before the single re-assert — that's intended.
+Expected result: one MonitorFlux refresh/reconcile per wake/reconfiguration burst, including a wake
+that emits no display callbacks. The screen can remain at the OS-restored appearance for roughly
+1.5 seconds before MonitorFlux reapplies the final state; that tradeoff is intentional.
 
-### B. Reorder: scheduled hardware before color reconcile
+### B. Apply scheduled hardware before the explicit color reconcile
 
-In `refreshDisplays()` move `applyScheduledHardware()` to run BEFORE the
-`reconcileColor()` call, keeping `refreshGammaConflictState()` first (it must read the LUT
-before any write). Target order:
+In `refreshDisplays()`, keep gamma conflict detection first because it must read the LUT before any
+write. Move `applyScheduledHardware()` before the explicit `reconcileColor()`:
 
-```
+```swift
 refreshGammaConflictState()
-seedMissingDisplayPreferences() / reconcileBuiltInDimming()   // unchanged
-applyScheduledHardware()        // may update gammaBrightness → didSet writes the FINAL table once
-if !seeded, !reconciledBuiltInDim { reconcileColor() }        // cache-hit no-op when didSet already wrote
+let seeded = seedMissingDisplayPreferences()
+let reconciledBuiltInDim = reconcileBuiltInDimming()
+applyScheduledHardware() // a gammaBrightness change reconciles through preferences.didSet
+if !seeded, !reconciledBuiltInDim {
+    reconcileColor()      // cache hit/no-op if the schedule already wrote the final table
+}
 restoreHardwareSettings()
 reconcileShades()
 ```
 
-Why this is safe: `applyScheduledBrightness`'s `updateDisplayPreferences` skips equal values
-(no-op when nothing changed), and when it does change `gammaBrightness` the `didSet` reconcile
-writes the final composited table exactly once (the apply-cache was invalidated by the dirty
-read when relevant); the explicit `reconcileColor()` afterwards then skips via
-`appliedAdjustments` equality. The wake path gets this for free once A routes it through
-`refreshDisplays()`.
+`updateDisplayPreferences` already skips equal values. When one scheduled display's software
+brightness changed, its `didSet` gamma pass uses the final scheduled value; the following explicit
+reconcile skips the equal adjustment. Do not add batching for multiple scheduled software-dim
+displays unless telemetry shows their separate `didSet` passes are a real wake flicker source.
 
-### C. Key GammaTemperatureService state by persistent display identity, not CGDirectDisplayID
+## Conditional follow-ups — only after measurement
 
-Goal: a display that re-enumerates with a new id after sleep must reuse its existing baseline
-instead of capturing the current (possibly already-adjusted) LUT — eliminating the compounding
-bug — and dirty detection must keep working across the churn.
+1. **Late LUT reset:** if the settled refresh is still followed by a dirty LUT, add one
+   wake-specific, generation-guarded recheck. It must not be scheduled by launch/manual refreshes,
+   must not loop, and wake-settle dirty reads must not advance `gammaConflictStreak` into a false
+   banner.
+2. **Display-ID churn:** first add a temporary `.debug` observation of
+   `(persistentID, CGDirectDisplayID)` across wake and reproduce the churn. If gamma cache work is
+   then necessary, the cache must track both identity and current ID, force validation on ID change,
+   respect a changed ColorSync baseline, and never write to an unverified stale ID.
+3. **Gamma service tests:** if table I/O is injected, inject all three side effects — table read,
+   table write, and global `CGDisplayRestoreColorSyncSettings()` — and make the table value visible
+   to `@testable` tests. Injecting only read/write still touches real display hardware when
+   `ensureSessionStarted()` runs.
+4. **Follow built-in brightness:** if a follow write appears during the settle window, invalidate
+   the follow timer on wake and restart it after the settled refresh; do not merely clear offsets
+   against a transient reading.
+5. **DDC restore:** after A, there should be one restore pass per settled burst. If one restore is
+   still visibly harmful, measure the monitor's actual reset behavior before adding cache state.
 
-- Re-key `baselines`, `appliedAdjustments`, and `lastSetTables` by `DisplayInfo.persistentID`
-  (the EDID-stable string; see `Support/DisplayIdentity.swift`). `apply(displays:preferences:)`
-  and `detectsForeignGammaChange(displays:)` already receive full `DisplayInfo`, so resolve
-  id ↔ persistentID per call. `GammaPlan.adjustments` stays id-keyed — map through the passed
-  displays.
-- Maintain `lastKnownID: [String: CGDirectDisplayID]`, updated on each apply, so
-  `restoreDisplays` for dropped entries can attempt the restore at the last-known id (a write
-  to a dead id fails harmlessly; that's fine). `restore()` clears everything as today.
-- Make the table I/O injectable for tests: init-injected closures
-  `readTables: (CGDirectDisplayID) -> GammaTables?` and
-  `writeTables: (GammaTables, CGDirectDisplayID) throws -> Void`, defaulting to the existing
-  CoreGraphics implementations. No behavior change in production.
-- Keep `invalidateApplied()` semantics: clears only the applied-adjustment cache, keeps
-  baselines + lastSetTables (the doc comment at ~line 124 explains why — preserve it).
+## Tests and verification
 
-### D. Don't count conflict-streak dirty reads during the wake/reconfiguration settle window
+This change is primarily ordering and real-hardware timing; do not manufacture a new abstraction
+just to unit-test `Task.sleep`. Add a focused test only if implementation extracts non-trivial pure
+decision logic. Existing pure behavior tests must remain green.
 
-Add a `displaySettlingUntil: Date` on `AppStore`, set to `now + ~10 s` in the wake handler and
-in `handleDisplayReconfiguration()`. In `refreshGammaConflictState()`, while inside the
-window: still do the dirty-read `invalidateApplied()` + rewrite handling, but cap
-`gammaConflictStreak` at 1 so the banner can't be declared from wake noise alone. A persistent
-foreign writer still trips it within ~2 timer cycles after the window — same steady-state as
-today. Keep the edge-only `.notice` logs.
+Before handoff:
 
-### E. (Optional) Restore saved DDC values once per connect, not per wave
+1. Run `swift test`.
+2. Run `./script/build_and_run.sh --verify` (safe mode; confirms launch/UI without hardware writes).
+3. Perform the hardware regression check outside safe mode, coordinated so it does not surprise the
+   user:
+   - `pkill -x MonitorFlux || true`
+   - `./script/build_and_run.sh --telemetry`
+   - Sleep displays with `pmset displaysleepnow`, wait about 15 seconds, then wake them.
+   - Repeat at least three times. Expect one wake notice, at most one MonitorFlux "Applied gamma"
+     burst after the final callback burst, no false conflict edge, and visually no repeated
+     warm/dim ping-pong.
+   - Repeat across a scheduled brightness phase boundary if practical. For one software-dim
+     display, the new warmth/brightness state should arrive in one final gamma pass.
+4. If a late reset, follow write, ID change, or repeated DDC restore is actually observed, implement
+   only the matching conditional follow-up and record the evidence in the handoff.
+5. Quit the development instance with `pkill -x MonitorFlux`.
 
-Track `restoredHardwareKeys: Set<String>` (persistentID) in `AppStore`; `restoreHardwareSettings()`
-skips displays already in the set and inserts after sending; remove keys for displays that
-disappeared (alongside `pruneDisplayKeyedState()`). Launch and genuine reconnects still
-restore; repeated waves of the same connect don't re-send.
+## Handoff
 
-### F. (Optional, skip if messy) Nothing else
-
-Do not touch: the built-in backlight rules (never driven automatically), the 45 ms DDC drag
-throttle, mirror-set dedup, AirPlay/shade paths, or the schedule-preview machinery. They're
-uninvolved.
-
-## Tests
-
-- New `GammaTemperatureService` tests using the injected table I/O (pure, no real gamma —
-  required by CLAUDE.md):
-  - ID churn keeps the baseline: apply for (`idA`, `persistent-1`) with a warm adjustment;
-    re-apply for (`idB`, `persistent-1`) after `invalidateApplied()`; assert the write to `idB`
-    was scaled from the ORIGINAL baseline (no compounding) and that no fresh baseline was read
-    from the current table.
-  - Dirty detection across churn: after the re-apply at `idB`, a foreign table at `idB` is
-    detected; our own table is not.
-  - Dropped-display restore goes to the last-known id and prunes state.
-- Existing tests must stay green (`GammaPlanTests`, `DragReorderTests`, etc.). If the
-  reorder in B or the debounce change in A breaks an assumption in a test, fix the test only
-  if its assumption is what this plan deliberately changes.
-
-## Verification (required before handoff)
-
-1. `swift test`
-2. `./script/build_and_run.sh --verify`
-3. Real-hardware wake check (gamma writes can't be verified in safe mode — coordinate so you
-   don't flicker the screen while the user is working):
-   - `pkill -x MonitorFlux || true`, then `./script/build_and_run.sh --telemetry`
-   - Sleep the displays (`pmset displaysleepnow`), wait ~15 s, wake by key press.
-   - In the telemetry stream expect: one "Woke from sleep" notice, at most one
-     "Applied gamma…" burst per genuine LUT stomp (typically exactly one), NO
-     "Foreign gamma change detected" edge, and visually at most one warm/dim transition on the
-     external panel.
-   - Repeat once across a schedule phase boundary if practical (or fake it by moving the
-     bedtime anchor) to confirm the B staircase is gone: warmth and the new dim level arrive
-     in a single gamma write.
-4. Per repo memory/rules: quit the dev instance when done (`pkill -x MonitorFlux`).
-
-## Handoff notes
-
-- If you cannot run `swift test` or the verify script, say exactly why in your handoff.
-- Do not commit unless the user asks; if asked, the user prefers a single commit for the whole
-  working tree with a prose message and no footer, direct to `main`.
-- `CLAUDE.md` is a symlink to `AGENTS.md` — if any inline doc there needs updating (the wake
-  behavior isn't currently documented in it), edit `AGENTS.md`. Leave `docs/*.md` alone unless
-  the user asks (they curate those by hand).
-- Delete this plan file once the work is done.
+- State exactly which verification commands ran and their results; do not claim a hardware check
+  was performed if it was not.
+- Do not commit unless asked.
+- `CLAUDE.md` is a symlink to `AGENTS.md`; do not edit either unless the implemented behavior needs
+  a durable project rule.
