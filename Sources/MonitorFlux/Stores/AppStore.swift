@@ -1848,12 +1848,12 @@ final class AppStore: ObservableObject {
             gammaConflictDetected = false
             gammaConflictApps = []
         }
-        let summary = gammaService.apply(
+        let message = gammaService.apply(
             displays: displays,
             preferences: preferences
         )
-        if colorMessage != summary.message {
-            colorMessage = summary.message
+        if colorMessage != message {
+            colorMessage = message
         }
     }
 

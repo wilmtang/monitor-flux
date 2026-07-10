@@ -5,12 +5,6 @@
 import CoreGraphics
 import Foundation
 
-struct GammaApplySummary: Equatable {
-    let appliedCount: Int
-    let failedCount: Int
-    let message: String
-}
-
 enum GammaTemperatureError: LocalizedError {
     case emptyTable
     case coreGraphicsFailure(Int32)
@@ -44,20 +38,16 @@ final class GammaTemperatureService {
     private var didStartSession = false
     private let tableSize = 256
 
-    func apply(displays: [DisplayInfo], preferences: AppPreferences) -> GammaApplySummary {
+    func apply(displays: [DisplayInfo], preferences: AppPreferences) -> String {
         // The plan is the single truth for what (if anything) gets written: software dimming
         // applies even when warmth's mode is Off, so don't short-circuit on the mode —
         // an all-neutral plan restores instead.
         let adjustmentsByDisplay = GammaPlan.adjustments(displays: displays, preferences: preferences)
         if adjustmentsByDisplay.isEmpty {
             restoreIfNeeded()
-            return GammaApplySummary(
-                appliedCount: 0,
-                failedCount: 0,
-                // User-facing (the plain "Warmth" status row) — no "gamma" jargon here; that
-                // word stays in the ⓘ tooltip and the advanced Diagnostics pane.
-                message: preferences.colorMode != .off ? "No warming now" : "Off"
-            )
+            // User-facing (the plain "Warmth" status row) — no "gamma" jargon here; that
+            // word stays in the ⓘ tooltip and the advanced Diagnostics pane.
+            return preferences.colorMode != .off ? "No warming now" : "Off"
         }
 
         ensureSessionStarted()
@@ -96,29 +86,17 @@ final class GammaTemperatureService {
 
         if failed == 0 {
             if applied == 0, skipped > 0 {
-                return GammaApplySummary(
-                    appliedCount: 0,
-                    failedCount: 0,
-                    message: "Applied to \(skipped) display\(skipped == 1 ? "" : "s")"
-                )
+                return "Applied to \(skipped) display\(skipped == 1 ? "" : "s")"
             }
             // Applies happen at drag frequency (each distinct table), so .debug — not persisted.
             if applied > 0 {
                 AppLog.gamma.debug("Applied gamma to \(applied) display(s)")
             }
-            return GammaApplySummary(
-                appliedCount: applied,
-                failedCount: failed,
-                message: "Applied to \(applied) display\(applied == 1 ? "" : "s")"
-            )
+            return "Applied to \(applied) display\(applied == 1 ? "" : "s")"
         }
 
         AppLog.gamma.error("Gamma apply: \(applied) applied, \(failed) failed")
-        return GammaApplySummary(
-            appliedCount: applied,
-            failedCount: failed,
-            message: "Applied to \(applied), failed \(failed)"
-        )
+        return "Applied to \(applied), failed \(failed)"
     }
 
     /// Forget the per-display "already applied this adjustment" cache so the next `apply` writes
