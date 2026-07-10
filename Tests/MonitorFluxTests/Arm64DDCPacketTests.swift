@@ -107,4 +107,34 @@ final class Arm64DDCPacketTests: XCTestCase {
         let capable = Arm64DDCBackend.capableDisplayIDs(scores: [(1, 3), (2, 0), (3, 5)], serviceCount: 2)
         XCTAssertEqual(capable, [1, 3])
     }
+
+    func testDDCTransportEligibilityExcludesBuiltInAndVirtualDisplays() {
+        XCTAssertTrue(makeDisplay(id: 1).isDDCTransportEligible)
+        XCTAssertFalse(makeDisplay(id: 2, isBuiltIn: true).isDDCTransportEligible)
+        XCTAssertFalse(makeDisplay(id: 3, isVirtual: true).isDDCTransportEligible)
+    }
+
+    func testVirtualDisplayDoesNotInflateCapabilityAllocation() {
+        let displays = [makeDisplay(id: 1), makeDisplay(id: 2, isVirtual: true)]
+        let scores = displays
+            .filter(\.isDDCTransportEligible)
+            .map { (id: $0.id, score: 0) }
+
+        XCTAssertEqual(Arm64DDCBackend.capableDisplayIDs(scores: scores, serviceCount: 1), [1])
+    }
+
+    private func makeDisplay(
+        id: CGDirectDisplayID,
+        isBuiltIn: Bool = false,
+        isVirtual: Bool = false
+    ) -> DisplayInfo {
+        DisplayInfo(
+            id: id,
+            name: "Display \(id)",
+            frameDescription: "",
+            isBuiltIn: isBuiltIn,
+            isOnline: true,
+            isVirtual: isVirtual
+        )
+    }
 }

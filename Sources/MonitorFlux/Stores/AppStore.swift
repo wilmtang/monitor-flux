@@ -1615,7 +1615,7 @@ final class AppStore: ObservableObject {
     }
 
     func canUseDDC(for display: DisplayInfo) -> Bool {
-        guard !display.isBuiltIn else {
+        guard display.isDDCTransportEligible else {
             return false
         }
         // Use the per-display probe (set on connect); assume capable until the first refresh.

@@ -66,7 +66,7 @@ struct HardwareDDCBackend: Sendable {
         #if arch(arm64)
         return Arm64DDCBackend.capableDisplays(among: displays)
         #else
-        return Set(displays.filter { !$0.isBuiltIn }.map(\.id))
+        return Set(displays.filter(\.isDDCTransportEligible).map(\.id))
         #endif
     }
 

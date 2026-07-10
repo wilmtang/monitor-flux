@@ -141,7 +141,7 @@ struct Arm64DDCBackend: Sendable {
     /// neighbour's service the way the write path does (which is why a per-display probe
     /// over-reports). Walks the IORegistry once; sends nothing to any monitor.
     static func capableDisplays(among displays: [DisplayInfo]) -> Set<CGDirectDisplayID> {
-        let externals = displays.filter { !$0.isBuiltIn }
+        let externals = displays.filter(\.isDDCTransportEligible)
         guard !externals.isEmpty else {
             return []
         }

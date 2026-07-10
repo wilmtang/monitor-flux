@@ -54,6 +54,12 @@ struct DisplayInfo: Identifiable, Hashable, Sendable {
         mirrorMaster ?? id
     }
 
+    /// DDC is a physical external-display transport. Capability probing decides whether an
+    /// eligible display actually has a service.
+    var isDDCTransportEligible: Bool {
+        !isBuiltIn && !isVirtual
+    }
+
     var kindLabel: String {
         isBuiltIn ? "Built-in" : "External"
     }

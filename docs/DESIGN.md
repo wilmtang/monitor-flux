@@ -36,6 +36,10 @@ These hold across every feature below. Breaking one is a bug, not a trade-off.
 - **Software dimming is independent of warmth.** Dimming the image (gamma brightness) is plain
   dimming, not a color change, so it keeps working when warmth is Off. Warmth's mode gates only
   the color temperature.
+- **DDC targets physical external displays only.** Built-in panels use the native backlight API,
+  and AirPlay/virtual displays use a shade overlay; neither participates in DDC capability
+  allocation or writes. This prevents a virtual display from borrowing a physical monitor's
+  IOAVService on Apple Silicon.
 
 ## Warmth and the color schedule
 
