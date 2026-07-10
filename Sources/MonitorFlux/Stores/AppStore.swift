@@ -151,6 +151,7 @@ final class AppStore: ObservableObject {
     private var pendingPreferencesSave: DispatchWorkItem?
     private var pendingDDCMessage: DispatchWorkItem?
     private var displayRefreshGeneration = 0
+    private var locationMismatchGeneration = 0
     /// While a screen wake is settling, display callbacks extend the wake quiet period instead
     /// of replacing it with the shorter hotplug debounce.
     private var wakeRefreshPending = false
@@ -490,6 +491,8 @@ final class AppStore: ObservableObject {
     /// Re-evaluate the traveling hint (system clock zone vs the schedule's place zone).
     /// Only Follow-sunset consumes the location, so every other mode clears the hint.
     func refreshLocationMismatch() {
+        locationMismatchGeneration += 1
+        let generation = locationMismatchGeneration
         guard preferences.scheduleSource == .solar,
               let latitude = Double(preferences.latitude),
               let longitude = Double(preferences.longitude)
@@ -500,7 +503,12 @@ final class AppStore: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let index = await self.loadedPlaceIndex()
-            // Re-read after the await: the mode or dismissal may have changed meanwhile.
+            // A newer place/mode/zone refresh owns the result, even if this older lookup
+            // happens to finish last.
+            guard self.locationMismatchGeneration == generation else {
+                return
+            }
+            // Re-read after the await: the mode may have changed without starting a refresh.
             guard self.preferences.scheduleSource == .solar else {
                 self.setLocationMismatch(nil)
                 return

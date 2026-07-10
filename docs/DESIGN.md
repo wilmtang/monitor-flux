@@ -215,7 +215,9 @@ online" row appended under the local suggestions.
 
 The mismatch predicate is pure (`LocationStaleness.check(placeZoneID:systemZone:now:dismissedKey:)`)
 and tested: equal offsets with different ids, the DST asymmetry cases, dismissal re-arming. The
-Schedule pane's location states are verifiable offline via the `MONITORFLUX_LOCATION_DEMO=<query>`
+async place-zone lookup is generation-guarded, so a slow result for an older place, mode, or
+timezone refresh cannot overwrite a newer warning state. The Schedule pane's location states are
+verifiable offline via the `MONITORFLUX_LOCATION_DEMO=<query>`
 (pins a searched place — `tokyo` trips the hint on a Pacific-time Mac) and
 `MONITORFLUX_LOCATION_QUERY=<prefix>` (opens the row mid-search) launch hooks.
 
