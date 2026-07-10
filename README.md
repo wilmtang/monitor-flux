@@ -127,7 +127,7 @@ MonitorFlux has two separate control paths:
   displays ignore gamma, so their software dimming uses a black overlay window instead.)
 - **Hardware (DDC) path:** brightness and contrast commands sent to an external monitor's
   firmware over DDC/CI, using native macOS APIs first, with the `ddcctl` command-line tool
-  only as an optional fallback if it already exists on the machine.
+  only as an optional Intel fallback if it already exists on the machine.
 
 Warmth can be turned off entirely. When it is, MonitorFlux restores the system color
 tables and stops writing gamma. The hardware controls keep working either way.

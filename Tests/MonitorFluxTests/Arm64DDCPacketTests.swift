@@ -6,6 +6,15 @@ import XCTest
 @testable import MonitorFlux
 
 final class Arm64DDCPacketTests: XCTestCase {
+    #if arch(arm64)
+    func testHardwareBackendDoesNotAdvertiseIntelFallback() {
+        let status = HardwareDDCBackend().status
+
+        XCTAssertEqual(status.toolName, "Native IOAVService")
+        XCTAssertNil(status.toolPath)
+    }
+    #endif
+
     func testBrightnessPacketLayoutAndChecksum() {
         // Layout: [0x80 | (len+1), len, feature, valueHi, valueLo, checksum] with len = 3.
         let packet = Arm64DDCBackend.packet(feature: 0x10, value: 50)

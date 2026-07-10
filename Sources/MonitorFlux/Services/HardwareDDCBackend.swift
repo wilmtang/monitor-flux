@@ -5,6 +5,7 @@
 import CoreGraphics
 import Foundation
 
+#if !arch(arm64)
 enum HardwareDDCError: LocalizedError, Sendable {
     case nativeAndFallbackFailed(native: String, fallback: String)
 
@@ -15,28 +16,29 @@ enum HardwareDDCError: LocalizedError, Sendable {
         }
     }
 }
+#endif
 
 struct HardwareDDCBackend: Sendable {
     #if arch(arm64)
     private let arm64 = Arm64DDCBackend()
     #else
     private let native = NativeDDCBackend()
-    #endif
     private let commandLine = DDCCommandLineBackend()
-
-    private var primaryName: String {
-        #if arch(arm64)
-        "Native IOAVService"
-        #else
-        "Native IOKit"
-        #endif
-    }
+    #endif
 
     var status: DDCBackendStatus {
+        #if arch(arm64)
+        return DDCBackendStatus(
+            isAvailable: true,
+            toolName: "Native IOAVService",
+            toolPath: nil,
+            message: "Native DDC"
+        )
+        #else
         if commandLine.status.isAvailable {
             return DDCBackendStatus(
                 isAvailable: true,
-                toolName: "\(primaryName) + \(commandLine.status.toolName)",
+                toolName: "Native IOKit + \(commandLine.status.toolName)",
                 toolPath: commandLine.status.toolPath,
                 message: "Native DDC, fallback \(commandLine.status.toolName)"
             )
@@ -44,10 +46,11 @@ struct HardwareDDCBackend: Sendable {
 
         return DDCBackendStatus(
             isAvailable: true,
-            toolName: primaryName,
+            toolName: "Native IOKit",
             toolPath: nil,
             message: "Native DDC"
         )
+        #endif
     }
 
     /// Drop any cached per-display I2C service handles. Called when the display layout
@@ -71,17 +74,25 @@ struct HardwareDDCBackend: Sendable {
     }
 
     func setBrightness(_ value: Int, display: DisplayInfo, fallbackIndex: Int) throws {
+        #if arch(arm64)
+        try arm64.setBrightness(value, display: display)
+        #else
         try perform(
-            primary: { try primarySetBrightness(value, display: display) },
+            primary: { try native.setBrightness(value, display: display) },
             fallback: { try commandLine.setBrightness(value, displayIndex: fallbackIndex) }
         )
+        #endif
     }
 
     func setContrast(_ value: Int, display: DisplayInfo, fallbackIndex: Int) throws {
+        #if arch(arm64)
+        try arm64.setContrast(value, display: display)
+        #else
         try perform(
-            primary: { try primarySetContrast(value, display: display) },
+            primary: { try native.setContrast(value, display: display) },
             fallback: { try commandLine.setContrast(value, displayIndex: fallbackIndex) }
         )
+        #endif
     }
 
     /// Volume has no `ddcctl` fallback (Intel-only tool, and volume support varies),
@@ -94,24 +105,9 @@ struct HardwareDDCBackend: Sendable {
         #endif
     }
 
-    private func primarySetBrightness(_ value: Int, display: DisplayInfo) throws {
-        #if arch(arm64)
-        try arm64.setBrightness(value, display: display)
-        #else
-        try native.setBrightness(value, display: display)
-        #endif
-    }
-
-    private func primarySetContrast(_ value: Int, display: DisplayInfo) throws {
-        #if arch(arm64)
-        try arm64.setContrast(value, display: display)
-        #else
-        try native.setContrast(value, display: display)
-        #endif
-    }
-
     /// Try the native (architecture-specific) backend, then `ddcctl` if it exists,
     /// reporting both errors when neither works.
+    #if !arch(arm64)
     private func perform(primary: () throws -> Void, fallback: () throws -> Void) throws {
         do {
             try primary()
@@ -129,4 +125,5 @@ struct HardwareDDCBackend: Sendable {
             }
         }
     }
+    #endif
 }
