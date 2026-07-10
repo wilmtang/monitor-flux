@@ -5,8 +5,8 @@ especially: `GammaTemperatureService` is the only gamma writer, repeated gamma w
 no no-op `@Published` writes, automatic screen-changing logs use `.notice`, drag-frequency detail
 uses `.debug`, and every hardware write remains gated by `safeMode`.
 
-This is a tracked planning artifact (commit `a347b34`), not untracked scratch. Delete it only with
-the eventual implementation, not as an unrelated cleanup.
+This is a tracked planning artifact (committed in `a347b34`, revised in `db030ad`), not untracked
+scratch. Delete it only with the eventual implementation, not as an unrelated cleanup.
 
 ## Symptom
 
@@ -26,14 +26,24 @@ The current implementation is nevertheless too eager:
    `applyScheduledHardware()`. The unconditional invalidation guarantees a rewrite even when the
    LUT survived sleep. Display-reconfiguration callbacks can later run `refreshDisplays()`, which
    performs the same detection/reconcile chain again. Separate callback bursts more than 400 ms
-   apart therefore produce multiple MonitorFlux rewrites during one wake.
+   apart can therefore produce multiple MonitorFlux rewrites during one wake (a burst's refresh
+   rewrites when its LUT read comes back dirty — i.e. when the OS reset the table between bursts).
 
    The exact number and timing of WindowServer/ICC resets is hardware behavior, not something code
    reading proves. Treat the observed blink plus the guaranteed MonitorFlux writes as the evidence;
    verify the resulting timing on real hardware rather than encoding an assumed number of OS
    "stomps."
 
-2. **Wake applies scheduled brightness after the first color reconcile.**
+2. **`didWakeNotification` covers only system wake — a display-only wake never reaches the wake
+   handler.** `NSWorkspace.didWakeNotification` fires when the *machine* wakes from sleep. The far
+   more frequent display-only wake (idle display sleep, `pmset displaysleepnow`) fires no such
+   notification — the app only sees it as CGDisplay reconfiguration callbacks, if the panel
+   re-enumerates at all. The symptom names a *screen* waking, so the wake handler may not even be
+   involved in the common reproduction; the repeated-refresh path in finding 1 is. Any wake-settle
+   state added by the fix must therefore also arm on `NSWorkspace.screensDidWakeNotification`
+   (which fires for both display-only and system wake), not on `didWakeNotification` alone.
+
+3. **Wake applies scheduled brightness after the first color reconcile.**
    Both the wake handler and `refreshDisplays()` currently run `reconcileColor()` before
    `applyScheduledHardware()`. If sleep crossed a scheduled phase boundary and the new unified
    brightness has a software component, the first reconcile uses the old `gammaBrightness`.
@@ -41,7 +51,7 @@ The current implementation is nevertheless too eager:
    another gamma pass with the final value. For the common one-external-display case this is an
    avoidable two-step transition.
 
-3. **The conflict banner and repeated DDC restores are consequences, not separate first fixes.**
+4. **The conflict banner and repeated DDC restores are consequences, not separate first fixes.**
    Multiple dirty reads in separate refresh bursts can advance `gammaConflictStreak` to 2, and
    every `refreshDisplays()` calls `restoreHardwareSettings()`. Coalescing the wake burst first may
    remove both symptoms without more state.
@@ -74,22 +84,29 @@ delay**.
 
 - Rename/generalize `handleDisplayReconfiguration()` only if that makes the call sites clearer;
   do not introduce a scheduler type. Keep the existing `displayRefreshGeneration` guard.
-- Add the smallest wake-pending state needed so `didWakeNotification` schedules a refresh after
-  about 1.5 seconds of quiet. While that wake refresh is pending, every subsequent display
+- Add the smallest wake-pending state needed so a wake event schedules a refresh after about
+  1.5 seconds of quiet. Arm it from **both** `didWakeNotification` (system wake) and
+  `screensDidWakeNotification` (display-only wake — finding 2; it also fires on system wake, and
+  arming twice is idempotent). While that wake refresh is pending, every subsequent display
   callback must restart the same 1.5-second quiet period, not replace it with the normal 400 ms
   delay. With no reconfiguration callbacks, the wake's own task still runs.
 - When the generation-guarded task finally wins, clear the wake-pending state and call
   `refreshDisplays()` once.
-- In the wake handler keep the `.notice` log and `refreshNativeBrightness()`; remove the immediate
-  `refreshGammaConflictState()` / unconditional `invalidateApplied()` / `reconcileColor()` /
-  `applyScheduledHardware()` sequence.
-- If no conflict is currently detected, reset `gammaConflictStreak` to 0 when wake begins. This
-  prevents a stale one-shot dirty read from before sleep plus the wake's first dirty read from
-  becoming a false two-read conflict; preserve the streak when a real conflict is already active.
+- In the system-wake handler keep the `.notice` log and `refreshNativeBrightness()`; remove the
+  immediate `refreshGammaConflictState()` / unconditional `invalidateApplied()` /
+  `reconcileColor()` / `applyScheduledHardware()` sequence. The screens-wake handler only arms
+  the quiet period (log at `.debug` if at all — display wakes happen many times a day, and
+  arming changes nothing on screen by itself).
+- If no conflict is currently detected, reset `gammaConflictStreak` to 0 when either wake event
+  arms the quiet period. This prevents a stale one-shot dirty read from before sleep plus the
+  wake's first dirty read from becoming a false two-read conflict; preserve the streak when a
+  real conflict is already active.
 - Do not add a trailing retry in the first implementation. `refreshDisplays()` already detects a
   dirty LUT before reconciling, and that dirty read invalidates the apply cache. A clean read means
-  no forced gamma rewrite. Add one wake-specific trailing check only if real-hardware telemetry
-  shows a late OS reset after the quiet-window refresh.
+  no forced gamma rewrite. If the OS resets the LUT *after* the settled refresh, the 60 s timer's
+  next tick detects the dirty read and rewrites — so the cost of omitting the retry is bounded at
+  one minute of un-warmed screen, not a regression to the pre-`60622b3` bug. Add one wake-specific
+  trailing check only if real-hardware telemetry shows such late resets actually happen.
 
 Expected result: one MonitorFlux refresh/reconcile per wake/reconfiguration burst, including a wake
 that emits no display callbacks. The screen can remain at the OS-restored appearance for roughly
@@ -149,12 +166,18 @@ Before handoff:
 2. Run `./script/build_and_run.sh --verify` (safe mode; confirms launch/UI without hardware writes).
 3. Perform the hardware regression check outside safe mode, coordinated so it does not surprise the
    user:
-   - `pkill -x MonitorFlux || true`
-   - `./script/build_and_run.sh --telemetry`
-   - Sleep displays with `pmset displaysleepnow`, wait about 15 seconds, then wake them.
-   - Repeat at least three times. Expect one wake notice, at most one MonitorFlux "Applied gamma"
-     burst after the final callback burst, no false conflict edge, and visually no repeated
-     warm/dim ping-pong.
+   - `pkill -x MonitorFlux || true`, then `./script/build_and_run.sh` and stream the log at
+     **debug** level — the per-write "Applied gamma" line is `.debug`, which
+     `--telemetry`'s `log stream --info` does not show:
+     `log stream --debug --style compact --predicate 'subsystem == "app.monitorflux.MonitorFlux"'`
+   - **Display-only wake** (the common reproduction): `pmset displaysleepnow`, wait about
+     15 seconds, wake by key press. Expect **no** "Woke from sleep" notice (that notification is
+     system-wake only), one settled refresh after the callback/quiet window, at most one
+     "Applied gamma" burst, no false conflict edge, and visually no repeated warm/dim ping-pong.
+   - **System wake**: `pmset sleepnow` (this sleeps the whole Mac — coordinate, and wake it by
+     key press). Expect exactly one wake notice per wake, and otherwise the same single settled
+     refresh/apply as above.
+   - Repeat each at least three times.
    - Repeat across a scheduled brightness phase boundary if practical. For one software-dim
      display, the new warmth/brightness state should arrive in one final gamma pass.
 4. If a late reset, follow write, ID change, or repeated DDC restore is actually observed, implement
