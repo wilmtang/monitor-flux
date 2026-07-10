@@ -31,24 +31,21 @@ struct HardwareDDCBackend: Sendable {
         return DDCBackendStatus(
             isAvailable: true,
             toolName: "Native IOAVService",
-            toolPath: nil,
-            message: "Native DDC"
+            toolPath: nil
         )
         #else
         if commandLine.status.isAvailable {
             return DDCBackendStatus(
                 isAvailable: true,
                 toolName: "Native IOKit + \(commandLine.status.toolName)",
-                toolPath: commandLine.status.toolPath,
-                message: "Native DDC, fallback \(commandLine.status.toolName)"
+                toolPath: commandLine.status.toolPath
             )
         }
 
         return DDCBackendStatus(
             isAvailable: true,
             toolName: "Native IOKit",
-            toolPath: nil,
-            message: "Native DDC"
+            toolPath: nil
         )
         #endif
     }

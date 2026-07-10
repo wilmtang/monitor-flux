@@ -8,13 +8,11 @@ struct DDCBackendStatus: Equatable, Sendable {
     let isAvailable: Bool
     let toolName: String
     let toolPath: String?
-    let message: String
 
     static let unavailable = DDCBackendStatus(
         isAvailable: false,
         toolName: "None",
-        toolPath: nil,
-        message: "No DDC command backend found"
+        toolPath: nil
     )
 }
 
@@ -85,8 +83,7 @@ struct DDCCommandLineBackend: Sendable {
         return DDCBackendStatus(
             isAvailable: true,
             toolName: tool.name,
-            toolPath: tool.path,
-            message: "Using \(tool.name)"
+            toolPath: tool.path
         )
     }
 
