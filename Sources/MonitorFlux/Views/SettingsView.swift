@@ -2,10 +2,13 @@
 // Copyright (C) 2026 wilmtang. Part of MonitorFlux, free software under the GNU
 // Affero General Public License v3.0 or later. See LICENSE. No warranty.
 
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var settingsTransferMessage: String?
 
     var body: some View {
         Form {
@@ -148,13 +151,27 @@ struct SettingsView: View {
                 Text("Warmth")
             }
 
-            Section("Actions") {
+            // No Refresh Displays button here: the toolbar button covers every pane, and a
+            // second copy on the same screen read as two different actions.
+            Section("Backup") {
                 Button {
-                    store.refreshDisplays()
+                    exportSettings()
                 } label: {
-                    Label("Refresh Displays", systemImage: "arrow.clockwise")
+                    Label("Export Settings…", systemImage: "square.and.arrow.up")
                 }
                 .settingsPushButton()
+
+                Button {
+                    importSettings()
+                } label: {
+                    Label("Import Settings…", systemImage: "square.and.arrow.down")
+                }
+                .settingsPushButton()
+
+                Text(settingsTransferMessage ?? "Import replaces saved settings and applies current display settings immediately.")
+                    .zoomFont(.caption)
+                    .foregroundStyle(settingsTransferMessage == nil ? .secondary : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // Version was previously only visible in the hidden Diagnostics pane — bug reports
@@ -166,5 +183,49 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("General")
+    }
+
+    @MainActor
+    private func exportSettings() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "MonitorFlux-Settings.json"
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try store.exportedPreferencesData().write(to: url, options: .atomic)
+            settingsTransferMessage = "Exported settings to \(url.lastPathComponent)."
+        } catch {
+            settingsTransferMessage = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func importSettings() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            let importedCompletely = try store.importPreferences(from: Data(contentsOf: url))
+            // Both caveats can hold at once (a dev build in safe mode is exactly where the
+            // login-item service rejects), so append rather than pick one.
+            var message = store.safeMode
+                ? "Imported settings. Safe mode skipped hardware writes."
+                : "Imported settings and applied current display settings."
+            if !importedCompletely {
+                message += " Start at login could not be changed: \(store.loginItemMessage)"
+            }
+            settingsTransferMessage = message
+        } catch {
+            settingsTransferMessage = "Import failed: \(error.localizedDescription)"
+        }
     }
 }

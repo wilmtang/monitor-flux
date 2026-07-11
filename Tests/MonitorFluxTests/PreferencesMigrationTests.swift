@@ -411,23 +411,63 @@ final class PreferencesMigrationTests: XCTestCase {
 
     func testPreferencesStoreExportImportRoundTripsNormalizedJSON() throws {
         var prefs = AppPreferences()
-        prefs.colorMode = .off
+        prefs.colorMode = .manual
+        prefs.manualTemperature = 4300
+        prefs.dayTemperature = 6400
+        prefs.sunsetTemperature = 3600
+        prefs.nightTemperature = 2800
+        prefs.warmStartMinutes = 1_100
+        prefs.coolStartMinutes = 480
+        prefs.sunsetStartMinutes = 1_200
+        prefs.transitionMinutes = 60
+        prefs.scheduleSource = .solar
+        prefs.bedtimeLeadMinutes = 500
+        prefs.morningStart = .wakeTime
+        prefs.startAtLogin = true
+        prefs.showInDock = true
+        prefs.keyboardControlEnabled = true
+        prefs.followBuiltInBrightness = true
+        prefs.syncContrastAcrossDisplays = true
+        prefs.fineAdjustmentsEnabled = true
+        prefs.hasSeenOnboarding = true
+        prefs.showDiagnostics = true
+        prefs.showsAdvancedControls = true
+        prefs.hideNoExternalsHint = true
+        prefs.fontSizeStep = 6
+        prefs.popupBackdropOpacity = 0.4
+        prefs.latitude = "35.68"
+        prefs.longitude = "139.69"
+        prefs.locationName = "Tokyo, Japan"
+        prefs.locationFollowsDevice = false
+        prefs.dismissedLocationMismatchKey = "Asia/Tokyo|America/Los_Angeles"
         prefs.displayPreferences["external"] = {
             var display = DisplayPreferences()
+            display.colorEnabled = false
+            display.dimmingMode = .software
+            display.dimToBlack = true
+            display.ddcDisplayIndex = 2
             display.hardwareBrightness = 42
+            display.hardwareContrast = 61
+            display.hardwareVolume = 37
             display.gammaBrightness = 999
+            display.forceVolumeControl = true
+            display.scheduleBrightness = true
+            display.scheduleContrast = true
+            display.dayBrightness = 88
+            display.sunsetBrightness = 64
+            display.nightBrightness = 39
+            display.dayContrast = 74
+            display.sunsetContrast = 69
+            display.nightContrast = 63
             return display
         }()
+        prefs.hotkeys["brightnessUp"] = .keyboard(GlobalShortcut(keyCode: 30, carbonModifiers: 4352))
+        prefs.displayOrder = ["external"]
 
         let data = try PreferencesStore.exportData(prefs)
         let imported = try PreferencesStore.importData(data)
 
-        XCTAssertEqual(imported.colorMode, .off)
-        XCTAssertEqual(imported.displayPreferences["external"]?.hardwareBrightness, 42)
-        XCTAssertEqual(
-            imported.displayPreferences["external"]?.gammaBrightness,
-            ControlRanges.gammaBrightnessPercent.upperBound
-        )
+        XCTAssertEqual(imported, prefs.normalized())
         XCTAssertThrowsError(try PreferencesStore.importData(Data("not json".utf8)))
     }
 }

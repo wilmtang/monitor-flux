@@ -49,8 +49,9 @@ pkill -x MonitorFlux || true
   `NSHostingController` managed by `AppStore.showMainWindow()` — NOT a `WindowGroup`/
   `Settings` scene, because `openWindow` from a `.window` `MenuBarExtra` in an accessory
   app opens blank, duplicate windows. All app-level settings live in the window's panes so
-  they're reachable without an app menu: Dock/login/window options in "General", the media-key
-  toggle and custom shortcut recorders in "Keyboard". **Window-sizing
+  they're reachable without an app menu: Dock/login/window options and settings export/import
+  ("Backup") in "General", the media-key toggle and custom shortcut recorders in "Keyboard";
+  Diagnostics keeps only the developer actions (report, gamma restore, factory reset). **Window-sizing
   gotcha (regressed twice — do not change without screenshotting):** the content MUST be an
   `NSHostingController` (a bare `NSHostingView` renders a `NavigationSplitView` blank), its
   default `sizingOptions` MUST stay (clearing them also blanks the columns), and the root

@@ -238,6 +238,12 @@ The login-item transition is attempted before the replacement is assigned or sav
 `startAtLogin` keeps its previous value and the error remains visible; all other imported or
 reset settings still apply. The service is touched only when the requested value changed.
 
+Export/import live in General ▸ Backup (user-facing — they moved out of Diagnostics, which
+keeps only the factory reset). `AppStore.importPreferences` returns whether the login-item
+change was applied, so the pane's result message can report a rejected `startAtLogin` instead
+of claiming a clean import; the safe-mode note and the rejection are appended, not exclusive,
+since a dev build in safe mode is exactly where both hold.
+
 ## Dimming: Hardware / Software / Automatic
 
 MonitorFlux presents **one Brightness slider** per display whose position is *perceived*

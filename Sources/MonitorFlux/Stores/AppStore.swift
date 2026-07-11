@@ -1052,9 +1052,12 @@ final class AppStore: ObservableObject {
         try PreferencesStore.exportData(preferences)
     }
 
-    func importPreferences(from data: Data) throws {
+    /// Returns false only when macOS rejected the imported login-item change; all other
+    /// preferences are still applied.
+    func importPreferences(from data: Data) throws -> Bool {
         let imported = try PreferencesStore.importData(data)
         applyReplacementPreferences(imported)
+        return preferences.startAtLogin == imported.startAtLogin
     }
 
     /// Factory-reset every saved setting to its default (from Diagnostics). This includes

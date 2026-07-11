@@ -5,7 +5,6 @@
 import AppKit
 import CoreGraphics
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Developer-facing state dump: everything the app knows about its environment, permissions,
 /// color pipeline, DDC path, and each display — plus a one-click plaintext report for bug
@@ -14,7 +13,7 @@ import UniformTypeIdentifiers
 struct DiagnosticsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var copiedReport = false
-    @State private var preferencesTransferMessage: String?
+    @State private var resetMessage: String?
     @State private var showResetConfirmation = false
 
     var body: some View {
@@ -26,7 +25,7 @@ struct DiagnosticsView: View {
                 displaySection(display)
             }
             actionsSection
-            preferencesSection
+            resetSection
         }
         .formStyle(.grouped)
         .navigationTitle("Diagnostics")
@@ -161,30 +160,8 @@ struct DiagnosticsView: View {
         }
     }
 
-    /// Export/import get their own titled card: they're a different job (moving state between
-    /// machines/bug reports) than the one-click actions above, and a `Divider()` inside a form
-    /// row rendered as a stray vertical tick rather than a separator.
-    private var preferencesSection: some View {
-        Section("Preferences") {
-            Button {
-                exportPreferences()
-            } label: {
-                Label("Export Preferences JSON…", systemImage: "square.and.arrow.up")
-            }
-            .settingsPushButton()
-
-            Button {
-                importPreferences()
-            } label: {
-                Label("Import Preferences JSON…", systemImage: "square.and.arrow.down")
-            }
-            .settingsPushButton()
-
-            Text(preferencesTransferMessage ?? "Import replaces saved preferences and applies current display settings immediately.")
-                .zoomFont(.caption)
-                .foregroundStyle(preferencesTransferMessage == nil ? .secondary : .primary)
-                .fixedSize(horizontal: false, vertical: true)
-
+    private var resetSection: some View {
+        Section("Reset") {
             Button(role: .destructive) {
                 showResetConfirmation = true
             } label: {
@@ -198,15 +175,15 @@ struct DiagnosticsView: View {
             ) {
                 Button("Reset All Settings", role: .destructive) {
                     store.resetAllSettingsToDefaults()
-                    preferencesTransferMessage = "All settings were reset to their defaults."
+                    resetMessage = "All settings were reset to their defaults."
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This restores every setting — warmth schedule, per-display brightness/contrast/color, keyboard shortcuts, and general options — to how they were on a fresh install. It can't be undone.")
             }
-            Text("Restores every setting to its default (a clean slate). Warmth and DDC are re-applied immediately; there's no undo.")
+            Text(resetMessage ?? "Restores every setting to its default (a clean slate). Warmth and DDC are re-applied immediately; there's no undo.")
                 .zoomFont(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(resetMessage == nil ? .secondary : .primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -257,44 +234,6 @@ struct DiagnosticsView: View {
         copiedReport = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             copiedReport = false
-        }
-    }
-
-    @MainActor
-    private func exportPreferences() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "MonitorFlux-Preferences.json"
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
-        }
-
-        do {
-            try store.exportedPreferencesData().write(to: url, options: .atomic)
-            preferencesTransferMessage = "Exported preferences to \(url.lastPathComponent)."
-        } catch {
-            preferencesTransferMessage = "Export failed: \(error.localizedDescription)"
-        }
-    }
-
-    @MainActor
-    private func importPreferences() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
-        }
-
-        do {
-            try store.importPreferences(from: Data(contentsOf: url))
-            preferencesTransferMessage = store.safeMode
-                ? "Imported preferences. Safe mode skipped hardware writes."
-                : "Imported preferences and applied current display settings."
-        } catch {
-            preferencesTransferMessage = "Import failed: \(error.localizedDescription)"
         }
     }
 
